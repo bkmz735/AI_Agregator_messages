@@ -53,7 +53,7 @@ class Storage:
         """Saves message and analysis result to SQLite."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
-                INSERT INTO messages 
+                INSERT OR IGNORE INTO messages 
                 (msg_uid, channel, sender, text, category, summary, action_required, suggested_reply, is_delivered)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (

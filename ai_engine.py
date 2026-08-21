@@ -140,7 +140,7 @@ class AIEngine:
                 "и предложи готовый черновик ответа (suggested_reply).\n"
                 "Ответ верни строго в формате JSON с ключами: transcription, category, summary, action_required, suggested_reply."
             )
-            for model_name in ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest']:
+            for model_name in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
                 try:
                     self._track_request()
                     response = await asyncio.wait_for(
@@ -201,47 +201,53 @@ class AIEngine:
             ]
 
         if self.client:
-            batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
-            prompt = (
-                f"{config.AI_FILTER_PROMPT}\n\n"
-                f"Проанализируй список входящих сообщений ниже и верни массив JSON ответов для каждого сообщения:\n"
-                f"{batch_json_input}"
-            )
-            
-            for model_name in ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash']:
-                try:
-                    self._track_request()
-                    response = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            self.client.models.generate_content,
-                            model=model_name,
-                            contents=prompt,
-                            config={'response_mime_type': 'application/json'}
-                        ),
-                        timeout=10.0
-                    )
-                    if response and response.text:
-                        parsed = json.loads(response.text)
-                        items = parsed.get("results", parsed) if isinstance(parsed, dict) else parsed
-                        results = []
-                        if isinstance(items, list):
-                            for i, item in enumerate(items):
-                                # Fallback if AI forgot to include msg_uid
-                                if "msg_uid" not in item and i < len(messages_batch):
-                                    item["msg_uid"] = messages_batch[i]["msg_uid"]
-                                elif "msg_uid" not in item:
-                                    item["msg_uid"] = f"fallback_{time.time()}_{i}"
-                                results.append(AnalysisResult(**item))
-                            logger.info(f"Successfully analyzed BATCH of {len(results)} messages via Gemini API ({model_name}).")
-                            return results
-                except Exception as e:
-                    err_str = str(e)
-                    if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                        self.rate_limit_until = time.time() + 60.0
-                        logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
-                        break
-                    logger.warning(f"Batch analysis model {model_name} failed: {e}")
-                    continue
+            # Pre-check: don't waste an API call if we already know we're over limit
+            rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
+            if rpm_count >= self.MAX_RPM:
+                logger.warning(f"Skipping Gemini API batch call: RPM limit reached ({rpm_count}/{self.MAX_RPM}). Using fallback.")
+            elif self.requests_today >= self.MAX_RPD:
+                logger.warning(f"Skipping Gemini API batch call: RPD limit reached ({self.requests_today}/{self.MAX_RPD}). Using fallback.")
+            else:
+                batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
+                prompt = (
+                    f"{config.AI_FILTER_PROMPT}\n\n"
+                    f"Проанализируй список входящих сообщений ниже и верни массив JSON ответов для каждого сообщения:\n"
+                    f"{batch_json_input}"
+                )
+                for model_name in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
+                    try:
+                        self._track_request()
+                        response = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                self.client.models.generate_content,
+                                model=model_name,
+                                contents=prompt,
+                                config={'response_mime_type': 'application/json'}
+                            ),
+                            timeout=10.0
+                        )
+                        if response and response.text:
+                            parsed = json.loads(response.text)
+                            items = parsed.get("results", parsed) if isinstance(parsed, dict) else parsed
+                            results = []
+                            if isinstance(items, list):
+                                for i, item in enumerate(items):
+                                    # Fallback if AI forgot to include msg_uid
+                                    if "msg_uid" not in item and i < len(messages_batch):
+                                        item["msg_uid"] = messages_batch[i]["msg_uid"]
+                                    elif "msg_uid" not in item:
+                                        item["msg_uid"] = f"fallback_{time.time()}_{i}"
+                                    results.append(AnalysisResult(**item))
+                                logger.info(f"Successfully analyzed BATCH of {len(results)} messages via Gemini API ({model_name}).")
+                                return results
+                    except Exception as e:
+                        err_str = str(e)
+                        if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                            self.rate_limit_until = time.time() + 60.0
+                            logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
+                            break
+                        logger.warning(f"Batch analysis model {model_name} failed: {e}")
+                        continue
 
         # Fallback / Mock analysis engine for batch
         results = []

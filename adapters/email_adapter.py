@@ -23,6 +23,8 @@ class EmailAdapter(BaseAdapter):
         self.password = config.IMAP_PASSWORD
         self._running = False
         self._task = None
+        # Track already-seen message numbers to avoid re-processing read emails
+        self._seen_nums: set = set()
 
     async def start(self):
         self._running = True
@@ -52,6 +54,34 @@ class EmailAdapter(BaseAdapter):
         except Exception:
             return str(header_val)
 
+    def _extract_raw_email(self, lines) -> bytes | None:
+        """Extract raw email bytes from aioimaplib fetch response lines.
+        
+        aioimaplib returns lines as a mix of bytes, bytearray, and str.
+        The actual email body is always the LARGEST bytes/bytearray element.
+        """
+        best = None
+        best_len = 0
+
+        for line in lines:
+            candidates = []
+            if isinstance(line, tuple):
+                candidates.extend(line)
+            else:
+                candidates.append(line)
+
+            for part in candidates:
+                if isinstance(part, (bytes, bytearray)):
+                    part_len = len(part)
+                    if part_len > best_len:
+                        best = bytes(part)
+                        best_len = part_len
+
+        # Sanity check: a real email should be at least ~50 bytes
+        if best and best_len > 50:
+            return best
+        return None
+
     async def _poll_imap(self):
         """Polls emails periodically."""
         import aioimaplib
@@ -70,75 +100,67 @@ class EmailAdapter(BaseAdapter):
 
                 await imap_client.select('INBOX')
 
-                # Search UNSEEN or ALL
+                # Only fetch UNSEEN (unread) emails
                 status_resp, data = await imap_client.search('UNSEEN')
                 msg_numbers = data[0].split() if status_resp == 'OK' and data and data[0] else []
 
                 if not msg_numbers:
-                    status_resp, data = await imap_client.search('ALL')
-                    if status_resp == 'OK' and data and data[0]:
-                        all_nums = data[0].split()
-                        msg_numbers = all_nums[-5:]  # Get last 5 emails
+                    # No unread mail — nothing to do
+                    await imap_client.logout()
+                    await asyncio.sleep(45)
+                    continue
 
-                if msg_numbers:
-                    logger.info(f"Mail.ru IMAP processing {len(msg_numbers)} emails...")
-                    for num in msg_numbers:
-                        try:
-                            num_str = num.decode() if isinstance(num, bytes) else str(num)
-                            fetch_resp = await imap_client.fetch(num_str, '(RFC822)')
+                logger.info(f"Mail.ru IMAP found {len(msg_numbers)} UNSEEN emails to process.")
+                for num in msg_numbers:
+                    try:
+                        num_str = num.decode() if isinstance(num, bytes) else str(num)
+
+                        # Skip if we already processed this message number in this session
+                        if num_str in self._seen_nums:
+                            continue
+
+                        fetch_resp = await imap_client.fetch(num_str, '(RFC822)')
+                        
+                        if fetch_resp.result == 'OK':
+                            raw_email = self._extract_raw_email(fetch_resp.lines)
                             
-                            if fetch_resp.result == 'OK':
-                                raw_email = None
-                                
-                                # Let's log the structure to understand aioimaplib parsing
-                                line_info = [(type(l), len(l) if isinstance(l, (bytes, str)) else 'N/A') for l in fetch_resp.lines]
-                                logger.info(f"Email #{num_str} lines structure: {line_info}")
-                                
-                                # Aioimaplib sometimes returns the literal as a bytearray instead of bytes
-                                for line in fetch_resp.lines:
-                                    if isinstance(line, tuple):
-                                        for part in line:
-                                            if isinstance(part, (bytes, bytearray)) and b"Return-Path:" in bytes(part):
-                                                raw_email = bytes(part)
-                                                break
-                                    elif isinstance(line, (bytes, bytearray)) and (b"Return-Path:" in bytes(line) or b"Subject:" in bytes(line) or len(line) > 200):
-                                        raw_email = bytes(line)
-                                    
-                                    if raw_email:
-                                        break
-                                
-                                if raw_email:
-                                    msg = email.message_from_bytes(raw_email)
-                                    subject = self._decode_str(msg.get("Subject", "Без темы"))
-                                    from_addr = self._decode_str(msg.get("From", "Неизвестный отправитель"))
+                            if raw_email:
+                                msg = email.message_from_bytes(raw_email)
+                                subject = self._decode_str(msg.get("Subject", "Без темы"))
+                                from_addr = self._decode_str(msg.get("From", "Неизвестный отправитель"))
 
-                                    body = ""
-                                    if msg.is_multipart():
-                                        for part in msg.walk():
-                                            if part.get_content_type() == "text/plain":
-                                                payload = part.get_payload(decode=True)
-                                                if payload:
-                                                    body = payload.decode("utf-8", errors="ignore")
-                                                break
-                                    else:
-                                        payload = msg.get_payload(decode=True)
-                                        if payload:
-                                            body = payload.decode("utf-8", errors="ignore")
+                                body = ""
+                                if msg.is_multipart():
+                                    for part in msg.walk():
+                                        if part.get_content_type() == "text/plain":
+                                            payload = part.get_payload(decode=True)
+                                            if payload:
+                                                body = payload.decode("utf-8", errors="ignore")
+                                            break
+                                else:
+                                    payload = msg.get_payload(decode=True)
+                                    if payload:
+                                        body = payload.decode("utf-8", errors="ignore")
 
-                                    channel_name = "Email (Mail.ru)"
-                                    if "avito" in from_addr.lower() or "авито" in subject.lower():
-                                        channel_name = "Avito (Email)"
-                                    elif "instagram" in from_addr.lower():
-                                        channel_name = "Instagram (Email)"
+                                channel_name = "Email (Mail.ru)"
+                                if "avito" in from_addr.lower() or "авито" in subject.lower():
+                                    channel_name = "Avito (Email)"
+                                elif "instagram" in from_addr.lower():
+                                    channel_name = "Instagram (Email)"
 
-                                    msg_id_val = msg.get('Message-ID', num_str)
-                                    msg_uid = f"email_{msg_id_val.strip('<>')}"
-                                    text_full = f"Тема: {subject}\n\n{body[:500]}"
-                                    
-                                    logger.info(f"Emitting email message: [{channel_name}] From: {from_addr} Subject: {subject}")
-                                    await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid)
-                        except Exception as fe:
-                            logger.warning(f"Error fetching email #{num}: {fe}")
+                                msg_id_val = msg.get('Message-ID', num_str)
+                                msg_uid = f"email_{msg_id_val.strip('<>')}"
+                                text_full = f"Тема: {subject}\n\n{body[:500]}"
+                                
+                                logger.info(f"Emitting email: [{channel_name}] From: {from_addr} Subject: {subject}")
+                                await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid)
+                                self._seen_nums.add(num_str)
+                            else:
+                                logger.warning(f"Email #{num_str}: could not extract raw body from IMAP response.")
+                        else:
+                            logger.warning(f"Email #{num_str}: FETCH returned {fetch_resp.result}")
+                    except Exception as fe:
+                        logger.warning(f"Error fetching email #{num}: {fe}")
 
                 await imap_client.logout()
                 await asyncio.sleep(45)
