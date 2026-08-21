@@ -84,8 +84,9 @@ class MasterBot:
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+        buffer_label = f"📥 Буфер ({buffer_count})" if buffer_count > 0 else "📥 Буфер"
         kb = [
-            [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
+            [KeyboardButton(text=buffer_label), KeyboardButton(text="🚀 Отправить сводку")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
         ]
         return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
