@@ -12,23 +12,22 @@ from pathlib import Path
 
 ENV_PATH = Path(__file__).parent / ".env"
 
-# VK Admin Standalone App ID: 6287487
+# VK Admin Standalone App ID: 6287487 (Supports vk.com & vk.ru)
 VK_ADMIN_AUTH_URL = "https://oauth.vk.com/authorize?client_id=6287487&scope=1073737727&redirect_uri=https://oauth.vk.com/blank.html&response_type=token&revoke=1"
 
 def main():
     print("==================================================")
-    print("🔑 VK Token Helper (VK Admin / ID: 6287487)")
+    print("🔑 VK Token Helper (VK Admin / ID: 6287487 / vk.ru)")
     print("==================================================")
-    print("ВКонтакте (VK ID) блокирует прямой ввод паролей для сторонних приложений.")
     print("Выберите удобный способ получения токена:\n")
-    print("1. 🔗 Вставить токен/ссылку из браузера (100% надежно для любого VK аккаунта)")
+    print("1. 🔗 Вставить токен/ссылку из браузера (100% надежно для VK ID / vk.ru)")
     print("2. 🔑 Ввести логин и пароль VK прямо в консоли")
     
     choice = input("\nВыберите вариант [1-2] (по умолчанию 1): ").strip() or "1"
     
     if choice == "1":
         print("\n--------------------------------------------------")
-        print("1. Откройте эту ссылку в любом браузере (на ПК или телефоне):")
+        print("1. Откройте эту ссылку в браузере (на ПК/телефоне или в console browser 'links'):")
         print(f"\n👉 {VK_ADMIN_AUTH_URL}\n")
         print("2. Нажмите 'Разрешить'. Вас перенаправит на белую страницу.")
         print("3. Скопируйте целиком адрес этой страницы из браузера (или сам токен после access_token=).\n")
@@ -72,7 +71,7 @@ def main():
                 "v": "5.131"
             }
             
-            url = f"https://oauth.vk.com/token?{urllib.parse.urlencode(params)}"
+            url = f"https://oauth.vk.ru/token?{urllib.parse.urlencode(params)}"
             req = urllib.request.Request(url, headers={'User-Agent': 'KateMobileAndroid/56 lite-ru'})
             
             try:
@@ -92,7 +91,7 @@ def main():
                     if err_data.get("error") == "need_2fa":
                         code = input("Введите 2FA код из СМС / приложения: ").strip()
                         params["code"] = code
-                        url_2fa = f"https://oauth.vk.com/token?{urllib.parse.urlencode(params)}"
+                        url_2fa = f"https://oauth.vk.ru/token?{urllib.parse.urlencode(params)}"
                         req_2fa = urllib.request.Request(url_2fa, headers={'User-Agent': 'KateMobileAndroid/56 lite-ru'})
                         with urllib.request.urlopen(req_2fa) as resp_2fa:
                             data_2fa = json.loads(resp_2fa.read().decode('utf-8'))
