@@ -142,16 +142,49 @@ class MessageAggregatorApp:
         if self.bot.bot and self.bot.dp:
             bot_task = asyncio.create_task(self.bot.start_polling())
 
+        # Handle SIGTERM from systemd gracefully
+        import signal
+        stop_event = asyncio.Event()
+
+        def _handle_sigterm(*args):
+            logger.info("Received SIGTERM from systemd, initiating graceful shutdown...")
+            stop_event.set()
+
         try:
-            while True:
-                await asyncio.sleep(3600)
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
+        except (NotImplementedError, AttributeError):
+            # Windows doesn't support add_signal_handler
+            signal.signal(signal.SIGTERM, _handle_sigterm)
+
+        try:
+            await stop_event.wait()
         except (KeyboardInterrupt, asyncio.CancelledError):
-            logger.info("Shutting down AI Message Aggregator...")
-            batch_task.cancel()
-            for adapter in self.adapters:
-                await adapter.stop()
-            if bot_task:
-                bot_task.cancel()
+            pass
+
+        # --- Graceful shutdown ---
+        logger.info("Shutting down AI Message Aggregator...")
+
+        # 1. Stop adapters first (no new messages)
+        for adapter in self.adapters:
+            await adapter.stop()
+
+        # 2. Flush any remaining messages in queue to DB before dying
+        queue_size = len(self.raw_message_queue)
+        if queue_size > 0:
+            logger.info(f"Flushing {queue_size} queued messages before shutdown...")
+            try:
+                await self._flush_raw_queue()
+                logger.info("Queue flushed successfully!")
+            except Exception as e:
+                logger.error(f"Error flushing queue on shutdown: {e}")
+
+        # 3. Cancel background tasks
+        batch_task.cancel()
+        if bot_task:
+            bot_task.cancel()
+
+        logger.info("AI Message Aggregator stopped cleanly. ✅")
 
 if __name__ == "__main__":
     app = MessageAggregatorApp()
