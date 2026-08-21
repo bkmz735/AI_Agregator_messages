@@ -183,9 +183,8 @@ class MasterBot:
         return text, inline_kb
 
     async def _clear_previous_ui_panels(self):
-        """Deletes any previously active UI panel (buffer, settings, stats, clear) to keep chat clean."""
+        """Deletes any previously active UI panel (settings, stats, clear prompt) to keep chat clean."""
         panels = [
-            ("_last_buffer_status_msg_id", self._last_buffer_status_msg_id),
             ("_last_settings_msg_id", self._last_settings_msg_id),
             ("_last_stats_msg_id", self._last_stats_msg_id),
             ("_last_clear_prompt_msg_id", self._last_clear_prompt_msg_id),
