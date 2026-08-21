@@ -8,7 +8,9 @@ User=root
 WorkingDirectory=/opt/ai-message-aggregator
 ExecStart=/opt/ai-message-aggregator/venv/bin/python main.py
 Restart=always
-RestartSec=5
+RestartSec=3
+TimeoutStopSec=5
+KillMode=mixed
 EnvironmentFile=/opt/ai-message-aggregator/.env
 
 [Install]

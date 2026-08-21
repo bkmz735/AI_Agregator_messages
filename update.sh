@@ -34,6 +34,10 @@ else
     echo "Зависимости актуальны, пропускаем pip (ускоренный запуск) ⚡"
 fi
 
+echo "Обновление конфигурации службы systemd..."
+cp -f ai-aggregator.service /etc/systemd/system/ai-aggregator.service
+systemctl daemon-reload
+
 echo "Перезапуск фоновой службы systemd..."
 systemctl restart ai-aggregator
 
