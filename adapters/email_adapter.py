@@ -94,15 +94,15 @@ class EmailAdapter(BaseAdapter):
                                 line_info = [(type(l), len(l) if isinstance(l, (bytes, str)) else 'N/A') for l in fetch_resp.lines]
                                 logger.info(f"Email #{num_str} lines structure: {line_info}")
                                 
-                                # Aioimaplib usually puts the literal as a separate bytes item after the FETCH line or inside a tuple
+                                # Aioimaplib sometimes returns the literal as a bytearray instead of bytes
                                 for line in fetch_resp.lines:
                                     if isinstance(line, tuple):
                                         for part in line:
-                                            if isinstance(part, bytes) and b"Return-Path:" in part:
-                                                raw_email = part
+                                            if isinstance(part, (bytes, bytearray)) and b"Return-Path:" in bytes(part):
+                                                raw_email = bytes(part)
                                                 break
-                                    elif isinstance(line, bytes) and (b"Return-Path:" in line or b"Subject:" in line or len(line) > 200):
-                                        raw_email = line
+                                    elif isinstance(line, (bytes, bytearray)) and (b"Return-Path:" in bytes(line) or b"Subject:" in bytes(line) or len(line) > 200):
+                                        raw_email = bytes(line)
                                     
                                     if raw_email:
                                         break
