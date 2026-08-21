@@ -17,10 +17,33 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+class RecentLogHandler(logging.Handler):
+    recent_logs: List[str] = []
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            RecentLogHandler.recent_logs.append(msg)
+            if len(RecentLogHandler.recent_logs) > 40:
+                RecentLogHandler.recent_logs.pop(0)
+        except Exception:
+            pass
+
+log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S")
+
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(log_formatter)
+
+recent_handler = RecentLogHandler()
+recent_handler.setFormatter(log_formatter)
+
+from logging.handlers import RotatingFileHandler
+file_handler = RotatingFileHandler("aggregator.log", maxBytes=2*1024*1024, backupCount=2, encoding="utf-8")
+file_handler.setFormatter(log_formatter)
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[stream_handler, recent_handler, file_handler]
 )
 
 logger = logging.getLogger("AggregatorMain")

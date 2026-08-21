@@ -136,13 +136,44 @@ class MasterBot:
             BotCommand(command="block", description="Добавить слово в Чёрный список спама"),
             BotCommand(command="unblock", description="Удалить слово из Чёрного списка спама"),
             BotCommand(command="blacklist", description="Посмотреть весь Чёрный список спама"),
-            BotCommand(command="clear", description="Очистить последние сообщения чата")
+            BotCommand(command="clear", description="Очистить последние сообщения чата"),
+            BotCommand(command="logs", description="Живой лог событий и диагностика системы")
         ]
         try:
             await asyncio.wait_for(self.bot.set_my_commands(commands), timeout=5.0)
             logger.info("Registered Telegram Bot slash commands menu.")
         except Exception as e:
             logger.warning(f"Could not set bot commands: {e}")
+
+    async def _get_diagnostic_logs_text_and_keyboard(self):
+        from main import RecentLogHandler
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        recent = RecentLogHandler.recent_logs[-10:]
+        if not recent:
+            log_lines = ["<i>Логи пока пусты.</i>"]
+        else:
+            log_lines = [f"• <code>{html.escape(line)}</code>" for line in recent]
+        
+        proxy_info = config.TELEGRAM_PROXY if config.TELEGRAM_PROXY else "Прямое (Direct 🟢)"
+        
+        text = (
+            "🛠️ <b>Диагностика системы и Живой Лог</b>\n\n"
+            f"🌐 <b>Подключение Telegram:</b> {proxy_info}\n"
+            f"👤 <b>Master Chat ID:</b> <code>{self.master_chat_id}</code>\n"
+            f"⚡ <b>Режим:</b> {self.delivery_mode.upper()} ({self.digest_interval}м)\n"
+            f"🌙 <b>Ночной режим:</b> {'Вкл 🟢' if self.night_mode_enabled else 'Выкл ❌'}\n\n"
+            "📜 <b>Последние 10 системных событий:</b>\n"
+            + "\n".join(log_lines)
+        )
+        
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Обновить логи", callback_data="refresh_logs"),
+                InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
+            ]
+        ])
+        return text, kb
 
     async def _get_settings_text_and_keyboard(self):
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -428,6 +459,28 @@ class MasterBot:
             sent_msg = await message.answer(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
             self._last_stats_msg_id = sent_msg.message_id
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+
+        @self.dp.message(Command("logs"))
+        @self.dp.message(Command("debug"))
+        async def cmd_logs(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            await self._clear_previous_ui_panels()
+            text, kb = await self._get_diagnostic_logs_text_and_keyboard()
+            sent_msg = await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
+            self._last_stats_msg_id = sent_msg.message_id
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+
+        @self.dp.callback_query(F.data == "refresh_logs")
+        async def process_refresh_logs(callback_query: types.CallbackQuery):
+            text, kb = await self._get_diagnostic_logs_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer("Логи обновлены!")
 
         @self.dp.message(F.text == "⚙️ Настройки")
         @self.dp.message(Command("settings"))
