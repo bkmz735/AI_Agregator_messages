@@ -274,12 +274,13 @@ class MasterBot:
                     pass
                 self._last_buffer_status_msg_id = None
                 
-            sent_count = await self.flush_buffer_now()
-            buf_count = await self.storage.get_buffer_count()
-            if sent_count == 0:
-                await message.answer("📥 Буфер пуст! Новых сообщений нет.", reply_markup=self._get_menu_keyboard(0))
-            else:
-                await message.answer(f"✅ Сводка отправлена ({sent_count} сообщ.)", reply_markup=self._get_menu_keyboard(buf_count))
+            try:
+                sent_count = await self.flush_buffer_now()
+                if sent_count == 0:
+                    await message.answer("📥 Буфер пуст! Новых сообщений нет.", reply_markup=self._get_menu_keyboard(0))
+            except Exception as e:
+                logger.error(f"Error in manual digest flush: {e}", exc_info=True)
+                await message.answer(f"❌ Ошибка отправки сводки: {e}")
 
         @self.dp.message(F.text == "📊 Статистика")
         @self.dp.message(Command("stats"))
