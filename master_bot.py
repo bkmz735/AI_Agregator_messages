@@ -154,7 +154,7 @@ class MasterBot:
             except Exception:
                 pass
             buf_count = await self.storage.get_buffer_count()
-            await message.answer(
+            sent_msg = await message.answer(
                 "🤖 <b>AI Message Aggregator</b>\n\n"
                 "Я собираю сообщения из VK и Mail.ru (Авито / Instagram), отсеиваю спам через ИИ "
                 "и присылаю важные выжимки по вашему графику.\n\n"
@@ -165,6 +165,8 @@ class MasterBot:
                 reply_markup=self._get_menu_keyboard(buf_count),
                 parse_mode="HTML"
             )
+            # Register welcome screen for auto-deletion after 5 minutes
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
         @self.dp.message(Command("help"))
         async def cmd_help(message: types.Message):
@@ -187,7 +189,9 @@ class MasterBot:
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
                 "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу без потери сообщений!"
             )
-            await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="HTML")
+            sent_msg = await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="HTML")
+            # Register help screen for auto-deletion after 5 minutes
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
@@ -270,6 +274,8 @@ class MasterBot:
                     parse_mode="HTML"
                 )
             self._last_buffer_status_msg_id = status_msg.message_id
+            # Auto-delete buffer status message after 5 minutes
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=status_msg.message_id, delay_seconds=300)
 
         @self.dp.message(F.text == "🚀 Отправить сводку")
         @self.dp.message(Command("flush"))
@@ -290,7 +296,9 @@ class MasterBot:
             try:
                 sent_count = await self.flush_buffer_now()
                 if sent_count == 0:
-                    await message.answer("📥 Буфер пуст! Новых сообщений нет.", reply_markup=self._get_menu_keyboard(0))
+                    sent_msg = await message.answer("📥 Буфер пуст! Новых сообщений нет.", reply_markup=self._get_menu_keyboard(0))
+                    # Auto-delete empty buffer warning after 5 minutes
+                    await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
             except Exception as e:
                 logger.error(f"Error in manual digest flush: {e}", exc_info=True)
                 await message.answer(f"❌ Ошибка отправки сводки: {e}")
@@ -318,7 +326,9 @@ class MasterBot:
                 [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
             ])
             # Send stats with inline delete button, but also attach the reply keyboard to update the state
-            await message.answer(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
+            sent_msg = await message.answer(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
+            # Auto-delete statistics message after 5 minutes
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
             # Update reply keyboard count invisibly by just refreshing it if needed
             # (or we can just leave it as is since reply keyboard is persistent)
 
@@ -330,7 +340,9 @@ class MasterBot:
             except Exception:
                 pass
             text, kb = await self._get_settings_text_and_keyboard()
-            await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
+            sent_msg = await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
+            # Auto-delete settings panel after 5 minutes
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
         # Handle inline settings menu navigation and callbacks
         @self.dp.callback_query(F.data == "settings_main_menu")
