@@ -69,9 +69,9 @@ class MasterBot:
         commands = [
             BotCommand(command="start", description="Главное меню и статус"),
             BotCommand(command="help", description="Справка по командам и работе бота"),
-            BotCommand(command="flush", description="Отправить накопившийся буфер прямо сейчас"),
-            BotCommand(command="stats", description="Статистика сообщений и лимитов ИИ"),
-            BotCommand(command="mode", description="Переключить режим (Instant / Digest)"),
+            BotCommand(command="flush", description="Выгрузить накопившийся буфер прямо сейчас"),
+            BotCommand(command="stats", description="Посмотреть статистику сообщений"),
+            BotCommand(command="mode", description="Переключить режим (Сразу / Сводка)"),
             BotCommand(command="clear", description="Очистить последние сообщения чата")
         ]
         try:
