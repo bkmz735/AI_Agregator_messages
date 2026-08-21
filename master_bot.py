@@ -270,6 +270,15 @@ class MasterBot:
             except Exception:
                 pass
 
+        # Handle inline "Read/Delete" button click
+        @self.dp.callback_query(F.data == "delete_msg")
+        async def process_delete_msg(callback_query: types.CallbackQuery):
+            try:
+                await callback_query.message.delete()
+            except Exception:
+                pass
+            await callback_query.answer()
+
     async def handle_incoming_analyzed_message(
         self, channel: str, sender: str, text: str, category: str, summary: str, action_required: bool, suggested_reply: Optional[str] = None
     ) -> bool:
@@ -309,12 +318,15 @@ class MasterBot:
 
         if self.bot and self.master_chat_id:
             try:
-                buf_count = await self.storage.get_buffer_count()
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🗑️ Прочитано", callback_data="delete_msg")]
+                ])
                 sent_msg = await self.bot.send_message(
                     chat_id=self.master_chat_id,
                     text=message_text,
                     parse_mode="Markdown",
-                    reply_markup=self._get_menu_keyboard(buf_count)
+                    reply_markup=inline_kb
                 )
                 # Register for auto-deletion if config value is greater than 0
                 if config.AUTO_DELETE_DELAY_HOURS > 0:
@@ -346,10 +358,19 @@ class MasterBot:
 
         if self.bot and self.master_chat_id:
             try:
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🗑️ Прочитано", callback_data="delete_msg")]
+                ])
                 # Split long messages if needed
                 if len(full_digest) > 4000:
                     for chunk in [full_digest[i:i+4000] for i in range(0, len(full_digest), 4000)]:
-                        sent_msg = await self.bot.send_message(chat_id=self.master_chat_id, text=chunk, parse_mode="Markdown")
+                        sent_msg = await self.bot.send_message(
+                            chat_id=self.master_chat_id, 
+                            text=chunk, 
+                            parse_mode="Markdown",
+                            reply_markup=inline_kb
+                        )
                         if config.AUTO_DELETE_DELAY_HOURS > 0:
                             delay = config.AUTO_DELETE_DELAY_HOURS * 3600
                             await self.storage.save_sent_notification(
@@ -362,7 +383,7 @@ class MasterBot:
                         chat_id=self.master_chat_id,
                         text=full_digest,
                         parse_mode="Markdown",
-                        reply_markup=self._get_menu_keyboard(0)
+                        reply_markup=inline_kb
                     )
                     if config.AUTO_DELETE_DELAY_HOURS > 0:
                         delay = config.AUTO_DELETE_DELAY_HOURS * 3600
