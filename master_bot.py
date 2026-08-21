@@ -751,33 +751,36 @@ class MasterBot:
         # Handle inline confirmation of chat clearing
         @self.dp.callback_query(F.data == "confirm_clear_chat")
         async def process_confirm_clear_chat(callback_query: types.CallbackQuery):
-            # Delete the confirmation message first
+            await callback_query.answer("Очистка чата...")
+            
+            # Delete the confirmation message immediately
             try:
                 await callback_query.message.delete()
             except Exception:
                 pass
                 
-            # Perform actual silent deletion
-            current_id = callback_query.message.message_id
-            for msg_id in range(current_id, current_id - 100, -1):
-                try:
-                    await self.bot.delete_message(chat_id=callback_query.message.chat.id, message_id=msg_id)
-                except Exception:
-                    pass
-            await callback_query.answer()
+            # Perform deletion loop and keyboard restoration asynchronously in background
+            async def _do_delete_bg():
+                current_id = callback_query.message.message_id
+                for msg_id in range(current_id, current_id - 100, -1):
+                    try:
+                        await self.bot.delete_message(chat_id=callback_query.message.chat.id, message_id=msg_id)
+                    except Exception:
+                        pass
 
-            # Instantly restore the bottom reply keyboard with a 15-second auto-deleting notification
-            try:
-                buf_count = await self.storage.get_buffer_count()
-                sent_msg = await self.bot.send_message(
-                    chat_id=callback_query.message.chat.id,
-                    text="🧹 <b>Чат очищен!</b> Кнопки меню восстановлены.",
-                    reply_markup=self._get_menu_keyboard(buf_count),
-                    parse_mode="HTML"
-                )
-                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=15)
-            except Exception as e:
-                logger.error(f"Error restoring reply keyboard after clear: {e}")
+                try:
+                    buf_count = await self.storage.get_buffer_count()
+                    sent_msg = await self.bot.send_message(
+                        chat_id=callback_query.message.chat.id,
+                        text="🧹 <b>Чат очищен!</b> Кнопки меню восстановлены.",
+                        reply_markup=self._get_menu_keyboard(buf_count),
+                        parse_mode="HTML"
+                    )
+                    await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=15)
+                except Exception as e:
+                    logger.error(f"Error restoring reply keyboard after clear: {e}")
+
+            asyncio.create_task(_do_delete_bg())
 
         @self.dp.callback_query(F.data == "cancel_clear_chat")
         async def process_cancel_clear_chat(callback_query: types.CallbackQuery):
