@@ -47,6 +47,7 @@ class MasterBot:
         self.delivery_mode = config.DELIVERY_MODE  # "instant" or "digest"
         self.digest_interval = config.DIGEST_INTERVAL_MINUTES
         self.auto_delete_delay_hours = config.AUTO_DELETE_DELAY_HOURS
+        self._last_buffer_status_msg_id = None
         self.dp = None
         self.bot = None
 
@@ -239,13 +240,23 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
+                
+            # Clean up the previous status message if one exists
+            if self._last_buffer_status_msg_id:
+                try:
+                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_buffer_status_msg_id)
+                except Exception:
+                    pass
+                self._last_buffer_status_msg_id = None
+                
             buf_count = await self.storage.get_buffer_count()
-            await message.answer(
-                f"📥 **В буфере ожидают отправки:** {buf_count} сообщ.\n\n"
+            status_msg = await message.answer(
+                f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
                 "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию.",
                 reply_markup=self._get_menu_keyboard(buf_count),
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
+            self._last_buffer_status_msg_id = status_msg.message_id
 
         @self.dp.message(F.text == "🚀 Отправить сводку")
         @self.dp.message(Command("flush"))
@@ -254,6 +265,15 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
+                
+            # Clean up the buffer status message
+            if self._last_buffer_status_msg_id:
+                try:
+                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_buffer_status_msg_id)
+                except Exception:
+                    pass
+                self._last_buffer_status_msg_id = None
+                
             sent_count = await self.flush_buffer_now()
             buf_count = await self.storage.get_buffer_count()
             if sent_count == 0:
@@ -571,6 +591,14 @@ class MasterBot:
                         )
             except Exception as e:
                 logger.error(f"Error sending digest: {e}")
+
+        # Clean up the buffer status message if it exists
+        if self._last_buffer_status_msg_id:
+            try:
+                await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_buffer_status_msg_id)
+            except Exception:
+                pass
+            self._last_buffer_status_msg_id = None
 
         return len(messages)
 
