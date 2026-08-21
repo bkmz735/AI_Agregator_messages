@@ -61,7 +61,7 @@ class MasterBot:
             [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text=f"⚙️ Режим: {mode_label}"), KeyboardButton(text="🧹 Очистить чат")]
         ]
-        return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+        return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
 
     async def _register_bot_commands(self):
         """Registers blue '/' commands menu in Telegram app UI."""
