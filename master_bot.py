@@ -237,7 +237,7 @@ class MasterBot:
         ])
         return text, inline_kb
 
-    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML"):
+    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False):
         """Displays or smoothly edits the single active UI window in-place."""
         target_chat = self.master_chat_id
         if not target_chat or not self.bot:
@@ -248,8 +248,16 @@ class MasterBot:
         reply_kb = keyboard if isinstance(keyboard, ReplyKeyboardMarkup) else None
 
         if self._last_ui_msg_id:
-            try:
-                await self.bot.edit_message_text(
+            if force_new:
+                # User wants a fresh message at the bottom (e.g., used a command or reply keyboard)
+                try:
+                    await self.bot.delete_message(chat_id=target_chat, message_id=self._last_ui_msg_id)
+                except Exception:
+                    pass
+                self._last_ui_msg_id = None
+            else:
+                try:
+                    await self.bot.edit_message_text(
                     chat_id=target_chat,
                     message_id=self._last_ui_msg_id,
                     text=text,
@@ -280,12 +288,13 @@ class MasterBot:
         except Exception as e:
             logger.error(f"Error updating single UI panel: {e}")
 
-    async def update_status_banner(self, chat_id: Optional[int] = None):
+    async def update_status_banner(self, chat_id: Optional[int] = None, force_new: bool = False):
         """Creates or updates the single active status banner in-place."""
         buf_count = await self.storage.get_buffer_count()
-        text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
+        current_time = datetime.now().strftime("%H:%M:%S")
+        text = f"<b>AI Message Aggregator</b> — <i>Активен 🟢</i>\n\n🕒 <i>Последнее обновление: {current_time}</i>"
         reply_kb = self._get_menu_keyboard(buf_count)
-        await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb)
+        await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
 
     def _setup_handlers(self):
         from aiogram.filters import Command
@@ -301,7 +310,7 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
-            await self.update_status_banner(self.master_chat_id)
+            await self.update_status_banner(self.master_chat_id, force_new=True)
 
         @self.dp.message(Command("help"))
         async def cmd_help(message: types.Message):
@@ -327,7 +336,7 @@ class MasterBot:
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
-            await self.show_or_edit_ui_panel(text=help_text, keyboard=kb)
+            await self.show_or_edit_ui_panel(text=help_text, keyboard=kb, force_new=True)
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
@@ -407,7 +416,7 @@ class MasterBot:
                     [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
 
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=True)
 
         @self.dp.callback_query(F.data == "flush_now")
         async def process_flush_now_callback(callback_query: types.CallbackQuery):
@@ -429,7 +438,7 @@ class MasterBot:
             try:
                 sent_count = await self.flush_buffer_now()
                 if sent_count == 0:
-                    await self.update_status_banner()
+                    await self.update_status_banner(force_new=True)
             except Exception as e:
                 logger.error(f"Error in manual digest flush: {e}", exc_info=True)
 
@@ -457,7 +466,7 @@ class MasterBot:
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
                 [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")]
             ])
-            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
+            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, force_new=True)
 
         @self.dp.message(Command("logs"))
         @self.dp.message(Command("debug"))
@@ -484,7 +493,7 @@ class MasterBot:
                 pass
 
             text, kb = await self._get_settings_text_and_keyboard()
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=True)
 
         # Handle inline settings menu navigation and callbacks
         @self.dp.callback_query(F.data == "settings_main_menu")
@@ -1079,7 +1088,7 @@ class MasterBot:
         # Handle inline "Close / Cancel" button click — smoothly returns UI to active status banner
         @self.dp.callback_query(F.data == "delete_msg")
         async def process_delete_msg(callback_query: types.CallbackQuery):
-            await self.update_status_banner(callback_query.message.chat.id)
+            await self.update_status_banner(callback_query.message.chat.id, force_new=False)
             await callback_query.answer()
 
         @self.dp.callback_query(F.data == "delete_this_message")
