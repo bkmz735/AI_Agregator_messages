@@ -44,6 +44,36 @@ class AccessControlMiddleware(BaseMiddleware):
             
         return await handler(event, data)
 
+class ThrottlingMiddleware(BaseMiddleware):
+    def __init__(self, rate_limit_seconds: float = 0.7):
+        self.rate_limit = rate_limit_seconds
+        self.user_last_event: Dict[int, float] = {}
+        super().__init__()
+
+    async def __call__(self, handler: Callable[[TelegramObject, dict], Awaitable[Any]], event: TelegramObject, data: dict) -> Any:
+        from aiogram.types import Message, CallbackQuery
+        user_id = None
+        if isinstance(event, Message):
+            user_id = event.from_user.id if event.from_user else None
+        elif isinstance(event, CallbackQuery):
+            user_id = event.from_user.id if event.from_user else None
+
+        if user_id:
+            import time
+            now = time.time()
+            last_time = self.user_last_event.get(user_id, 0)
+            if now - last_time < self.rate_limit:
+                if isinstance(event, CallbackQuery):
+                    try:
+                        await event.answer("⚡ Слишком частые нажатия!", show_alert=False)
+                    except Exception:
+                        pass
+                logger.warning(f"⚡ Throttled rapid update from user_id: {user_id} ({now - last_time:.2f}s < {self.rate_limit}s)")
+                return None
+            self.user_last_event[user_id] = now
+
+        return await handler(event, data)
+
 class MasterBot:
     def __init__(self, storage: Storage, simulate_callback: Optional[Callable[[str, str, str], Awaitable[None]]] = None, ai_engine: Optional[Any] = None):
         self.bot_token = config.TELEGRAM_BOT_TOKEN
@@ -103,9 +133,11 @@ class MasterBot:
         self.bot = Bot(token=self.bot_token, session=session)
         self.dp = Dispatcher()
         
-        # Register security middleware to restrict access to master user only
+        # Register security & rate-limiting middlewares
         self.dp.message.outer_middleware(AccessControlMiddleware(self))
+        self.dp.message.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.7))
         self.dp.callback_query.outer_middleware(AccessControlMiddleware(self))
+        self.dp.callback_query.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.7))
             
         self._setup_handlers()
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
@@ -1305,8 +1337,8 @@ class MasterBot:
                 try:
                     me = await asyncio.wait_for(self.bot.get_me(), timeout=5.0)
                     logger.info(f"🤖 Connected to Telegram Bot: @{me.username} (ID: {me.id})")
-                    await asyncio.wait_for(self.bot.delete_webhook(drop_pending_updates=False), timeout=5.0)
-                    await self.dp.start_polling(self.bot, drop_pending_updates=False)
+                    await asyncio.wait_for(self.bot.delete_webhook(drop_pending_updates=True), timeout=5.0)
+                    await self.dp.start_polling(self.bot, drop_pending_updates=True)
                 except Exception as e:
                     logger.warning(f"Telegram polling error: {e}")
                     # If proxy connection failed (ClientOSError), auto fallback to Direct connection
