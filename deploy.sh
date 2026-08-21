@@ -21,6 +21,9 @@ fi
 
 cd "$APP_DIR"
 
+# Grant permanent execution permissions to all scripts
+chmod +x *.sh *.py 2>/dev/null || true
+
 # Virtual environment
 if [ ! -d "venv" ]; then
     echo "Создание virtualenv..."

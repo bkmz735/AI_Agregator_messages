@@ -8,6 +8,9 @@ echo "=================================================="
 APP_DIR="/opt/ai-message-aggregator"
 cd "$APP_DIR"
 
+# Grant permanent execution permissions to scripts
+chmod +x *.sh *.py 2>/dev/null || true
+
 # Enable persistent password/token storage in Git
 git config credential.helper store
 
@@ -16,6 +19,9 @@ git checkout -- .
 
 echo "Подтягивание свежего кода из Git..."
 git pull origin main
+
+# Re-apply execution permissions after pull
+chmod +x *.sh *.py 2>/dev/null || true
 
 echo "Обновление зависимостей Python..."
 ./venv/bin/pip install -r requirements.txt
