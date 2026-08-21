@@ -224,7 +224,6 @@ class MasterBot:
         )
         
         inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
             [InlineKeyboardButton(text=f"⚡ Режим: {'Сводка' if self.delivery_mode == 'instant' else 'Сразу'}", callback_data="settings_toggle_mode")],
             [InlineKeyboardButton(text="⏱️ Изменить интервал сводки", callback_data="settings_menu_interval")],
             [InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")],
@@ -233,7 +232,8 @@ class MasterBot:
             [
                 InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist"),
                 InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
-            ]
+            ],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
         ])
         return text, inline_kb
 
@@ -403,8 +403,8 @@ class MasterBot:
                     "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")]
+                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
             else:
                 text = (
@@ -462,8 +462,8 @@ class MasterBot:
             )
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")]
+                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, force_new=True)
 
@@ -525,7 +525,6 @@ class MasterBot:
                 "Выберите новый интервал ниже:"
             )
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
                 [
                     InlineKeyboardButton(text="15 мин", callback_data="set_interval_15"),
                     InlineKeyboardButton(text="30 мин", callback_data="set_interval_30"),
@@ -537,7 +536,8 @@ class MasterBot:
                 ],
                 [
                     InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
-                ]
+                ],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -568,7 +568,6 @@ class MasterBot:
                 "Выберите время жизни сообщений бота в чате (по истечении которого они будут стерты):"
             )
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
                 [
                     InlineKeyboardButton(text="Отключить ❌", callback_data="set_autodelete_0"),
                     InlineKeyboardButton(text="1 час", callback_data="set_autodelete_1"),
@@ -581,7 +580,8 @@ class MasterBot:
                 ],
                 [
                     InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
-                ]
+                ],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -625,7 +625,6 @@ class MasterBot:
                 "Выберите удобный промежуток сна (в это время ИИ отключается, а сообщения не беспокоят):"
             )
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
                 [
                     InlineKeyboardButton(text="23:00 - 07:00", callback_data="set_nighthours_23_7"),
                     InlineKeyboardButton(text="00:00 - 08:00", callback_data="set_nighthours_0_8")
@@ -636,7 +635,8 @@ class MasterBot:
                 ],
                 [
                     InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
-                ]
+                ],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -678,7 +678,6 @@ class MasterBot:
             )
 
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
                 [
                     InlineKeyboardButton(text=f"✉️ Mail.ru ({len(bws_email)})", callback_data="bw_view_email_1"),
                     InlineKeyboardButton(text=f"💬 ВКонтакте ({len(bws_vk)})", callback_data="bw_view_vk_1")
@@ -692,7 +691,8 @@ class MasterBot:
                 ],
                 [
                     InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")
-                ]
+                ],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -722,7 +722,7 @@ class MasterBot:
 
             lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления или отправьте <code>/unblock номер email</code></i>")
 
-            rows = [[InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]]
+            rows = []
             row_buttons = []
             for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
                 row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"remove_bw_email_{idx_in_page}_{page}"))
@@ -742,6 +742,7 @@ class MasterBot:
             rows.append(nav_row)
 
             rows.append([InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")])
+            rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")])
 
             kb = InlineKeyboardMarkup(inline_keyboard=rows)
             try:
@@ -772,7 +773,7 @@ class MasterBot:
 
             lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления или отправьте <code>/unblock номер vk</code></i>")
 
-            rows = [[InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]]
+            rows = []
             row_buttons = []
             for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
                 row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"remove_bw_vk_{idx_in_page}_{page}"))
@@ -792,6 +793,7 @@ class MasterBot:
             rows.append(nav_row)
 
             rows.append([InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")])
+            rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")])
 
             kb = InlineKeyboardMarkup(inline_keyboard=rows)
             try:
@@ -823,8 +825,8 @@ class MasterBot:
             await callback_query.answer()
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")]
+                [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             try:
                 await callback_query.message.edit_text(
@@ -843,8 +845,8 @@ class MasterBot:
             await callback_query.answer()
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")]
+                [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             try:
                 await callback_query.message.edit_text(
@@ -1078,16 +1080,16 @@ class MasterBot:
 
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")]
+                [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             text = "⚠️ <b>Вы действительно хотите очистить последние сообщения в чате?</b>\n<i>(Сообщения останутся в базе данных)</i>"
             await self.show_or_edit_ui_panel(text=text, keyboard=inline_kb)
 
-        # Handle inline "Close / Cancel" button click — smoothly returns UI to active status banner
+        # Handle inline "Close / Cancel" button click — returns UI to active status banner with ReplyKeyboard refreshed
         @self.dp.callback_query(F.data == "delete_msg")
         async def process_delete_msg(callback_query: types.CallbackQuery):
-            await self.update_status_banner(callback_query.message.chat.id, force_new=False)
+            await self.update_status_banner(callback_query.message.chat.id, force_new=True)
             await callback_query.answer()
 
         @self.dp.callback_query(F.data == "delete_this_message")
