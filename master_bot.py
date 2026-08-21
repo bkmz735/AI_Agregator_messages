@@ -52,6 +52,9 @@ class MasterBot:
         self.night_start_hour = config.NIGHT_START_HOUR
         self.night_end_hour = config.NIGHT_END_HOUR
         self._last_buffer_status_msg_id = None
+        self._last_settings_msg_id = None
+        self._last_stats_msg_id = None
+        self._last_clear_prompt_msg_id = None
         self.dp = None
         self.bot = None
 
@@ -336,6 +339,15 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
+
+            # Auto-delete previous stats panel if open
+            if self._last_stats_msg_id:
+                try:
+                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_stats_msg_id)
+                except Exception:
+                    pass
+                self._last_stats_msg_id = None
+
             stats = await self.storage.get_stats()
             buf_count = await self.storage.get_buffer_count()
 
@@ -354,12 +366,9 @@ class MasterBot:
                     InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
                 ]
             ])
-            # Send stats with inline delete button, but also attach the reply keyboard to update the state
             sent_msg = await message.answer(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
-            # Auto-delete statistics message after 5 minutes
+            self._last_stats_msg_id = sent_msg.message_id
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
-            # Update reply keyboard count invisibly by just refreshing it if needed
-            # (or we can just leave it as is since reply keyboard is persistent)
 
         @self.dp.message(F.text == "⚙️ Настройки")
         @self.dp.message(Command("settings"))
@@ -368,9 +377,18 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
+
+            # Auto-delete previous settings panel if open
+            if self._last_settings_msg_id:
+                try:
+                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_settings_msg_id)
+                except Exception:
+                    pass
+                self._last_settings_msg_id = None
+
             text, kb = await self._get_settings_text_and_keyboard()
             sent_msg = await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
-            # Auto-delete settings panel after 5 minutes
+            self._last_settings_msg_id = sent_msg.message_id
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
         # Handle inline settings menu navigation and callbacks
@@ -590,7 +608,15 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
-            
+
+            # Auto-delete previous clear prompt if open
+            if self._last_clear_prompt_msg_id:
+                try:
+                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_clear_prompt_msg_id)
+                except Exception:
+                    pass
+                self._last_clear_prompt_msg_id = None
+
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [
@@ -598,15 +624,26 @@ class MasterBot:
                     InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_clear_chat")
                 ]
             ])
-            await message.answer(
+            sent_msg = await message.answer(
                 text="⚠️ <b>Вы действительно хотите очистить чат в Telegram?</b>\n<i>(Сообщения останутся в базе данных)</i>",
                 reply_markup=inline_kb,
                 parse_mode="HTML"
             )
+            self._last_clear_prompt_msg_id = sent_msg.message_id
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
         # Handle inline "Read/Delete" button click
         @self.dp.callback_query(F.data == "delete_msg")
         async def process_delete_msg(callback_query: types.CallbackQuery):
+            msg_id = callback_query.message.message_id
+            if msg_id == self._last_settings_msg_id:
+                self._last_settings_msg_id = None
+            if msg_id == self._last_stats_msg_id:
+                self._last_stats_msg_id = None
+            if msg_id == self._last_buffer_status_msg_id:
+                self._last_buffer_status_msg_id = None
+            if msg_id == self._last_clear_prompt_msg_id:
+                self._last_clear_prompt_msg_id = None
             try:
                 await callback_query.message.delete()
             except Exception:
