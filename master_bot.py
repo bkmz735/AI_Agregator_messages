@@ -772,11 +772,14 @@ class MasterBot:
                     buf_count = await self.storage.get_buffer_count()
                     sent_msg = await self.bot.send_message(
                         chat_id=callback_query.message.chat.id,
-                        text="🧹 <b>Чат очищен!</b> Кнопки меню восстановлены.",
+                        text=(
+                            "🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>\n\n"
+                            "Чат очищен. Бот работает в фоновом режиме и собирает входящие сообщения."
+                        ),
                         reply_markup=self._get_menu_keyboard(buf_count),
                         parse_mode="HTML"
                     )
-                    await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=15)
+                    self._last_buffer_status_msg_id = sent_msg.message_id
                 except Exception as e:
                     logger.error(f"Error restoring reply keyboard after clear: {e}")
 
