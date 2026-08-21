@@ -31,13 +31,20 @@ class MasterBot:
                 from aiogram import Bot, Dispatcher
                 from aiogram.client.session.aiohttp import AiohttpSession
                 
-                session = AiohttpSession(proxy=config.TELEGRAM_PROXY) if config.TELEGRAM_PROXY else None
+                session = None
+                if config.TELEGRAM_PROXY:
+                    try:
+                        session = AiohttpSession(proxy=config.TELEGRAM_PROXY)
+                    except Exception as pe:
+                        logger.warning(f"Proxy setup warning ({config.TELEGRAM_PROXY}): {pe}. Falling back to direct connection.")
+                        session = None
+                
                 self.bot = Bot(token=self.bot_token, session=session)
                 self.dp = Dispatcher()
                 self._setup_handlers()
-                logger.info(f"Telegram MasterBot initialized (Proxy: {config.TELEGRAM_PROXY or 'Direct'}).")
+                logger.info(f"Telegram MasterBot initialized (Proxy: {'Active' if session else 'Direct'}).")
             except Exception as e:
-                logger.warning(f"Could not initialize aiogram Bot: {e}")
+                logger.error(f"Could not initialize aiogram Bot: {e}")
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
