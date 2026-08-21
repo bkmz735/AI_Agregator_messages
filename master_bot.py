@@ -249,31 +249,14 @@ class MasterBot:
         @self.dp.message(Command("clear"))
         @self.dp.message(F.text == "🧹 Очистить чат")
         async def cmd_clear_chat(message: types.Message):
-            status_msg = await message.answer("🧹 *Очищаю чат...*", parse_mode="Markdown")
-            current_id = status_msg.message_id
-            deleted = 0
+            current_id = message.message_id
             
-            # loop backward to delete last 100 messages
+            # loop backward to delete last 100 messages silently
             for msg_id in range(current_id, current_id - 100, -1):
                 try:
                     await self.bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-                    deleted += 1
                 except Exception:
                     pass
-            
-            # Inform the user after clearing
-            buf_count = await self.storage.get_buffer_count()
-            confirm_msg = await self.bot.send_message(
-                chat_id=message.chat.id,
-                text=f"🧹 Чат очищен (удалено {deleted} сообщ.)",
-                reply_markup=self._get_menu_keyboard(buf_count)
-            )
-            # Self-destruct confirmation after 5 seconds to keep it clean
-            await asyncio.sleep(5)
-            try:
-                await self.bot.delete_message(chat_id=message.chat.id, message_id=confirm_msg.message_id)
-            except Exception:
-                pass
 
         # Handle inline "Read/Delete" button click
         @self.dp.callback_query(F.data == "delete_msg")
