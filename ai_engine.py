@@ -140,7 +140,7 @@ class AIEngine:
                 "и предложи готовый черновик ответа (suggested_reply).\n"
                 "Ответ верни строго в формате JSON с ключами: transcription, category, summary, action_required, suggested_reply."
             )
-            for model_name in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
+            for model_name in ['gemini-3.6-flash']:
                 try:
                     self._track_request()
                     response = await asyncio.wait_for(
@@ -214,7 +214,7 @@ class AIEngine:
                     f"Проанализируй список входящих сообщений ниже и верни массив JSON ответов для каждого сообщения:\n"
                     f"{batch_json_input}"
                 )
-                for model_name in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
+                for model_name in ['gemini-3.6-flash']:
                     try:
                         self._track_request()
                         response = await asyncio.wait_for(
