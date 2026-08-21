@@ -15,7 +15,7 @@ def _create_ssl_context():
     ctx.verify_mode = ssl.CERT_NONE
     return ctx
 
-from banwords import SYSTEM_BANWORDS
+from banwords import is_text_spam
 
 class EmailAdapter(BaseAdapter):
     def __init__(self, storage: Optional[Any] = None):
@@ -146,16 +146,14 @@ class EmailAdapter(BaseAdapter):
                                     if payload:
                                         body = payload.decode("utf-8", errors="ignore")
 
-                                # Check for Casino / VPN / Financial Scam & Custom Blacklist Spam
-                                combined_search_text = f"{subject} {from_addr} {body}".lower()
-                                custom_kws = await self.storage.get_custom_spam_keywords() if self.storage else []
-                                all_spam_kws = SYSTEM_BANWORDS + custom_kws
-                                matched_spam_kw = next((kw for kw in all_spam_kws if kw in combined_search_text), None)
+                                # Check for Casino / VPN / Financial Scam & Banwords (email scope)
+                                combined_search_text = f"{subject} {from_addr} {body}"
+                                active_bws = await self.storage.get_banwords() if self.storage else None
                                 
-                                if matched_spam_kw:
+                                if is_text_spam(combined_search_text, channel="email", active_banwords=active_bws):
                                     logger.warning(
                                         f"🚫 [SPAM AUTO-DELETE] Deleting Casino/VPN/Scam email #{num_str} from '{from_addr}' "
-                                        f"(Trigger keyword: '{matched_spam_kw}', Subject: '{subject}')"
+                                        f"(Subject: '{subject}')"
                                     )
                                     try:
                                         await imap_client.store(num_str, '+FLAGS', '(\\Deleted)')

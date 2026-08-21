@@ -42,8 +42,27 @@ class Storage:
                     value TEXT NOT NULL
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS banwords (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    word TEXT UNIQUE NOT NULL,
+                    scope TEXT DEFAULT 'global'
+                )
+            """)
             await db.commit()
-            logger.info("Database schema initialized.")
+
+            # Seed default banwords if table is empty
+            async with db.execute("SELECT COUNT(*) FROM banwords") as cursor:
+                row = await cursor.fetchone()
+                if row and row[0] == 0:
+                    from banwords import DEFAULT_SYSTEM_BANWORDS
+                    for bw in DEFAULT_SYSTEM_BANWORDS:
+                        await db.execute(
+                            "INSERT OR IGNORE INTO banwords (word, scope) VALUES (?, ?)",
+                            (bw["word"], bw["scope"])
+                        )
+                    await db.commit()
+            logger.info("Database schema initialized with banwords table.")
 
     async def is_duplicate(self, msg_uid: str) -> bool:
         """Checks if message UID has already been processed."""
@@ -209,3 +228,80 @@ class Storage:
                 (key, str(value))
             )
             await db.commit()
+
+    async def get_banwords(self, scope: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetches active banwords from SQLite."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if scope:
+                async with db.execute(
+                    "SELECT * FROM banwords WHERE scope = ? OR scope = 'global' ORDER BY id ASC", (scope.lower(),)
+                ) as cursor:
+                    rows = await cursor.fetchall()
+            else:
+                async with db.execute("SELECT * FROM banwords ORDER BY id ASC") as cursor:
+                    rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def add_banword(self, word: str, scope: str = "global") -> Optional[Dict[str, Any]]:
+        """Adds a banword with optional scope ('global', 'email', 'vk')."""
+        clean_word = word.strip().lower()
+        clean_scope = scope.strip().lower() if scope.strip().lower() in ("email", "vk") else "global"
+        if not clean_word:
+            return None
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                cursor = await db.execute(
+                    "INSERT INTO banwords (word, scope) VALUES (?, ?)",
+                    (clean_word, clean_scope)
+                )
+                await db.commit()
+                return {"id": cursor.lastrowid, "word": clean_word, "scope": clean_scope}
+            except Exception:
+                return None
+
+    async def remove_banword(self, identifier: str) -> Optional[str]:
+        """Deletes a banword either by ID number or by exact word string."""
+        clean_val = identifier.strip().lower()
+        async with aiosqlite.connect(self.db_path) as db:
+            deleted_word = None
+            if clean_val.isdigit():
+                bw_id = int(clean_val)
+                async with db.execute("SELECT word FROM banwords WHERE id = ?", (bw_id,)) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        deleted_word = row[0]
+                        await db.execute("DELETE FROM banwords WHERE id = ?", (bw_id,))
+            else:
+                async with db.execute("SELECT word FROM banwords WHERE word = ?", (clean_val,)) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        deleted_word = row[0]
+                        await db.execute("DELETE FROM banwords WHERE word = ?", (clean_val,))
+            await db.commit()
+            return deleted_word
+
+    async def reset_banwords_to_default(self):
+        """Resets the banwords table to default system seed entries."""
+        from banwords import DEFAULT_SYSTEM_BANWORDS
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM banwords")
+            for bw in DEFAULT_SYSTEM_BANWORDS:
+                await db.execute(
+                    "INSERT OR IGNORE INTO banwords (word, scope) VALUES (?, ?)",
+                    (bw["word"], bw["scope"])
+                )
+            await db.commit()
+
+    # Legacy compatibility methods
+    async def get_custom_spam_keywords(self) -> List[str]:
+        bws = await self.get_banwords()
+        return [b["word"] for b in bws]
+
+    async def add_spam_keyword(self, word: str) -> bool:
+        res = await self.add_banword(word, "global")
+        return res is not None
+
+    async def remove_spam_keyword(self, word: str) -> bool:
+        res = await self.remove_banword(word)
+        return res is not None

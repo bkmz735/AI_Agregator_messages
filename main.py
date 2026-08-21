@@ -54,10 +54,10 @@ class MessageAggregatorApp:
             logger.info(f"Duplicate message skipped: {msg_uid}")
             return
 
-        # 2. Pre-check system & custom banwords
-        custom_spam_kws = await self.storage.get_custom_spam_keywords()
+        # 2. Pre-check system & custom banwords (channel-aware)
+        active_bws = await self.storage.get_banwords()
         combined_str = f"{sender} {text}"
-        if is_spam_text(combined_str, custom_spam_kws):
+        if is_spam_text(combined_str, channel=channel, active_banwords=active_bws):
             logger.warning(f"🚫 [SPAM FILTER] Message from [{channel}] '{sender}' matched banword. Auto-banned.")
             await self.storage.save_message(
                 msg_uid=msg_uid,

@@ -144,8 +144,8 @@ class MasterBot:
         autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
         night_label = f"🟢 Включен ({self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00)" if self.night_mode_enabled else "Выключен ❌"
         
-        custom_kws = await self.storage.get_custom_spam_keywords()
-        kw_count_label = f"{len(custom_kws)} своих" if custom_kws else "Базовые 🔒"
+        all_bws = await self.storage.get_banwords()
+        kw_count_label = f"{len(all_bws)} активных" if all_bws else "Пуст ⚪"
 
         text = (
             "⚙️ <b>Панель настроек AI Message Aggregator</b>\n\n"
@@ -556,46 +556,72 @@ class MasterBot:
 
         @self.dp.callback_query(F.data == "settings_menu_blacklist")
         async def process_settings_menu_blacklist(callback_query: types.CallbackQuery):
-            kws = await self.storage.get_custom_spam_keywords()
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            bws = await self.storage.get_banwords()
             
-            rows = []
-            if kws:
-                for kw in kws[:10]:  # Show top 10 keywords with inline remove button
-                    rows.append([InlineKeyboardButton(text=f"❌ {kw}", callback_data=f"remove_kw_{kw[:20]}")])
-                if len(kws) > 10:
-                    rows.append([InlineKeyboardButton(text=f"...и ещё {len(kws) - 10} слов", callback_data="none")])
-                rows.append([InlineKeyboardButton(text="🧹 Очистить весь список", callback_data="clear_all_blacklist")])
+            lines = ["🚫 <b>Единый список банвордов (Banwords)</b>\n"]
+            globals_list = [b for b in bws if b.get("scope", "global") == "global"]
+            emails_list = [b for b in bws if b.get("scope") == "email"]
+            vks_list = [b for b in bws if b.get("scope") == "vk"]
 
-            rows.append([InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")])
-            kb = InlineKeyboardMarkup(inline_keyboard=rows)
+            if globals_list:
+                lines.append("🌐 <b>Общие (для всех каналов):</b>")
+                for b in globals_list:
+                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
+                lines.append("")
 
-            kws_formatted = ", ".join([f"<code>{html.escape(k)}</code>" for k in kws]) if kws else "<i>Своих банвордов пока нет</i>"
-            text = (
-                "🚫 <b>Управление Банвордами (Banwords)</b>\n\n"
-                "🔒 <b>Базовые системые банворды (Включены):</b>\n"
-                "<code>казино, 1xbet, вулкан, слоты, фриспины, vpn, выплата, джекпот, букмекер, 1win...</code>\n\n"
-                f"✏️ <b>Ваши персональные банворды:</b>\n{kws_formatted}\n\n"
-                "📌 <b>Как добавить/удалить свой банворд:</b>\n"
-                "• <code>/block слово</code> — заблокировать слово (напр: <code>/block крипта</code>)\n"
-                "• <code>/unblock слово</code> — разблокировать слово\n"
-                "• Или нажимайте ❌ напротив слова ниже:"
+            if emails_list:
+                lines.append("✉️ <b>Mail.ru / Email:</b>")
+                for b in emails_list:
+                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
+                lines.append("")
+
+            if vks_list:
+                lines.append("💬 <b>ВКонтакте (VK):</b>")
+                for b in vks_list:
+                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
+                lines.append("")
+
+            lines.append(
+                "📌 <b>Управление банвордами:</b>\n"
+                "• <code>/block слово</code> — добавить общий банворд\n"
+                "• <code>/block слово email</code> — банворд для Mail.ru\n"
+                "• <code>/block слово vk</code> — банворд для VK\n"
+                "• <code>/unblock номер</code> — удалить (напр: <code>/unblock 1</code>)\n"
+                "• <code>/reset_banwords</code> — сброс к базовым"
             )
+
+            rows = []
+            top_bws = bws[:12]
+            row_buttons = []
+            for b in top_bws:
+                row_buttons.append(InlineKeyboardButton(text=f"❌ #{b['id']}", callback_data=f"remove_bw_{b['id']}"))
+                if len(row_buttons) == 3:
+                    rows.append(row_buttons)
+                    row_buttons = []
+            if row_buttons:
+                rows.append(row_buttons)
+
+            rows.append([InlineKeyboardButton(text="🔄 Сбросить к заводским", callback_data="reset_banwords_confirm")])
+            rows.append([InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")])
+
+            kb = InlineKeyboardMarkup(inline_keyboard=rows)
+            text = "\n".join(lines)
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
                 pass
             await callback_query.answer()
 
-        @self.dp.callback_query(F.data.startswith("remove_kw_"))
-        async def process_remove_kw(callback_query: types.CallbackQuery):
-            kw_to_remove = callback_query.data.replace("remove_kw_", "").strip()
-            await self.storage.remove_spam_keyword(kw_to_remove)
+        @self.dp.callback_query(F.data.startswith("remove_bw_"))
+        async def process_remove_bw(callback_query: types.CallbackQuery):
+            bw_id = callback_query.data.replace("remove_bw_", "").strip()
+            await self.storage.remove_banword(bw_id)
             await process_settings_menu_blacklist(callback_query)
 
-        @self.dp.callback_query(F.data == "clear_all_blacklist")
-        async def process_clear_all_blacklist(callback_query: types.CallbackQuery):
-            await self.storage.set_setting("custom_spam_keywords", "")
+        @self.dp.callback_query(F.data == "reset_banwords_confirm")
+        async def process_reset_banwords_confirm(callback_query: types.CallbackQuery):
+            await self.storage.reset_banwords_to_default()
             await process_settings_menu_blacklist(callback_query)
 
         @self.dp.message(Command("block"))
@@ -604,14 +630,27 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
-            args = message.text.split(maxsplit=1)
+            args = message.text.split(maxsplit=2)
             if len(args) < 2:
-                sent_msg = await message.answer("⚠️ Использование: <code>/block слово</code> (например: <code>/block казино</code>)", parse_mode="HTML")
+                sent_msg = await message.answer(
+                    "⚠️ <b>Использование /block:</b>\n"
+                    "• <code>/block слово</code> (для всех каналов)\n"
+                    "• <code>/block слово email</code> (для Mail.ru)\n"
+                    "• <code>/block слово vk</code> (для VK)",
+                    parse_mode="HTML"
+                )
             else:
                 word = args[1].strip()
-                added = await self.storage.add_spam_keyword(word)
-                if added:
-                    sent_msg = await message.answer(f"🚫 Банворд <b>«{html.escape(word)}»</b> успешно добавлен!", parse_mode="HTML")
+                scope = args[2].strip().lower() if len(args) >= 3 else "global"
+                if scope not in ("email", "vk", "global"):
+                    scope = "global"
+                res = await self.storage.add_banword(word, scope)
+                if res:
+                    scope_label = "Общий" if res['scope'] == 'global' else res['scope'].upper()
+                    sent_msg = await message.answer(
+                        f"🚫 Банворд #{res['id']} <b>«{html.escape(res['word'])}»</b> ({scope_label}) добавлен!",
+                        parse_mode="HTML"
+                    )
                 else:
                     sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word)}»</b> уже есть в списке.", parse_mode="HTML")
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
@@ -624,14 +663,27 @@ class MasterBot:
                 pass
             args = message.text.split(maxsplit=1)
             if len(args) < 2:
-                sent_msg = await message.answer("⚠️ Использование: <code>/unblock слово</code> (например: <code>/unblock казино</code>)", parse_mode="HTML")
+                sent_msg = await message.answer(
+                    "⚠️ Использование: <code>/unblock номер_или_слово</code> (например: <code>/unblock 3</code> или <code>/unblock казино</code>)",
+                    parse_mode="HTML"
+                )
             else:
-                word = args[1].strip()
-                removed = await self.storage.remove_spam_keyword(word)
-                if removed:
-                    sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(word)}»</b> удален!", parse_mode="HTML")
+                target = args[1].strip()
+                deleted_word = await self.storage.remove_banword(target)
+                if deleted_word:
+                    sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(deleted_word)}»</b> удален из списка!", parse_mode="HTML")
                 else:
-                    sent_msg = await message.answer(f"ℹ️ Банворда <b>«{html.escape(word)}»</b> не было в списке.", parse_mode="HTML")
+                    sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(target)}»</b> не найден.", parse_mode="HTML")
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+
+        @self.dp.message(Command("reset_banwords"))
+        async def cmd_reset_banwords(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            await self.storage.reset_banwords_to_default()
+            sent_msg = await message.answer("🔄 Все банворды сброшены к базовым системным настройкам!", parse_mode="HTML")
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
 
         @self.dp.message(Command("banwords"))
@@ -642,27 +694,44 @@ class MasterBot:
             except Exception:
                 pass
             await self._clear_previous_ui_panels()
-            kws = await self.storage.get_custom_spam_keywords()
-            if not kws:
-                txt = (
-                    "🚫 <b>Список банвордов (Banwords)</b>\n\n"
-                    "🔒 <b>Базовые системные:</b> <code>казино, 1xbet, вулкан, слоты, vpn, выплата, джекпот...</code>\n\n"
-                    "<i>Персональных банвордов пока нет.</i>\n\n"
-                    "Чтобы добавить свой банворд: <code>/block слово</code>"
-                )
-            else:
-                formatted = "\n".join([f"• <code>{html.escape(k)}</code>" for k in kws])
-                txt = (
-                    f"🚫 <b>Ваши Банворды ({len(kws)}):</b>\n\n{formatted}\n\n"
-                    "Добавить: <code>/block слово</code>\n"
-                    "Удалить: <code>/unblock слово</code>"
-                )
+            bws = await self.storage.get_banwords()
+            
+            lines = ["🚫 <b>Единый список банвордов (Banwords)</b>\n"]
+            globals_list = [b for b in bws if b.get("scope", "global") == "global"]
+            emails_list = [b for b in bws if b.get("scope") == "email"]
+            vks_list = [b for b in bws if b.get("scope") == "vk"]
+
+            if globals_list:
+                lines.append("🌐 <b>Общие (для всех каналов):</b>")
+                for b in globals_list:
+                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
+                lines.append("")
+
+            if emails_list:
+                lines.append("✉️ <b>Mail.ru / Email:</b>")
+                for b in emails_list:
+                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
+                lines.append("")
+
+            if vks_list:
+                lines.append("💬 <b>ВКонтакте (VK):</b>")
+                for b in vks_list:
+                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
+                lines.append("")
+
+            lines.append(
+                "📌 <b>Управление:</b>\n"
+                "• <code>/block слово</code> — добавить общий банворд\n"
+                "• <code>/block слово email</code> — банворд для Mail.ru\n"
+                "• <code>/block слово vk</code> — банворд для VK\n"
+                "• <code>/unblock номер</code> — удалить по номеру (напр: <code>/unblock 1</code>)"
+            )
             
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
             ])
-            sent_msg = await message.answer(txt, reply_markup=inline_kb, parse_mode="HTML")
+            sent_msg = await message.answer("\n".join(lines), reply_markup=inline_kb, parse_mode="HTML")
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
         @self.dp.callback_query(F.data == "confirm_reset_stats")
