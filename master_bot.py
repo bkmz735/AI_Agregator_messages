@@ -141,25 +141,22 @@ class MasterBot:
         self._setup_handlers()
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
-    def _get_menu_keyboard(self, buffer_count: int = 0, is_sub_menu: bool = False):
+    def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-        kb = []
-        if is_sub_menu:
-            kb.append([KeyboardButton(text="🏠 Главное меню")])
-            
         if buffer_count > 0:
-            kb.append([
-                KeyboardButton(text=f"📥 Буфер ({buffer_count})"),
-                KeyboardButton(text="🚀 Отправить сводку")
-            ])
+            kb = [
+                [KeyboardButton(text="🏠 Главное меню")],
+                [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
+                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки")],
+                [KeyboardButton(text="🧹 Очистить чат")]
+            ]
         else:
-            kb.append([KeyboardButton(text="📥 Буфер")])
-            
-        kb.append([
-            KeyboardButton(text="📊 Статистика"),
-            KeyboardButton(text="⚙️ Настройки")
-        ])
-        kb.append([KeyboardButton(text="🧹 Очистить чат")])
+            kb = [
+                [KeyboardButton(text="🏠 Главное меню")],
+                [KeyboardButton(text="📥 Буфер")],
+                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки")],
+                [KeyboardButton(text="🧹 Очистить чат")]
+            ]
         return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
 
     async def _register_bot_commands(self):
@@ -242,7 +239,7 @@ class MasterBot:
         ])
         return text, inline_kb
 
-    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, reply_keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False):
+    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False):
         """Displays or smoothly edits the single active UI window in-place."""
         target_chat = self.master_chat_id
         if not target_chat or not self.bot:
@@ -250,7 +247,7 @@ class MasterBot:
 
         from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
         inline_kb = keyboard if isinstance(keyboard, InlineKeyboardMarkup) else None
-        reply_kb = reply_keyboard or (keyboard if isinstance(keyboard, ReplyKeyboardMarkup) else None)
+        reply_kb = keyboard if isinstance(keyboard, ReplyKeyboardMarkup) else None
 
         if self._last_ui_msg_id:
             if force_new:
@@ -285,7 +282,7 @@ class MasterBot:
             sent_msg = await self.bot.send_message(
                 chat_id=target_chat,
                 text=text,
-                reply_markup=reply_kb or inline_kb,
+                reply_markup=inline_kb or reply_kb,
                 parse_mode=parse_mode
             )
             self._last_ui_msg_id = sent_msg.message_id
@@ -297,7 +294,7 @@ class MasterBot:
         """Creates or updates the single active status banner in-place."""
         buf_count = await self.storage.get_buffer_count()
         text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
-        reply_kb = self._get_menu_keyboard(buf_count, is_sub_menu=False)
+        reply_kb = self._get_menu_keyboard(buf_count)
         await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
 
     def _setup_handlers(self):
@@ -345,9 +342,7 @@ class MasterBot:
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
                 "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу без потери сообщений!"
             )
-            buf_count = await self.storage.get_buffer_count()
-            sub_kb = self._get_menu_keyboard(buf_count, is_sub_menu=True)
-            await self.show_or_edit_ui_panel(text=help_text, keyboard=None, reply_keyboard=sub_kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=help_text, keyboard=None, force_new=False)
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
@@ -424,8 +419,7 @@ class MasterBot:
                 )
                 kb = None
 
-            sub_kb = self._get_menu_keyboard(buf_count, is_sub_menu=True)
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb, reply_keyboard=sub_kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
 
         @self.dp.callback_query(F.data == "flush_now")
         async def process_flush_now_callback(callback_query: types.CallbackQuery):
@@ -474,8 +468,7 @@ class MasterBot:
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")]
             ])
-            sub_kb = self._get_menu_keyboard(buf_count, is_sub_menu=True)
-            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, reply_keyboard=sub_kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, force_new=False)
 
         @self.dp.message(Command("logs"))
         @self.dp.message(Command("debug"))
@@ -484,10 +477,8 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
-            buf_count = await self.storage.get_buffer_count()
-            sub_kb = self._get_menu_keyboard(buf_count, is_sub_menu=True)
             text, kb = await self._get_diagnostic_logs_text_and_keyboard()
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb, reply_keyboard=sub_kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
 
         @self.dp.callback_query(F.data == "refresh_logs")
         async def process_refresh_logs(callback_query: types.CallbackQuery):
@@ -503,10 +494,8 @@ class MasterBot:
             except Exception:
                 pass
 
-            buf_count = await self.storage.get_buffer_count()
-            sub_kb = self._get_menu_keyboard(buf_count, is_sub_menu=True)
             text, kb = await self._get_settings_text_and_keyboard()
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb, reply_keyboard=sub_kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
 
         # Handle inline settings menu navigation and callbacks
         @self.dp.callback_query(F.data == "settings_main_menu")
