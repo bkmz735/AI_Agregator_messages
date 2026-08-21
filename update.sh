@@ -17,14 +17,22 @@ git config credential.helper store
 # Discard local file edits on server (preserves .env and database)
 git checkout -- .
 
+OLD_REQ_HASH=$(md5sum requirements.txt 2>/dev/null)
+
 echo "Подтягивание свежего кода из Git..."
 git pull origin main
 
 # Re-apply execution permissions after pull
 chmod +x *.sh *.py 2>/dev/null || true
 
-echo "Обновление зависимостей Python..."
-./venv/bin/pip install -r requirements.txt
+NEW_REQ_HASH=$(md5sum requirements.txt 2>/dev/null)
+
+if [ "$OLD_REQ_HASH" != "$NEW_REQ_HASH" ]; then
+    echo "Обновление зависимостей Python (requirements.txt изменился)..."
+    ./venv/bin/pip install -r requirements.txt
+else
+    echo "Зависимости актуальны, пропускаем pip (ускоренный запуск) ⚡"
+fi
 
 echo "Перезапуск фоновой службы systemd..."
 systemctl restart ai-aggregator
