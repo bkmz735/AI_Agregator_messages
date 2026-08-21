@@ -291,8 +291,7 @@ class MasterBot:
     async def update_status_banner(self, chat_id: Optional[int] = None, force_new: bool = False):
         """Creates or updates the single active status banner in-place."""
         buf_count = await self.storage.get_buffer_count()
-        current_time = datetime.now().strftime("%H:%M:%S")
-        text = f"<b>AI Message Aggregator</b> — <i>Активен 🟢</i>\n\n🕒 <i>Последнее обновление: {current_time}</i>"
+        text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
         reply_kb = self._get_menu_keyboard(buf_count)
         await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
 
@@ -1293,7 +1292,7 @@ class MasterBot:
 
             await self._register_bot_commands()
             if self.master_chat_id:
-                asyncio.create_task(self.update_status_banner(self.master_chat_id))
+                asyncio.create_task(self.update_status_banner(self.master_chat_id, force_new=True))
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
             
