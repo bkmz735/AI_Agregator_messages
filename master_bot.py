@@ -258,23 +258,23 @@ class MasterBot:
             else:
                 try:
                     await self.bot.edit_message_text(
-                    chat_id=target_chat,
-                    message_id=self._last_ui_msg_id,
-                    text=text,
-                    reply_markup=inline_kb,
-                    parse_mode=parse_mode
-                )
-                return
-            except Exception as e:
-                err_str = str(e).lower()
-                if "not modified" in err_str:
+                        chat_id=target_chat,
+                        message_id=self._last_ui_msg_id,
+                        text=text,
+                        reply_markup=inline_kb,
+                        parse_mode=parse_mode
+                    )
                     return
-                # Message missing or deleted, reset ID to recreate
-                try:
-                    await self.bot.delete_message(chat_id=target_chat, message_id=self._last_ui_msg_id)
-                except Exception:
-                    pass
-                self._last_ui_msg_id = None
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "not modified" in err_str:
+                        return
+                    # Message missing or deleted, reset ID to recreate
+                    try:
+                        await self.bot.delete_message(chat_id=target_chat, message_id=self._last_ui_msg_id)
+                    except Exception:
+                        pass
+                    self._last_ui_msg_id = None
 
         try:
             sent_msg = await self.bot.send_message(
