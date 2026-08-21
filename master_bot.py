@@ -267,6 +267,25 @@ class MasterBot:
                 except Exception:
                     pass
                 setattr(self, attr_name, None)
+
+    async def purge_recent_chat_history(self, chat_id: Optional[int] = None, max_messages: int = 25):
+        """Purges recent chat history in the master chat on startup to give a clean slate."""
+        target_chat = chat_id or self.master_chat_id
+        if not target_chat or not self.bot:
+            return
+            
+        saved_status_id = await self.storage.get_setting("last_status_msg_id")
+        start_id = int(saved_status_id) if saved_status_id and saved_status_id.isdigit() else None
+        
+        if start_id:
+            msg_ids = list(range(max(1, start_id - max_messages), start_id + 10))
+            for mid in reversed(msg_ids):
+                try:
+                    await self.bot.delete_message(chat_id=target_chat, message_id=mid)
+                except Exception:
+                    pass
+            logger.info(f"Purged recent chat history around ID {start_id}")
+
     async def update_status_banner(self, chat_id: Optional[int] = None):
         """Creates or updates the single active status banner to prevent duplicates."""
         target_chat_id = chat_id or self.master_chat_id
@@ -1347,7 +1366,11 @@ class MasterBot:
                 logger.error(f"Error loading settings from DB: {se}", exc_info=True)
 
             await self._register_bot_commands()
-            asyncio.create_task(self.update_status_banner(self.master_chat_id))
+            if self.master_chat_id:
+                await self.purge_recent_chat_history(self.master_chat_id)
+                self._last_buffer_status_msg_id = None
+                await self.storage.set_setting("last_status_msg_id", "")
+                asyncio.create_task(self.update_status_banner(self.master_chat_id))
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
             
