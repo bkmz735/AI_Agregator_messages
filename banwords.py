@@ -33,13 +33,11 @@ DEFAULT_SYSTEM_BANWORDS = [
     {"word": "перевод средств", "scope": "email"},
     {"word": "пассивный доход", "scope": "email"},
 
-    # VK Category
+    # VK Category (Only obtrusive bot spam, conversational words like vpn/casino left unbanned by default)
     {"word": "ставь лайк", "scope": "vk"},
     {"word": "подпишись на группу", "scope": "vk"},
     {"word": "рассылка бота", "scope": "vk"},
-    {"word": "казино", "scope": "vk"},
-    {"word": "1xbet", "scope": "vk"},
-    {"word": "впн", "scope": "vk"}
+    {"word": "бесплатные голоса", "scope": "vk"}
 ]
 
 
