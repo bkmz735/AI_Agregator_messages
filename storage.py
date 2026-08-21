@@ -36,6 +36,12 @@ class Storage:
                     delete_at TIMESTAMP NOT NULL
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
             await db.commit()
             logger.info("Database schema initialized.")
 
@@ -134,4 +140,20 @@ class Storage:
         """Deletes a notification record from DB."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("DELETE FROM sent_notifications WHERE id = ?", (notification_id,))
+            await db.commit()
+
+    async def get_setting(self, key: str, default: str) -> str:
+        """Fetches a setting value from SQLite."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else default
+
+    async def set_setting(self, key: str, value: str):
+        """Saves a setting value in SQLite."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, str(value))
+            )
             await db.commit()

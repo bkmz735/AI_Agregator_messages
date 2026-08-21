@@ -46,6 +46,7 @@ class MasterBot:
         self.simulate_callback = simulate_callback
         self.delivery_mode = config.DELIVERY_MODE  # "instant" or "digest"
         self.digest_interval = config.DIGEST_INTERVAL_MINUTES
+        self.auto_delete_delay_hours = config.AUTO_DELETE_DELAY_HOURS
         self.dp = None
         self.bot = None
 
@@ -83,10 +84,9 @@ class MasterBot:
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-        mode_label = "⚡ СРАЗУ" if self.delivery_mode == "instant" else "📥 СВОДКА"
         kb = [
             [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text=f"⚙️ Режим: {mode_label}"), KeyboardButton(text="🧹 Очистить чат")]
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
         ]
         return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
 
@@ -96,9 +96,9 @@ class MasterBot:
         commands = [
             BotCommand(command="start", description="Главное меню и статус"),
             BotCommand(command="help", description="Справка по командам и работе бота"),
+            BotCommand(command="settings", description="Настройки (интервал сводки, режим, автоудаление)"),
             BotCommand(command="flush", description="Выгрузить накопившийся буфер прямо сейчас"),
             BotCommand(command="stats", description="Посмотреть статистику сообщений"),
-            BotCommand(command="mode", description="Переключить режим (Сразу / Сводка)"),
             BotCommand(command="clear", description="Очистить последние сообщения чата")
         ]
         try:
@@ -106,6 +106,35 @@ class MasterBot:
             logger.info("Registered Telegram Bot slash commands menu.")
         except Exception as e:
             logger.warning(f"Could not set bot commands: {e}")
+
+    async def _get_settings_text_and_keyboard(self):
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        mode_label = "⚡ СРАЗУ (Мгновенно)" if self.delivery_mode == "instant" else "📥 СВОДКА (Раз в час)"
+        autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
+        
+        text = (
+            "⚙️ <b>Панель настроек AI Message Aggregator</b>\n\n"
+            f"⚡ <b>Режим отправки:</b> {mode_label}\n"
+            f"⏱️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
+            f"🗑️ <b>Резервное автоудаление:</b> {autodelete_label}\n\n"
+            "Вы можете изменить параметры, нажав на соответствующие кнопки ниже:"
+        )
+        
+        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"⚡ Режим: {'Сводка' if self.delivery_mode == 'instant' else 'Сразу'}", callback_data="settings_toggle_mode")
+            ],
+            [
+                InlineKeyboardButton(text="⏱️ Изменить интервал сводки", callback_data="settings_menu_interval")
+            ],
+            [
+                InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Закрыть настройки", callback_data="delete_msg")
+            ]
+        ])
+        return text, inline_kb
 
     def _setup_handlers(self):
         from aiogram.filters import Command
@@ -138,19 +167,20 @@ class MasterBot:
                 pass
             buf_count = await self.storage.get_buffer_count()
             help_text = (
-                "📖 **Справка по командам бота:**\n\n"
+                "📖 <b>Справка по командам бота:</b>\n\n"
                 "🔹 `/start` — Показать главное меню\n"
                 "🔹 `/help` — Эта справка\n"
-                "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать выжимку из буфера прямо сейчас\n"
+                "🔹 `/settings` (или ⚙️ Настройки) — Изменить интервал сводки, режим работы и автоудаление\n"
+                "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать сообщения из буфера прямо сейчас\n"
                 "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику сообщений\n"
-                "🔹 `/mode` (или ⚙️ Режим) — Переключить режим (Сразу / Сводка)\n\n"
-                "🎙️ **Расшифровка голосовых:** перешлите или отправьте голосуху, и ИИ переведет её в текст!\n\n"
-                "💡 **Как работает агрегатор:**\n"
+                "🔹 `/clear` (или 🧹 Очистить чат) — Стереть сообщения в чате\n\n"
+                "🎙️ <b>Расшифровка голосовых:</b> перешлите или отправьте голосуху, и ИИ переведет её в текст!\n\n"
+                "💡 <b>Как работает агрегатор:</b>\n"
                 "• Спам отсеивается ИИ и не беспокоит вас.\n"
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
                 "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу без потери сообщений!"
             )
-            await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
+            await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="HTML")
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
@@ -250,28 +280,122 @@ class MasterBot:
             )
             await message.answer(stats_msg, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
 
-        @self.dp.message(F.text.startswith("⚙️ Режим"))
-        @self.dp.message(Command("mode"))
-        async def cmd_toggle_mode(message: types.Message):
+        @self.dp.message(F.text == "⚙️ Настройки")
+        @self.dp.message(Command("settings"))
+        async def cmd_settings(message: types.Message):
             try:
                 await message.delete()
             except Exception:
                 pass
-            # Toggle mode between digest and instant
+            text, kb = await self._get_settings_text_and_keyboard()
+            await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
+
+        # Handle inline settings menu navigation and callbacks
+        @self.dp.callback_query(F.data == "settings_main_menu")
+        async def process_settings_main_menu(callback_query: types.CallbackQuery):
+            text, kb = await self._get_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data == "settings_toggle_mode")
+        async def process_settings_toggle_mode(callback_query: types.CallbackQuery):
             self.delivery_mode = "instant" if self.delivery_mode == "digest" else "digest"
-            buf_count = await self.storage.get_buffer_count()
-            mode_label = "⚡ СРАЗУ" if self.delivery_mode == "instant" else "📥 СВОДКА"
+            await self.storage.set_setting("delivery_mode", self.delivery_mode)
             
-            msg = f"⚙️ Режим отправки изменен на: **{mode_label}**\n\n"
-            if self.delivery_mode == "digest":
-                msg += "📥 **СВОДКА (Буферизация):**\n"
-                msg += "Все обычные и важные сообщения копятcя в буфере и приходят раз в час в виде одного удобного отчета.\n"
-                msg += "*(Срочные сообщения всё равно придут мгновенно)*"
-            else:
-                msg += "⚡ **СРАЗУ (Мгновенно):**\n"
-                msg += "Все новые входящие сообщения будут моментально присылаться в Телеграм по одному, без накопления."
+            text, kb = await self._get_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer("Режим отправки изменен!")
+
+        @self.dp.callback_query(F.data == "settings_menu_interval")
+        async def process_settings_menu_interval(callback_query: types.CallbackQuery):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            text = (
+                "⏱️ <b>Настройка интервала выгрузки сводки:</b>\n\n"
+                f"Текущий интервал: <b>{self.digest_interval} мин</b>\n"
+                "Выберите новый интервал ниже:"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="15 мин", callback_data="set_interval_15"),
+                    InlineKeyboardButton(text="30 мин", callback_data="set_interval_30"),
+                    InlineKeyboardButton(text="1 час (60м)", callback_data="set_interval_60")
+                ],
+                [
+                    InlineKeyboardButton(text="2 часа (120м)", callback_data="set_interval_120"),
+                    InlineKeyboardButton(text="4 часа (240м)", callback_data="set_interval_240")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
+                ]
+            ])
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("set_interval_"))
+        async def process_set_interval(callback_query: types.CallbackQuery):
+            interval_val = int(callback_query.data.split("_")[-1])
+            self.digest_interval = interval_val
+            await self.storage.set_setting("digest_interval_minutes", str(self.digest_interval))
             
-            await message.answer(msg, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
+            text, kb = await self._get_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer(f"Интервал изменен на {interval_val} минут!")
+
+        @self.dp.callback_query(F.data == "settings_menu_autodelete")
+        async def process_settings_menu_autodelete(callback_query: types.CallbackQuery):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            autodelete_label = f"<b>{self.auto_delete_delay_hours} ч</b>" if self.auto_delete_delay_hours > 0 else "<b>Выключено</b>"
+            text = (
+                "🗑️ <b>Настройка времени автоудаления сообщений:</b>\n\n"
+                f"Текущее время автоудаления: {autodelete_label}\n"
+                "Выберите время жизни сообщений бота в чате (по истечении которого они будут стерты):"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="Отключить ❌", callback_data="set_autodelete_0"),
+                    InlineKeyboardButton(text="1 час", callback_data="set_autodelete_1"),
+                    InlineKeyboardButton(text="2 часа", callback_data="set_autodelete_2")
+                ],
+                [
+                    InlineKeyboardButton(text="4 часа", callback_data="set_autodelete_4"),
+                    InlineKeyboardButton(text="8 часов", callback_data="set_autodelete_8"),
+                    InlineKeyboardButton(text="24 часа", callback_data="set_autodelete_24")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
+                ]
+            ])
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("set_autodelete_"))
+        async def process_set_autodelete(callback_query: types.CallbackQuery):
+            delay_val = int(callback_query.data.split("_")[-1])
+            self.auto_delete_delay_hours = delay_val
+            await self.storage.set_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours))
+            
+            text, kb = await self._get_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            msg = f"Автоудаление изменено на {delay_val} ч!" if delay_val > 0 else "Автоудаление выключено!"
+            await callback_query.answer(msg)
 
         @self.dp.message(Command("clear"))
         @self.dp.message(F.text == "🧹 Очистить чат")
@@ -381,8 +505,8 @@ class MasterBot:
                     reply_markup=inline_kb
                 )
                 # Register for auto-deletion if config value is greater than 0
-                if config.AUTO_DELETE_DELAY_HOURS > 0:
-                    delay = config.AUTO_DELETE_DELAY_HOURS * 3600
+                if self.auto_delete_delay_hours > 0:
+                    delay = self.auto_delete_delay_hours * 3600
                     await self.storage.save_sent_notification(
                         chat_id=self.master_chat_id,
                         message_id=sent_msg.message_id,
@@ -423,8 +547,8 @@ class MasterBot:
                             parse_mode="HTML",
                             reply_markup=inline_kb
                         )
-                        if config.AUTO_DELETE_DELAY_HOURS > 0:
-                            delay = config.AUTO_DELETE_DELAY_HOURS * 3600
+                        if self.auto_delete_delay_hours > 0:
+                            delay = self.auto_delete_delay_hours * 3600
                             await self.storage.save_sent_notification(
                                 chat_id=self.master_chat_id,
                                 message_id=sent_msg.message_id,
@@ -437,8 +561,8 @@ class MasterBot:
                         parse_mode="HTML",
                         reply_markup=inline_kb
                     )
-                    if config.AUTO_DELETE_DELAY_HOURS > 0:
-                        delay = config.AUTO_DELETE_DELAY_HOURS * 3600
+                    if self.auto_delete_delay_hours > 0:
+                        delay = self.auto_delete_delay_hours * 3600
                         await self.storage.save_sent_notification(
                             chat_id=self.master_chat_id,
                             message_id=sent_msg.message_id,
@@ -463,7 +587,7 @@ class MasterBot:
 
     async def start_cleanup_scheduler(self):
         """Background task that periodically deletes expired notifications from Telegram."""
-        logger.info(f"Cleanup scheduler running (auto-delete delay: {config.AUTO_DELETE_DELAY_HOURS}h)...")
+        logger.info(f"Cleanup scheduler running (auto-delete delay: {self.auto_delete_delay_hours}h)...")
         while True:
             await asyncio.sleep(60)  # Check every minute
             try:
@@ -482,6 +606,12 @@ class MasterBot:
     async def start_polling(self):
         if self.bot and self.dp:
             logger.info("Starting Telegram Bot Polling loop...")
+            
+            # Load settings asynchronously from DB
+            self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
+            self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
+            self.auto_delete_delay_hours = int(await self.storage.get_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours)))
+            
             await self._register_bot_commands()
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
