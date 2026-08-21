@@ -559,39 +559,36 @@ class MasterBot:
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             bws = await self.storage.get_banwords()
             
-            lines = ["🚫 <b>Единый список банвордов (Banwords)</b>\n"]
-            globals_list = [b for b in bws if b.get("scope", "global") == "global"]
-            emails_list = [b for b in bws if b.get("scope") == "email"]
+            lines = ["🚫 <b>Единый список Банвордов (Banwords)</b>\n"]
+            emails_list = [b for b in bws if b.get("scope", "email") in ("email", "global")]
             vks_list = [b for b in bws if b.get("scope") == "vk"]
 
-            if globals_list:
-                lines.append("🌐 <b>Общие (для всех каналов):</b>")
-                for b in globals_list:
-                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
-                lines.append("")
-
             if emails_list:
-                lines.append("✉️ <b>Mail.ru / Email:</b>")
+                lines.append("✉️ <b>Категория Mail.ru:</b>")
                 for b in emails_list:
                     lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
                 lines.append("")
 
             if vks_list:
-                lines.append("💬 <b>ВКонтакте (VK):</b>")
+                lines.append("💬 <b>Категория ВКонтакте (VK):</b>")
                 for b in vks_list:
                     lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
                 lines.append("")
 
             lines.append(
-                "📌 <b>Управление банвордами:</b>\n"
-                "• <code>/block слово</code> — добавить общий банворд\n"
-                "• <code>/block слово email</code> — банворд для Mail.ru\n"
-                "• <code>/block слово vk</code> — банворд для VK\n"
-                "• <code>/unblock номер</code> — удалить (напр: <code>/unblock 1</code>)\n"
-                "• <code>/reset_banwords</code> — сброс к базовым"
+                "📌 <b>Управление:</b>\n"
+                "• Нажмите ➕ ниже для добавления в нужную категорию\n"
+                "• Или отправьте: <code>/block слово email</code> или <code>/block слово vk</code>\n"
+                "• Для удаления: <code>/unblock номер</code> (напр: <code>/unblock 1</code>)"
             )
 
-            rows = []
+            rows = [
+                [
+                    InlineKeyboardButton(text="➕ В Mail.ru", callback_data="add_bw_prompt_email"),
+                    InlineKeyboardButton(text="➕ В VK", callback_data="add_bw_prompt_vk")
+                ]
+            ]
+            
             top_bws = bws[:12]
             row_buttons = []
             for b in top_bws:
@@ -602,7 +599,7 @@ class MasterBot:
             if row_buttons:
                 rows.append(row_buttons)
 
-            rows.append([InlineKeyboardButton(text="🔄 Сбросить к заводским", callback_data="reset_banwords_confirm")])
+            rows.append([InlineKeyboardButton(text="🔄 Сбросить к базовым", callback_data="reset_banwords_confirm")])
             rows.append([InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")])
 
             kb = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -612,6 +609,30 @@ class MasterBot:
             except Exception:
                 pass
             await callback_query.answer()
+
+        @self.dp.callback_query(F.data == "add_bw_prompt_email")
+        async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
+            await callback_query.answer()
+            sent_msg = await callback_query.message.answer(
+                "✍️ <b>Добавление банворда в Mail.ru:</b>\n\n"
+                "Отправьте команду:\n"
+                "<code>/block слово email</code>\n\n"
+                "<i>Пример:</i> <code>/block тинькофф email</code>",
+                parse_mode="HTML"
+            )
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+
+        @self.dp.callback_query(F.data == "add_bw_prompt_vk")
+        async def process_add_bw_prompt_vk(callback_query: types.CallbackQuery):
+            await callback_query.answer()
+            sent_msg = await callback_query.message.answer(
+                "✍️ <b>Добавление банворда в VK:</b>\n\n"
+                "Отправьте команду:\n"
+                "<code>/block слово vk</code>\n\n"
+                "<i>Пример:</i> <code>/block подпишись vk</code>",
+                parse_mode="HTML"
+            )
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
 
         @self.dp.callback_query(F.data.startswith("remove_bw_"))
         async def process_remove_bw(callback_query: types.CallbackQuery):

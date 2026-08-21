@@ -243,10 +243,10 @@ class Storage:
                     rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
-    async def add_banword(self, word: str, scope: str = "global") -> Optional[Dict[str, Any]]:
-        """Adds a banword with optional scope ('global', 'email', 'vk')."""
+    async def add_banword(self, word: str, scope: str = "email") -> Optional[Dict[str, Any]]:
+        """Adds a banword with scope ('email' or 'vk')."""
         clean_word = word.strip().lower()
-        clean_scope = scope.strip().lower() if scope.strip().lower() in ("email", "vk") else "global"
+        clean_scope = "vk" if "vk" in scope.strip().lower() else "email"
         if not clean_word:
             return None
         async with aiosqlite.connect(self.db_path) as db:
