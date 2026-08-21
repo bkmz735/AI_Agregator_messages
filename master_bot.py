@@ -335,7 +335,7 @@ class MasterBot:
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
-            await self.show_or_edit_ui_panel(text=help_text, keyboard=kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=help_text, keyboard=kb, force_new=False)
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
@@ -415,7 +415,7 @@ class MasterBot:
                     [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
 
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
 
         @self.dp.callback_query(F.data == "flush_now")
         async def process_flush_now_callback(callback_query: types.CallbackQuery):
@@ -465,7 +465,7 @@ class MasterBot:
                 [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
-            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, force_new=False)
 
         @self.dp.message(Command("logs"))
         @self.dp.message(Command("debug"))
@@ -492,7 +492,7 @@ class MasterBot:
                 pass
 
             text, kb = await self._get_settings_text_and_keyboard()
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=True)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
 
         # Handle inline settings menu navigation and callbacks
         @self.dp.callback_query(F.data == "settings_main_menu")
@@ -1031,8 +1031,8 @@ class MasterBot:
                     "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")]
+                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
             else:
                 text = (
@@ -1061,8 +1061,8 @@ class MasterBot:
             )
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")]
+                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
 
