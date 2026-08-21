@@ -8,7 +8,6 @@ import sys
 import json
 import urllib.parse
 import urllib.request
-from pathlibPath = Path
 from pathlib import Path
 
 ENV_PATH = Path(__file__).parent / ".env"
