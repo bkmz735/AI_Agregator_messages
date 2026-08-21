@@ -208,7 +208,9 @@ class MasterBot:
             asyncio.create_task(self.start_digest_scheduler())
             while True:
                 try:
-                    await self.dp.start_polling(self.bot)
+                    # Automatically delete previous webhooks/sessions & drop pending updates to force single active instance
+                    await self.bot.delete_webhook(drop_pending_updates=True)
+                    await self.dp.start_polling(self.bot, drop_pending_updates=True)
                 except Exception as e:
                     logger.error(f"Telegram polling error: {e}. Retrying in 5 seconds...")
                     await asyncio.sleep(5)
