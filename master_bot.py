@@ -19,8 +19,8 @@ CATEGORY_EMOJIS = {
 }
 
 class AccessControlMiddleware(BaseMiddleware):
-    def __init__(self, master_chat_id: int):
-        self.master_chat_id = master_chat_id
+    def __init__(self, master_bot_ref: Any):
+        self.master_bot = master_bot_ref
         super().__init__()
 
     async def __call__(self, handler: Callable[[TelegramObject, dict], Awaitable[Any]], event: TelegramObject, data: dict) -> Any:
@@ -31,8 +31,9 @@ class AccessControlMiddleware(BaseMiddleware):
         elif isinstance(event, CallbackQuery):
             user_id = event.from_user.id if event.from_user else None
 
-        if self.master_chat_id and user_id and str(user_id) != str(self.master_chat_id):
-            logger.warning(f"Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {self.master_chat_id})")
+        master_id = self.master_bot.master_chat_id
+        if master_id and user_id and str(user_id) != str(master_id):
+            logger.warning(f"Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
             return None  # Ignore event completely
             
         return await handler(event, data)
@@ -97,9 +98,8 @@ class MasterBot:
         self.dp = Dispatcher()
         
         # Register security middleware to restrict access to master user only
-        if self.master_chat_id:
-            self.dp.message.outer_middleware(AccessControlMiddleware(self.master_chat_id))
-            self.dp.callback_query.outer_middleware(AccessControlMiddleware(self.master_chat_id))
+        self.dp.message.outer_middleware(AccessControlMiddleware(self))
+        self.dp.callback_query.outer_middleware(AccessControlMiddleware(self))
             
         self._setup_handlers()
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
