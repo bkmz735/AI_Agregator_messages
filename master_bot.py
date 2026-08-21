@@ -89,6 +89,7 @@ class MasterBot:
         self.night_start_hour = config.NIGHT_START_HOUR
         self.night_end_hour = config.NIGHT_END_HOUR
         self._last_buffer_status_msg_id = None
+        self._last_buffer_panel_msg_id = None
         self._last_settings_msg_id = None
         self._last_stats_msg_id = None
         self._last_clear_prompt_msg_id = None
@@ -252,10 +253,11 @@ class MasterBot:
         return text, inline_kb
 
     async def _clear_previous_ui_panels(self):
-        """Deletes any previously active UI panel (settings, stats, clear prompt) to keep chat clean."""
+        """Deletes any previously active UI panel (settings, stats, buffer, clear prompt) to keep chat clean."""
         panels = [
             ("_last_settings_msg_id", self._last_settings_msg_id),
             ("_last_stats_msg_id", self._last_stats_msg_id),
+            ("_last_buffer_panel_msg_id", self._last_buffer_panel_msg_id),
             ("_last_clear_prompt_msg_id", self._last_clear_prompt_msg_id),
         ]
         for attr_name, msg_id in panels:
@@ -264,6 +266,7 @@ class MasterBot:
                     await self.bot.delete_message(chat_id=self.master_chat_id, message_id=msg_id)
                 except Exception:
                     pass
+                setattr(self, attr_name, None)
     async def update_status_banner(self, chat_id: Optional[int] = None):
         """Creates or updates the single active status banner to prevent duplicates."""
         target_chat_id = chat_id or self.master_chat_id
@@ -424,22 +427,38 @@ class MasterBot:
             await self._clear_previous_ui_panels()
                 
             buf_count = await self.storage.get_buffer_count()
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
             if buf_count > 0:
-                status_msg = await message.answer(
+                text = (
                     f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
-                    "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию.",
-                    reply_markup=self._get_menu_keyboard(buf_count),
-                    parse_mode="HTML"
+                    "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
                 )
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
+                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                ])
             else:
-                status_msg = await message.answer(
+                text = (
                     "📥 <b>Буфер пуст!</b> Новых сообщений для сводки пока нет.\n"
-                    "Бот собирает входящие письма и сообщения в фоновом режиме.",
-                    reply_markup=self._get_menu_keyboard(0),
-                    parse_mode="HTML"
+                    "Бот собирает входящие письма и сообщения в фоновом режиме."
                 )
-            self._last_buffer_status_msg_id = status_msg.message_id
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=status_msg.message_id, delay_seconds=300)
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                ])
+
+            sent_msg = await message.answer(text, reply_markup=kb, parse_mode="HTML")
+            self._last_buffer_panel_msg_id = sent_msg.message_id
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+
+        @self.dp.callback_query(F.data == "flush_now")
+        async def process_flush_now_callback(callback_query: types.CallbackQuery):
+            await self._clear_previous_ui_panels()
+            sent_count = await self.flush_buffer_now()
+            if sent_count == 0:
+                await callback_query.answer("📥 Буфер пуст!", show_alert=True)
+            else:
+                await callback_query.answer("🚀 Сводка отправлена!")
 
         @self.dp.message(F.text == "🚀 Отправить сводку")
         @self.dp.message(Command("flush"))
