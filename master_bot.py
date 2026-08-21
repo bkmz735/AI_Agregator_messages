@@ -10,10 +10,10 @@ logger = logging.getLogger(__name__)
 
 # Category Emojis
 CATEGORY_EMOJIS = {
-    "urgent": "🚨 **СРОЧНО**",
-    "important": "⭐ **ВАЖНОЕ**",
-    "general": "💬 **ОБЫЧНОЕ**",
-    "spam": "🚫 **СПАМ**"
+    "urgent": "🚨 <b>СРОЧНО</b>",
+    "important": "⭐ <b>ВАЖНОЕ</b>",
+    "general": "💬 <b>ОБЫЧНОЕ</b>",
+    "spam": "🚫 <b>СПАМ</b>"
 }
 
 class MasterBot:
@@ -152,12 +152,12 @@ class MasterBot:
                     )
 
                 text_response = (
-                    f"🎙️ **РАСШИФРОВКА ГОЛОСОВОГО**\n\n"
-                    f"🗣️ **Текст записи:**\n_{html.escape(res.transcription)}_\n\n"
-                    f"📝 **Выжимка ИИ:**\n{html.escape(res.summary)}"
+                    f"🎙️ <b>РАСШИФРОВКА ГОЛОСОВОГО</b>\n\n"
+                    f"🗣️ <b>Текст записи:</b>\n<i>{html.escape(res.transcription)}</i>\n\n"
+                    f"📝 <b>Выжимка ИИ:</b>\n{html.escape(res.summary)}"
                 )
 
-                await status_msg.edit_text(text_response, parse_mode="Markdown")
+                await status_msg.edit_text(text_response, parse_mode="HTML")
 
                 # Also queue it in DB
                 await self.storage.save_message(
@@ -326,17 +326,17 @@ class MasterBot:
     async def send_instant_notification(
         self, channel: str, sender: str, text: str, category: str, summary: str, action_required: bool, suggested_reply: Optional[str] = None
     ):
-        header = CATEGORY_EMOJIS.get(category, "📩 **СООБЩЕНИЕ**")
-        reply_part = f"\n\n💡 **Черновик ответа:**\n`{html.escape(suggested_reply)}`" if suggested_reply else ""
-        action_part = "\n⚡ **Требуется ответ!**" if action_required else ""
+        header = CATEGORY_EMOJIS.get(category, "📩 <b>СООБЩЕНИЕ</b>")
+        reply_part = f"\n\n💡 <b>Черновик ответа:</b>\n<code>{html.escape(suggested_reply)}</code>" if suggested_reply else ""
+        action_part = "\n⚡ <b>Требуется ответ!</b>" if action_required else ""
 
         message_text = (
             f"{header}\n"
-            f"📍 **Канал:** {html.escape(channel)}\n"
-            f"👤 **От:** {html.escape(sender)}\n\n"
-            f"📝 **Выжимка AI:**\n{html.escape(summary)}{action_part}{reply_part}\n\n"
+            f"📍 <b>Канал:</b> {html.escape(channel)}\n"
+            f"👤 <b>От:</b> {html.escape(sender)}\n\n"
+            f"📝 <b>Выжимка AI:</b>\n{html.escape(summary)}{action_part}{reply_part}\n\n"
             f"--- Текст ---\n"
-            f"_{html.escape(text[:250])}{'...' if len(text) > 250 else ''}_"
+            f"<i>{html.escape(text[:250])}{'...' if len(text) > 250 else ''}</i>"
         )
 
         logger.info(f"Sending Instant Notification [{category}] from {sender}")
@@ -350,7 +350,7 @@ class MasterBot:
                 sent_msg = await self.bot.send_message(
                     chat_id=self.master_chat_id,
                     text=message_text,
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                     reply_markup=inline_kb
                 )
                 # Register for auto-deletion if config value is greater than 0
@@ -370,13 +370,13 @@ class MasterBot:
         if not messages:
             return 0
 
-        digest_parts = [f"📬 **СВОДКА СООБЩЕНИЙ ({len(messages)})**\n"]
+        digest_parts = [f"📬 <b>СВОДКА СООБЩЕНИЙ ({len(messages)})</b>\n"]
         for idx, m in enumerate(messages, 1):
             emoji = CATEGORY_EMOJIS.get(m['category'], "💬")
             digest_parts.append(
-                f"**{idx}. [{m['channel']}]** {m['sender']} ({emoji})\n"
-                f"📝 {m['summary']}\n"
-                f"_{m['text'][:150]}...\n"
+                f"<b>{idx}. [{html.escape(m['channel'])}]</b> {html.escape(m['sender'])} ({emoji})\n"
+                f"📝 {html.escape(m['summary'])}\n"
+                f"<i>{html.escape(m['text'][:150])}...</i>\n"
             )
 
         full_digest = "\n---\n".join(digest_parts)
@@ -393,7 +393,7 @@ class MasterBot:
                         sent_msg = await self.bot.send_message(
                             chat_id=self.master_chat_id, 
                             text=chunk, 
-                            parse_mode="Markdown",
+                            parse_mode="HTML",
                             reply_markup=inline_kb
                         )
                         if config.AUTO_DELETE_DELAY_HOURS > 0:
@@ -407,7 +407,7 @@ class MasterBot:
                     sent_msg = await self.bot.send_message(
                         chat_id=self.master_chat_id,
                         text=full_digest,
-                        parse_mode="Markdown",
+                        parse_mode="HTML",
                         reply_markup=inline_kb
                     )
                     if config.AUTO_DELETE_DELAY_HOURS > 0:

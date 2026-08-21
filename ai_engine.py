@@ -222,22 +222,14 @@ class AIEngine:
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)
-            logger.warning(f"Gemini API rate limited (429). Retrying batch after {wait_time}s...")
-            return [
-                AnalysisResult(
-                    msg_uid=msg.get("msg_uid", ""),
-                    category="important",
-                    summary=f"В буфере (ожидание сброса лимита ИИ {wait_time}с)",
-                    action_required=True,
-                    suggested_reply=None
-                ) for msg in messages_batch
-            ]
+            raise RuntimeError(f"Gemini API minute rate limit active. Resuming in {wait_time}s.")
 
         if self.client:
             # Pre-check: don't waste an API call if we already know we're over limit
             rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
             if rpm_count >= self.MAX_RPM:
-                logger.warning(f"Skipping Gemini API batch call: RPM limit reached ({rpm_count}/{self.MAX_RPM}). Using fallback.")
+                self.rate_limit_until = time.time() + 60.0
+                raise RuntimeError(f"Gemini API RPM limit reached ({rpm_count}/{self.MAX_RPM}). Pausing API calls for 60s.")
             elif self.requests_today >= self.MAX_RPD:
                 logger.warning(f"Skipping Gemini API batch call: RPD limit reached ({self.requests_today}/{self.MAX_RPD}). Using fallback.")
             else:
@@ -296,7 +288,7 @@ class AIEngine:
                                 # RPM limit (minute block) - pause the engine briefly
                                 self.rate_limit_until = time.time() + 60.0
                                 logger.error(f"Gemini API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
-                                break
+                                raise RuntimeError(f"Gemini API minute limit hit (429): {e}")
                         logger.warning(f"Batch analysis model {model_name} failed: {e}")
                         continue
 

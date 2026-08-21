@@ -82,43 +82,49 @@ class MessageAggregatorApp:
 
         logger.info(f"Processing BATCH of {len(batch)} messages via Gemini API...")
 
-        # Analyze entire batch in ONE Gemini API call
-        analysis_results = await self.ai_engine.analyze_batch_messages(batch)
-        results_map = {res.msg_uid: res for res in analysis_results}
+        try:
+            # Analyze entire batch in ONE Gemini API call
+            analysis_results = await self.ai_engine.analyze_batch_messages(batch)
+            results_map = {res.msg_uid: res for res in analysis_results}
 
-        for msg in batch:
-            uid = msg["msg_uid"]
-            channel = msg["channel"]
-            sender = msg["sender"]
-            text = msg["text"]
+            for msg in batch:
+                uid = msg["msg_uid"]
+                channel = msg["channel"]
+                sender = msg["sender"]
+                text = msg["text"]
 
-            analysis = results_map.get(uid)
-            if not analysis:
-                analysis = await self.ai_engine.analyze_message(channel, sender, text, msg_uid=uid)
+                analysis = results_map.get(uid)
+                if not analysis:
+                    analysis = await self.ai_engine.analyze_message(channel, sender, text, msg_uid=uid)
 
-            # Process via MasterBot
-            is_delivered = await self.bot.handle_incoming_analyzed_message(
-                channel=channel,
-                sender=sender,
-                text=text,
-                category=analysis.category,
-                summary=analysis.summary,
-                action_required=analysis.action_required,
-                suggested_reply=analysis.suggested_reply
-            )
+                # Process via MasterBot
+                is_delivered = await self.bot.handle_incoming_analyzed_message(
+                    channel=channel,
+                    sender=sender,
+                    text=text,
+                    category=analysis.category,
+                    summary=analysis.summary,
+                    action_required=analysis.action_required,
+                    suggested_reply=analysis.suggested_reply
+                )
 
-            # Save to SQLite DB
-            await self.storage.save_message(
-                msg_uid=uid,
-                channel=channel,
-                sender=sender,
-                text=text,
-                category=analysis.category,
-                summary=analysis.summary,
-                action_required=analysis.action_required,
-                suggested_reply=analysis.suggested_reply,
-                is_delivered=is_delivered
-            )
+                # Save to SQLite DB
+                await self.storage.save_message(
+                    msg_uid=uid,
+                    channel=channel,
+                    sender=sender,
+                    text=text,
+                    category=analysis.category,
+                    summary=analysis.summary,
+                    action_required=analysis.action_required,
+                    suggested_reply=analysis.suggested_reply,
+                    is_delivered=is_delivered
+                )
+        except Exception as e:
+            logger.error(f"Error processing message batch: {e}. Re-queueing {len(batch)} messages.", exc_info=True)
+            async with self._queue_lock:
+                self.raw_message_queue = batch + self.raw_message_queue
+            raise e
 
     async def run(self):
         # Initialize Database
