@@ -19,7 +19,6 @@ class Config:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     TELEGRAM_PROXY: str = os.getenv("TELEGRAM_PROXY", "").strip()
-    VLESS_LINK: str = os.getenv("VLESS_LINK", "").strip()
     MASTER_CHAT_ID: int = _get_int_env("MASTER_CHAT_ID", 0)
     
     VK_TOKEN: str = os.getenv("VK_TOKEN", "").strip()

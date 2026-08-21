@@ -7,7 +7,6 @@ from config import config
 from storage import Storage
 from ai_engine import AIEngine
 from master_bot import MasterBot
-from xray_tunnel import XrayTunnelManager
 
 from adapters.vk_adapter import VKAdapter
 from adapters.email_adapter import EmailAdapter
@@ -28,18 +27,8 @@ logger = logging.getLogger("AggregatorMain")
 
 class MessageAggregatorApp:
     def __init__(self):
-        self.xray_tunnel = None
-        
-        # Start embedded Xray VLESS Tunnel ONLY if TELEGRAM_PROXY is not explicitly set and VLESS_LINK is present
-        if not config.TELEGRAM_PROXY and config.VLESS_LINK:
-            logger.info("Initializing dedicated Xray VLESS tunnel for Telegram...")
-            self.xray_tunnel = XrayTunnelManager(vless_url=config.VLESS_LINK)
-            proxy_url = self.xray_tunnel.start()
-            if proxy_url:
-                config.TELEGRAM_PROXY = proxy_url
-                logger.info(f"Telegram Bot routed through internal VLESS Proxy: {proxy_url}")
-        elif config.TELEGRAM_PROXY:
-            logger.info(f"Using explicitly configured TELEGRAM_PROXY: {config.TELEGRAM_PROXY}")
+        if config.TELEGRAM_PROXY:
+            logger.info(f"Using configured TELEGRAM_PROXY: {config.TELEGRAM_PROXY}")
 
         self.storage = Storage()
         self.ai_engine = AIEngine()
@@ -161,8 +150,6 @@ class MessageAggregatorApp:
             batch_task.cancel()
             for adapter in self.adapters:
                 await adapter.stop()
-            if self.xray_tunnel:
-                self.xray_tunnel.stop()
             if bot_task:
                 bot_task.cancel()
 
