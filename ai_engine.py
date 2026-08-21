@@ -56,9 +56,9 @@ class AudioAnalysisResult(BaseModel):
     suggested_reply: Optional[str] = None
 
 class AIEngine:
-    # Gemini Free Tier Limits
-    MAX_RPM = 15     # Requests per minute
-    MAX_RPD = 1500   # Requests per day
+    # Exact Gemini Free Tier Limits for your specific API key/project
+    MAX_RPM = 5      # Requests per minute limit
+    MAX_RPD = 20     # Requests per day limit
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or config.GEMINI_API_KEY
