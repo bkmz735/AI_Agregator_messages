@@ -73,7 +73,15 @@ class AIEngine:
 
         # Dynamically test models in priority order. If one is exhausted (429 daily) or unsupported (404),
         # we skip it and try the next one.
-        self.priority_models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
+        # Added high-limit Lite models (500 RPD each) as excellent fallbacks.
+        self.priority_models = [
+            'gemini-3.7-flash', 
+            'gemini-3.6-flash', 
+            'gemini-3.5-flash', 
+            'gemini-3.5-flash-lite', 
+            'gemini-3.1-flash-lite',
+            'gemini-3-flash'
+        ]
         self.exhausted_models = set()  # Daily exhausted models (reset daily)
         self.unsupported_models = set()  # Deprecated/invalid models (permanent during session)
 
