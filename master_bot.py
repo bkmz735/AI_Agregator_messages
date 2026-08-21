@@ -31,8 +31,8 @@ class AccessControlMiddleware(BaseMiddleware):
         elif isinstance(event, CallbackQuery):
             user_id = event.from_user.id if event.from_user else None
 
-        if user_id and user_id != self.master_chat_id:
-            logger.warning(f"Blocking unauthorized Telegram interaction from user_id: {user_id}")
+        if self.master_chat_id and user_id and str(user_id) != str(self.master_chat_id):
+            logger.warning(f"Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {self.master_chat_id})")
             return None  # Ignore event completely
             
         return await handler(event, data)
@@ -247,6 +247,10 @@ class MasterBot:
 
         @self.dp.message(Command("start"))
         async def cmd_start(message: types.Message):
+            if not self.master_chat_id and message.from_user:
+                self.master_chat_id = message.from_user.id
+                await self.storage.set_setting("master_chat_id", str(self.master_chat_id))
+                logger.info(f"Auto-captured master_chat_id: {self.master_chat_id}")
             try:
                 await message.delete()
             except Exception:
@@ -263,8 +267,8 @@ class MasterBot:
                 reply_markup=self._get_menu_keyboard(buf_count),
                 parse_mode="HTML"
             )
-            # Register welcome screen for auto-deletion after 5 minutes
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+            target_chat = self.master_chat_id or message.chat.id
+            await self.storage.save_sent_notification(chat_id=target_chat, message_id=sent_msg.message_id, delay_seconds=300)
 
         @self.dp.message(Command("help"))
         async def cmd_help(message: types.Message):
@@ -1237,8 +1241,8 @@ class MasterBot:
             use_proxy_mode = True if config.TELEGRAM_PROXY else False
             while True:
                 try:
-                    await self.bot.delete_webhook(drop_pending_updates=True)
-                    await self.dp.start_polling(self.bot, drop_pending_updates=True)
+                    await self.bot.delete_webhook(drop_pending_updates=False)
+                    await self.dp.start_polling(self.bot, drop_pending_updates=False)
                 except Exception as e:
                     logger.warning(f"Telegram polling error: {e}")
                     # If proxy connection failed (ClientOSError), auto fallback to Direct connection
