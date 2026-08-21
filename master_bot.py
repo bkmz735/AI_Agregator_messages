@@ -182,6 +182,22 @@ class MasterBot:
         ])
         return text, inline_kb
 
+    async def _clear_previous_ui_panels(self):
+        """Deletes any previously active UI panel (buffer, settings, stats, clear) to keep chat clean."""
+        panels = [
+            ("_last_buffer_status_msg_id", self._last_buffer_status_msg_id),
+            ("_last_settings_msg_id", self._last_settings_msg_id),
+            ("_last_stats_msg_id", self._last_stats_msg_id),
+            ("_last_clear_prompt_msg_id", self._last_clear_prompt_msg_id),
+        ]
+        for attr_name, msg_id in panels:
+            if msg_id:
+                try:
+                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=msg_id)
+                except Exception:
+                    pass
+                setattr(self, attr_name, None)
+
     def _setup_handlers(self):
         from aiogram.filters import Command
         from aiogram import types, F
@@ -289,13 +305,7 @@ class MasterBot:
             except Exception:
                 pass
                 
-            # Clean up the previous status message if one exists
-            if self._last_buffer_status_msg_id:
-                try:
-                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_buffer_status_msg_id)
-                except Exception:
-                    pass
-                self._last_buffer_status_msg_id = None
+            await self._clear_previous_ui_panels()
                 
             buf_count = await self.storage.get_buffer_count()
             if buf_count > 0:
@@ -313,7 +323,6 @@ class MasterBot:
                     parse_mode="HTML"
                 )
             self._last_buffer_status_msg_id = status_msg.message_id
-            # Auto-delete buffer status message after 5 minutes
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=status_msg.message_id, delay_seconds=300)
 
         @self.dp.message(F.text == "🚀 Отправить сводку")
@@ -324,19 +333,12 @@ class MasterBot:
             except Exception:
                 pass
                 
-            # Clean up the buffer status message
-            if self._last_buffer_status_msg_id:
-                try:
-                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_buffer_status_msg_id)
-                except Exception:
-                    pass
-                self._last_buffer_status_msg_id = None
+            await self._clear_previous_ui_panels()
                 
             try:
                 sent_count = await self.flush_buffer_now()
                 if sent_count == 0:
                     sent_msg = await message.answer("📥 Буфер пуст! Новых сообщений нет.", reply_markup=self._get_menu_keyboard(0))
-                    # Auto-delete empty buffer warning after 5 minutes
                     await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
             except Exception as e:
                 logger.error(f"Error in manual digest flush: {e}", exc_info=True)
@@ -350,13 +352,7 @@ class MasterBot:
             except Exception:
                 pass
 
-            # Auto-delete previous stats panel if open
-            if self._last_stats_msg_id:
-                try:
-                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_stats_msg_id)
-                except Exception:
-                    pass
-                self._last_stats_msg_id = None
+            await self._clear_previous_ui_panels()
 
             stats = await self.storage.get_stats()
             buf_count = await self.storage.get_buffer_count()
@@ -388,13 +384,7 @@ class MasterBot:
             except Exception:
                 pass
 
-            # Auto-delete previous settings panel if open
-            if self._last_settings_msg_id:
-                try:
-                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_settings_msg_id)
-                except Exception:
-                    pass
-                self._last_settings_msg_id = None
+            await self._clear_previous_ui_panels()
 
             text, kb = await self._get_settings_text_and_keyboard()
             sent_msg = await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
