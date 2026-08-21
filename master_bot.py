@@ -151,14 +151,10 @@ class MasterBot:
                         suggested_reply="Спасибо за сообщение!"
                     )
 
-                emoji = CATEGORY_EMOJIS.get(res.category, "💬")
-                reply_part = f"\n\n💡 **Черновик ответа:**\n`{html.escape(res.suggested_reply)}`" if res.suggested_reply else ""
-                
                 text_response = (
-                    f"🎙️ **РАСШИФРОВКА ГОЛОСОВОГО** ({emoji})\n"
-                    f"👤 **От:** {html.escape(sender_name)}\n\n"
+                    f"🎙️ **РАСШИФРОВКА ГОЛОСОВОГО**\n\n"
                     f"🗣️ **Текст записи:**\n_{html.escape(res.transcription)}_\n\n"
-                    f"📝 **Выжимка ИИ:**\n{html.escape(res.summary)}{reply_part}"
+                    f"📝 **Выжимка ИИ:**\n{html.escape(res.summary)}"
                 )
 
                 await status_msg.edit_text(text_response, parse_mode="Markdown")
