@@ -130,12 +130,12 @@ class VKAdapter(BaseAdapter):
                         if not server.startswith("http"):
                             server = f"https://{server}"
 
-                    # LongPoll Loop
+                    # Periodic 60-second Poll Loop
                     while self._running:
                         if self.group_id > 0:
-                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=25"
+                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=1"
                         else:
-                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=25&mode=2&version=3"
+                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=1&mode=2&version=3"
 
                         async with session.get(lp_url) as lp_resp:
                             lp_data = await lp_resp.json()
@@ -173,6 +173,9 @@ class VKAdapter(BaseAdapter):
                                             uid = f"vk_user_msg_{msg_id}"
                                             sender_name = await self._resolve_user_name(session, peer_id)
                                             await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
+
+                        # Sleep for 60 seconds before next check to save RAM & CPU
+                        await asyncio.sleep(60)
 
                 except asyncio.CancelledError:
                     break

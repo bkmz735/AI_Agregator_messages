@@ -124,7 +124,7 @@ class EmailAdapter(BaseAdapter):
                 if not msg_numbers:
                     # No unread mail — nothing to do
                     await imap_client.logout()
-                    await asyncio.sleep(45)
+                    await asyncio.sleep(60)
                     continue
 
                 logger.info(f"Mail.ru IMAP found {len(msg_numbers)} UNSEEN emails to process.")
@@ -201,7 +201,7 @@ class EmailAdapter(BaseAdapter):
                         logger.warning(f"Error fetching email #{num}: {fe}")
 
                 await imap_client.logout()
-                await asyncio.sleep(45)
+                await asyncio.sleep(60)
             except asyncio.CancelledError:
                 break
             except Exception as e:
