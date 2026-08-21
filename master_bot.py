@@ -250,11 +250,15 @@ class MasterBot:
         ])
         return text, inline_kb
 
-    async def show_or_edit_ui_panel(self, text: str, keyboard: Any, parse_mode: str = "HTML"):
+    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML"):
         """Displays or smoothly edits the single active UI window in-place."""
         target_chat = self.master_chat_id
         if not target_chat or not self.bot:
             return
+
+        from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
+        inline_kb = keyboard if isinstance(keyboard, InlineKeyboardMarkup) else None
+        reply_kb = keyboard if isinstance(keyboard, ReplyKeyboardMarkup) else None
 
         if self._last_ui_msg_id:
             try:
@@ -262,7 +266,7 @@ class MasterBot:
                     chat_id=target_chat,
                     message_id=self._last_ui_msg_id,
                     text=text,
-                    reply_markup=keyboard,
+                    reply_markup=inline_kb,
                     parse_mode=parse_mode
                 )
                 return
@@ -281,7 +285,7 @@ class MasterBot:
             sent_msg = await self.bot.send_message(
                 chat_id=target_chat,
                 text=text,
-                reply_markup=keyboard,
+                reply_markup=reply_kb or inline_kb,
                 parse_mode=parse_mode
             )
             self._last_ui_msg_id = sent_msg.message_id
@@ -290,38 +294,11 @@ class MasterBot:
             logger.error(f"Error updating single UI panel: {e}")
 
     async def update_status_banner(self, chat_id: Optional[int] = None):
-        """Creates or updates the single active status banner in-place with interactive inline controls."""
+        """Creates or updates the single active status banner in-place."""
         buf_count = await self.storage.get_buffer_count()
-        text = (
-            "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>\n\n"
-            "Выберите нужный раздел или действие на панели ниже:"
-        )
-        
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        
-        inline_rows = []
-        if buf_count > 0:
-            inline_rows.append([
-                InlineKeyboardButton(text=f"📥 Буфер ({buf_count})", callback_data="cmd_buf_inline"),
-                InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")
-            ])
-        else:
-            inline_rows.append([
-                InlineKeyboardButton(text="📥 Буфер (0)", callback_data="cmd_buf_inline")
-            ])
-            
-        inline_rows.append([
-            InlineKeyboardButton(text="📊 Статистика", callback_data="cmd_stats_inline"),
-            InlineKeyboardButton(text="⚙️ Настройки", callback_data="settings_main_menu")
-        ])
-        
-        inline_rows.append([
-            InlineKeyboardButton(text="🛠️ Логи", callback_data="refresh_logs"),
-            InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
-        ])
-
-        kb = InlineKeyboardMarkup(inline_keyboard=inline_rows)
-        await self.show_or_edit_ui_panel(text=text, keyboard=kb)
+        text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
+        reply_kb = self._get_menu_keyboard(buf_count)
+        await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb)
 
     def _setup_handlers(self):
         from aiogram.filters import Command
