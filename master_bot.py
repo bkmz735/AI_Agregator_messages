@@ -710,11 +710,16 @@ class MasterBot:
         @self.dp.callback_query(F.data == "add_bw_prompt_email")
         async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
             await callback_query.answer()
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="delete_msg")]
+            ])
             sent_msg = await callback_query.message.answer(
                 "✍️ <b>Добавление банворда в Mail.ru:</b>\n\n"
                 "Отправьте команду:\n"
                 "<code>/block слово email</code>\n\n"
                 "<i>Пример:</i> <code>/block тинькофф email</code>",
+                reply_markup=kb,
                 parse_mode="HTML"
             )
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
@@ -722,11 +727,16 @@ class MasterBot:
         @self.dp.callback_query(F.data == "add_bw_prompt_vk")
         async def process_add_bw_prompt_vk(callback_query: types.CallbackQuery):
             await callback_query.answer()
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="delete_msg")]
+            ])
             sent_msg = await callback_query.message.answer(
                 "✍️ <b>Добавление банворда в VK:</b>\n\n"
                 "Отправьте команду:\n"
                 "<code>/block слово vk</code>\n\n"
                 "<i>Пример:</i> <code>/block подпишись vk</code>",
+                reply_markup=kb,
                 parse_mode="HTML"
             )
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
