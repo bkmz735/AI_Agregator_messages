@@ -21,7 +21,14 @@ class AIEngine:
         if self.api_key:
             try:
                 from google import genai
-                self.client = genai.Client(api_key=self.api_key)
+                from google.genai import types
+                
+                http_opts = None
+                if config.TELEGRAM_PROXY:
+                    http_opts = types.HttpOptions(proxy=config.TELEGRAM_PROXY)
+                    logger.info(f"Gemini API configured with Proxy: {config.TELEGRAM_PROXY}")
+                
+                self.client = genai.Client(api_key=self.api_key, http_options=http_opts)
                 logger.info("Gemini API client initialized successfully.")
             except Exception as e:
                 logger.warning(f"Could not initialize google.genai Client: {e}. Falling back to rule-based analysis.")
@@ -31,14 +38,13 @@ class AIEngine:
     async def analyze_message(self, channel: str, sender: str, text: str) -> AnalysisResult:
         """
         Analyzes an incoming message using Gemini API structured output (JSON).
-        If API key is missing, uses robust rule-based mock analysis.
+        If API key is missing or fails, uses robust rule-based mock analysis.
         """
         if self.client:
             prompt = f"{config.AI_FILTER_PROMPT}\n\n[Канал]: {channel}\n[Отправитель]: {sender}\n[Текст]:\n{text}"
             
             for model_name in ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash']:
                 try:
-                    # Timeout after 5 seconds to keep pipeline fast
                     response = await asyncio.wait_for(
                         asyncio.to_thread(
                             self.client.models.generate_content,
@@ -46,7 +52,7 @@ class AIEngine:
                             contents=prompt,
                             config={'response_mime_type': 'application/json'}
                         ),
-                        timeout=5.0
+                        timeout=6.0
                     )
                     if response and response.text:
                         result_data = json.loads(response.text)
@@ -62,7 +68,6 @@ class AIEngine:
     def _mock_analyze(self, channel: str, sender: str, text: str) -> AnalysisResult:
         text_lower = text.lower()
         
-        # Rule-based heuristics for mock mode
         spam_keywords = ["выигрыш", "казино", "ставка", "заработок в интернете", "крипта 100%", "кредит", "подпишись на канал", "бесплатно жми"]
         urgent_keywords = ["срочно", "купить", "цена", "где забрать", "оплата", "доставка", "когда отправите"]
         
