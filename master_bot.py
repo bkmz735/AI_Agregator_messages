@@ -146,7 +146,7 @@ class MasterBot:
             logger.warning(f"Could not set bot commands: {e}")
 
     async def _get_diagnostic_logs_text_and_keyboard(self):
-        from main import RecentLogHandler
+        from logger_config import RecentLogHandler
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
         recent = RecentLogHandler.recent_logs[-10:]
