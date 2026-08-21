@@ -249,18 +249,55 @@ class MasterBot:
         @self.dp.message(Command("clear"))
         @self.dp.message(F.text == "🧹 Очистить чат")
         async def cmd_clear_chat(message: types.Message):
-            current_id = message.message_id
+            # Delete the user's trigger message to keep it clean
+            try:
+                await message.delete()
+            except Exception:
+                pass
             
-            # loop backward to delete last 100 messages silently
-            for msg_id in range(current_id, current_id - 100, -1):
-                try:
-                    await self.bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-                except Exception:
-                    pass
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat"),
+                    InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_clear_chat")
+                ]
+            ])
+            await message.answer(
+                text="⚠️ **Вы действительно хотите очистить чат в Telegram?**\n*(Сообщения останутся в базе данных)*",
+                reply_markup=inline_kb,
+                parse_mode="Markdown"
+            )
 
         # Handle inline "Read/Delete" button click
         @self.dp.callback_query(F.data == "delete_msg")
         async def process_delete_msg(callback_query: types.CallbackQuery):
+            try:
+                await callback_query.message.delete()
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        # Handle inline confirmation of chat clearing
+        @self.dp.callback_query(F.data == "confirm_clear_chat")
+        async def process_confirm_clear_chat(callback_query: types.CallbackQuery):
+            # Delete the confirmation message first
+            try:
+                await callback_query.message.delete()
+            except Exception:
+                pass
+                
+            # Perform actual silent deletion
+            current_id = callback_query.message.message_id
+            for msg_id in range(current_id, current_id - 100, -1):
+                try:
+                    await self.bot.delete_message(chat_id=callback_query.message.chat.id, message_id=msg_id)
+                except Exception:
+                    pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data == "cancel_clear_chat")
+        async def process_cancel_clear_chat(callback_query: types.CallbackQuery):
+            # Just delete the confirmation message
             try:
                 await callback_query.message.delete()
             except Exception:
