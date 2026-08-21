@@ -27,7 +27,7 @@ class EmailAdapter(BaseAdapter):
     async def start(self):
         self._running = True
         if self.user and self.password:
-            logger.info("Starting Email IMAP adapter...")
+            logger.info(f"Starting Email IMAP adapter for [{self.user}] on {self.server}:{self.port}...")
             self._task = asyncio.create_task(self._poll_imap())
         else:
             logger.info("No IMAP credentials configured. Running Email adapter in standby mode.")
@@ -40,13 +40,20 @@ class EmailAdapter(BaseAdapter):
     def _decode_str(self, header_val):
         if not header_val:
             return ""
-        decoded, encoding = decode_header(header_val)[0]
-        if isinstance(decoded, bytes):
-            return decoded.decode(encoding or "utf-8", errors="ignore")
-        return str(decoded)
+        try:
+            decoded_parts = decode_header(header_val)
+            res = []
+            for decoded, encoding in decoded_parts:
+                if isinstance(decoded, bytes):
+                    res.append(decoded.decode(encoding or "utf-8", errors="ignore"))
+                else:
+                    res.append(str(decoded))
+            return "".join(res)
+        except Exception:
+            return str(header_val)
 
     async def _poll_imap(self):
-        """Polls unread emails periodically."""
+        """Polls emails periodically."""
         import aioimaplib
         ssl_ctx = _create_ssl_context()
 
@@ -54,42 +61,76 @@ class EmailAdapter(BaseAdapter):
             try:
                 imap_client = aioimaplib.IMAP4_SSL(host=self.server, port=self.port, ssl_context=ssl_ctx)
                 await imap_client.wait_hello_from_server()
-                await imap_client.login(self.user, self.password)
+                
+                login_resp = await imap_client.login(self.user, self.password)
+                if login_resp.result != 'OK':
+                    logger.error(f"Mail.ru IMAP login failed for {self.user}: {login_resp}")
+                    await asyncio.sleep(60)
+                    continue
+
                 await imap_client.select('INBOX')
 
-                # Search UNSEEN
+                # Search both UNSEEN and recent messages
                 status, data = await imap_client.search('UNSEEN')
+                
+                # Fallback to ALL if no unseen found, check latest 5 messages
+                if status == 'OK' and not data[0]:
+                    status, data = await imap_client.search('ALL')
+                    if status == 'OK' and data[0]:
+                        nums = data[0].split()
+                        # Pick last 3 messages for safety
+                        data = [b" ".join(nums[-3:])]
+
                 if status == 'OK' and data[0]:
                     msg_nums = data[0].split()
+                    logger.info(f"Mail.ru IMAP fetched {len(msg_nums)} emails to process.")
                     for num in msg_nums:
-                        status, msg_data = await imap_client.fetch(num, '(RFC822)')
-                        if status == 'OK':
-                            raw_email = msg_data[1]
-                            msg = email.message_from_bytes(raw_email)
-                            subject = self._decode_str(msg.get("Subject"))
-                            from_addr = self._decode_str(msg.get("From"))
-
-                            body = ""
-                            if msg.is_multipart():
-                                for part in msg.walk():
-                                    if part.get_content_type() == "text/plain":
-                                        body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                        try:
+                            fetch_status, msg_data = await imap_client.fetch(num.decode(), '(RFC822)')
+                            if fetch_status == 'OK':
+                                raw_email = None
+                                for item in msg_data:
+                                    if isinstance(item, bytes) and len(item) > 50:
+                                        raw_email = item
                                         break
-                            else:
-                                body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+                                
+                                if not raw_email and len(msg_data) >= 2:
+                                    raw_email = msg_data[1]
 
-                            channel_name = "Email"
-                            if "avito" in from_addr.lower() or "авито" in subject.lower():
-                                channel_name = "Avito (Email)"
-                            elif "instagram" in from_addr.lower():
-                                channel_name = "Instagram (Email)"
+                                if raw_email and isinstance(raw_email, bytes):
+                                    msg = email.message_from_bytes(raw_email)
+                                    subject = self._decode_str(msg.get("Subject", "Без темы"))
+                                    from_addr = self._decode_str(msg.get("From", "Неизвестный отправитель"))
 
-                            msg_uid = f"email_{msg.get('Message-ID', num.decode())}"
-                            text_full = f"Тема: {subject}\n\n{body}"
-                            await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid)
+                                    body = ""
+                                    if msg.is_multipart():
+                                        for part in msg.walk():
+                                            if part.get_content_type() == "text/plain":
+                                                payload = part.get_payload(decode=True)
+                                                if payload:
+                                                    body = payload.decode("utf-8", errors="ignore")
+                                                break
+                                    else:
+                                        payload = msg.get_payload(decode=True)
+                                        if payload:
+                                            body = payload.decode("utf-8", errors="ignore")
+
+                                    channel_name = "Email (Mail.ru)"
+                                    if "avito" in from_addr.lower() or "авито" in subject.lower():
+                                        channel_name = "Avito (Email)"
+                                    elif "instagram" in from_addr.lower():
+                                        channel_name = "Instagram (Email)"
+
+                                    msg_id = msg.get('Message-ID', num.decode())
+                                    msg_uid = f"email_{msg_id}"
+                                    text_full = f"Тема: {subject}\n\n{body[:500]}"
+                                    
+                                    await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid)
+                        except Exception as fe:
+                            logger.warning(f"Error fetching email #{num}: {fe}")
 
                 await imap_client.logout()
-                await asyncio.sleep(60)
+                await asyncio.sleep(45)
             except asyncio.CancelledError:
                 break
             except Exception as e:
