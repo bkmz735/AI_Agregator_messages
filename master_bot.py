@@ -3,6 +3,8 @@ import logging
 import html
 import io
 from typing import Optional, Callable, Awaitable, Any
+from aiogram import BaseMiddleware
+from aiogram.types import TelegramObject
 from config import config
 from storage import Storage
 
@@ -15,6 +17,25 @@ CATEGORY_EMOJIS = {
     "general": "💬 <b>ОБЫЧНОЕ</b>",
     "spam": "🚫 <b>СПАМ</b>"
 }
+
+class AccessControlMiddleware(BaseMiddleware):
+    def __init__(self, master_chat_id: int):
+        self.master_chat_id = master_chat_id
+        super().__init__()
+
+    async def __call__(self, handler: Callable[[TelegramObject, dict], Awaitable[Any]], event: TelegramObject, data: dict) -> Any:
+        from aiogram.types import Message, CallbackQuery
+        user_id = None
+        if isinstance(event, Message):
+            user_id = event.from_user.id if event.from_user else None
+        elif isinstance(event, CallbackQuery):
+            user_id = event.from_user.id if event.from_user else None
+
+        if user_id and user_id != self.master_chat_id:
+            logger.warning(f"Blocking unauthorized Telegram interaction from user_id: {user_id}")
+            return None  # Ignore event completely
+            
+        return await handler(event, data)
 
 class MasterBot:
     def __init__(self, storage: Storage, simulate_callback: Optional[Callable[[str, str, str], Awaitable[None]]] = None, ai_engine: Optional[Any] = None):
@@ -51,6 +72,12 @@ class MasterBot:
         
         self.bot = Bot(token=self.bot_token, session=session)
         self.dp = Dispatcher()
+        
+        # Register security middleware to restrict access to master user only
+        if self.master_chat_id:
+            self.dp.message.outer_middleware(AccessControlMiddleware(self.master_chat_id))
+            self.dp.callback_query.outer_middleware(AccessControlMiddleware(self.master_chat_id))
+            
         self._setup_handlers()
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
