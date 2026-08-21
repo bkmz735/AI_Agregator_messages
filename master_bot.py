@@ -289,24 +289,6 @@ class MasterBot:
         except Exception as e:
             logger.error(f"Error updating single UI panel: {e}")
 
-    async def purge_recent_chat_history(self, chat_id: Optional[int] = None, max_messages: int = 5):
-        """Purges recent chat history in the master chat on startup to give a clean slate quickly."""
-        target_chat = chat_id or self.master_chat_id
-        if not target_chat or not self.bot:
-            return
-            
-        saved_ui_id = await self.storage.get_setting("last_ui_msg_id") or await self.storage.get_setting("last_status_msg_id")
-        start_id = int(saved_ui_id) if saved_ui_id and saved_ui_id.isdigit() else None
-        
-        if start_id:
-            msg_ids = list(range(max(1, start_id - max_messages), start_id + 2))
-            for mid in reversed(msg_ids):
-                try:
-                    await self.bot.delete_message(chat_id=target_chat, message_id=mid)
-                except Exception:
-                    pass
-            logger.info(f"Purged recent chat history ({len(msg_ids)} msgs) around ID {start_id}")
-
     async def update_status_banner(self, chat_id: Optional[int] = None):
         """Creates or updates the single active status banner in-place with interactive inline controls."""
         buf_count = await self.storage.get_buffer_count()
@@ -1356,17 +1338,14 @@ class MasterBot:
                 self.night_start_hour = int(await self.storage.get_setting("night_start_hour", str(self.night_start_hour)))
                 self.night_end_hour = int(await self.storage.get_setting("night_end_hour", str(self.night_end_hour)))
                 
-                saved_status_id = await self.storage.get_setting("last_status_msg_id")
-                if saved_status_id and saved_status_id.isdigit():
-                    self._last_buffer_status_msg_id = int(saved_status_id)
+                saved_ui_id = await self.storage.get_setting("last_ui_msg_id") or await self.storage.get_setting("last_status_msg_id")
+                if saved_ui_id and saved_ui_id.isdigit():
+                    self._last_ui_msg_id = int(saved_ui_id)
             except Exception as se:
                 logger.error(f"Error loading settings from DB: {se}", exc_info=True)
 
             await self._register_bot_commands()
             if self.master_chat_id:
-                await self.purge_recent_chat_history(self.master_chat_id)
-                self._last_buffer_status_msg_id = None
-                await self.storage.set_setting("last_status_msg_id", "")
                 asyncio.create_task(self.update_status_banner(self.master_chat_id))
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
