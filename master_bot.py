@@ -712,6 +712,10 @@ class MasterBot:
                     InlineKeyboardButton(text=f"💬 ВКонтакте ({len(bws_vk)})", callback_data="bw_view_vk_1")
                 ],
                 [
+                    InlineKeyboardButton(text="❇️ ➕ Добавить в Mail.ru", callback_data="add_bw_prompt_email"),
+                    InlineKeyboardButton(text="❇️ ➕ Добавить в VK", callback_data="add_bw_prompt_vk")
+                ],
+                [
                     InlineKeyboardButton(text="🔄 Сбросить все к базовым", callback_data="reset_banwords_confirm")
                 ],
                 [
@@ -760,7 +764,7 @@ class MasterBot:
             nav_row = []
             if page > 1:
                 nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bw_view_email_{page - 1}"))
-            nav_row.append(InlineKeyboardButton(text="➕ Добавить", callback_data="add_bw_prompt_email"))
+            nav_row.append(InlineKeyboardButton(text="❇️ ➕ Добавить банворд", callback_data="add_bw_prompt_email"))
             if page < total_pages:
                 nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"bw_view_email_{page + 1}"))
             rows.append(nav_row)
@@ -810,7 +814,7 @@ class MasterBot:
             nav_row = []
             if page > 1:
                 nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bw_view_vk_{page - 1}"))
-            nav_row.append(InlineKeyboardButton(text="➕ Добавить", callback_data="add_bw_prompt_vk"))
+            nav_row.append(InlineKeyboardButton(text="❇️ ➕ Добавить банворд", callback_data="add_bw_prompt_vk"))
             if page < total_pages:
                 nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"bw_view_vk_{page + 1}"))
             rows.append(nav_row)
@@ -850,7 +854,7 @@ class MasterBot:
                 [InlineKeyboardButton(text="❌ Отмена", callback_data="delete_msg")]
             ])
             sent_msg = await callback_query.message.answer(
-                "✍️ <b>Добавление банворда в Mail.ru:</b>\n\n"
+                "❇️ <b>Добавление банворда в Mail.ru:</b>\n\n"
                 "Отправьте команду:\n"
                 "<code>/block слово email</code>\n\n"
                 "<i>Пример:</i> <code>/block тинькофф email</code>",
@@ -867,7 +871,7 @@ class MasterBot:
                 [InlineKeyboardButton(text="❌ Отмена", callback_data="delete_msg")]
             ])
             sent_msg = await callback_query.message.answer(
-                "✍️ <b>Добавление банворда в VK:</b>\n\n"
+                "❇️ <b>Добавление банворда в VK:</b>\n\n"
                 "Отправьте команду:\n"
                 "<code>/block слово vk</code>\n\n"
                 "<i>Пример:</i> <code>/block подпишись vk</code>",
