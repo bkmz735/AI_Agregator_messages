@@ -26,14 +26,20 @@ class AccessControlMiddleware(BaseMiddleware):
     async def __call__(self, handler: Callable[[TelegramObject, dict], Awaitable[Any]], event: TelegramObject, data: dict) -> Any:
         from aiogram.types import Message, CallbackQuery
         user_id = None
+        event_name = type(event).__name__
+        text_preview = ""
         if isinstance(event, Message):
             user_id = event.from_user.id if event.from_user else None
+            text_preview = event.text or event.caption or ""
         elif isinstance(event, CallbackQuery):
             user_id = event.from_user.id if event.from_user else None
+            text_preview = event.data or ""
 
         master_id = self.master_bot.master_chat_id
+        logger.info(f"📩 Telegram Event [{event_name}] from user_id={user_id} (data='{text_preview}', expected master_id={master_id})")
+
         if master_id and user_id and str(user_id) != str(master_id):
-            logger.warning(f"Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
+            logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
             return None  # Ignore event completely
             
         return await handler(event, data)
@@ -1241,6 +1247,8 @@ class MasterBot:
             use_proxy_mode = True if config.TELEGRAM_PROXY else False
             while True:
                 try:
+                    me = await self.bot.get_me()
+                    logger.info(f"🤖 Connected to Telegram Bot: @{me.username} (ID: {me.id})")
                     await self.bot.delete_webhook(drop_pending_updates=False)
                     await self.dp.start_polling(self.bot, drop_pending_updates=False)
                 except Exception as e:
