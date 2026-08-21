@@ -58,7 +58,7 @@ class MasterBot:
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
         kb = [
             [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text=f"⚙️ Режим: {self.delivery_mode.upper()}")]
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text=f"⚙️ Режим: {self.delivery_mode.upper()}"), KeyboardButton(text="🧹 Очистить чат")]
         ]
         return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -70,7 +70,8 @@ class MasterBot:
             BotCommand(command="help", description="Справка по командам и работе бота"),
             BotCommand(command="flush", description="Отправить накопившийся буфер прямо сейчас"),
             BotCommand(command="stats", description="Статистика сообщений и лимитов ИИ"),
-            BotCommand(command="mode", description="Переключить режим (Instant / Digest)")
+            BotCommand(command="mode", description="Переключить режим (Instant / Digest)"),
+            BotCommand(command="clear", description="Очистить последние сообщения чата")
         ]
         try:
             await self.bot.set_my_commands(commands)
@@ -228,6 +229,35 @@ class MasterBot:
             else:
                 msg += "⚡ Все не-спам сообщения приходят мгновенно."
             await message.answer(msg, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
+
+        @self.dp.message(Command("clear"))
+        @self.dp.message(F.text == "🧹 Очистить чат")
+        async def cmd_clear_chat(message: types.Message):
+            status_msg = await message.answer("🧹 *Очищаю чат...*", parse_mode="Markdown")
+            current_id = status_msg.message_id
+            deleted = 0
+            
+            # loop backward to delete last 100 messages
+            for msg_id in range(current_id, current_id - 100, -1):
+                try:
+                    await self.bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+                    deleted += 1
+                except Exception:
+                    pass
+            
+            # Inform the user after clearing
+            buf_count = await self.storage.get_buffer_count()
+            confirm_msg = await self.bot.send_message(
+                chat_id=message.chat.id,
+                text=f"🧹 Чат очищен (удалено {deleted} сообщ.)",
+                reply_markup=self._get_menu_keyboard(buf_count)
+            )
+            # Self-destruct confirmation after 5 seconds to keep it clean
+            await asyncio.sleep(5)
+            try:
+                await self.bot.delete_message(chat_id=message.chat.id, message_id=confirm_msg.message_id)
+            except Exception:
+                pass
 
     async def handle_incoming_analyzed_message(
         self, channel: str, sender: str, text: str, category: str, summary: str, action_required: bool, suggested_reply: Optional[str] = None
