@@ -11,6 +11,9 @@ cd "$APP_DIR"
 # Enable persistent password/token storage in Git
 git config credential.helper store
 
+# Discard local file edits on server (preserves .env and database)
+git checkout -- .
+
 echo "Подтягивание свежего кода из Git..."
 git pull origin main
 
