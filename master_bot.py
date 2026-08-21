@@ -776,6 +776,19 @@ class MasterBot:
                     pass
             await callback_query.answer()
 
+            # Instantly restore the bottom reply keyboard with a 15-second auto-deleting notification
+            try:
+                buf_count = await self.storage.get_buffer_count()
+                sent_msg = await self.bot.send_message(
+                    chat_id=callback_query.message.chat.id,
+                    text="🧹 <b>Чат очищен!</b> Кнопки меню восстановлены.",
+                    reply_markup=self._get_menu_keyboard(buf_count),
+                    parse_mode="HTML"
+                )
+                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=15)
+            except Exception as e:
+                logger.error(f"Error restoring reply keyboard after clear: {e}")
+
         @self.dp.callback_query(F.data == "cancel_clear_chat")
         async def process_cancel_clear_chat(callback_query: types.CallbackQuery):
             # Just delete the confirmation message
