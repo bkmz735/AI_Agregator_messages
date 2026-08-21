@@ -10,7 +10,6 @@ from master_bot import MasterBot
 
 from adapters.vk_adapter import VKAdapter
 from adapters.email_adapter import EmailAdapter
-from adapters.tg_adapter import TelegramAdapter
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -36,8 +35,7 @@ class MessageAggregatorApp:
         
         self.adapters = [
             VKAdapter(),
-            EmailAdapter(),
-            TelegramAdapter()
+            EmailAdapter()
         ]
 
         # Raw message queue for batching requests to Gemini API (token saving)
