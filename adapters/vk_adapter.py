@@ -21,6 +21,8 @@ class VKAdapter(BaseAdapter):
         self.group_id = config.VK_GROUP_ID
         self._running = False
         self._task = None
+        self._user_cache = {}
+        self._group_cache = {}
 
     async def start(self):
         self.token = config.VK_TOKEN
@@ -37,6 +39,59 @@ class VKAdapter(BaseAdapter):
         self._running = False
         if self._task:
             self._task.cancel()
+
+    async def _resolve_user_name(self, session: aiohttp.ClientSession, user_id: int) -> str:
+        """Resolves VK numeric user/group ID to actual name, with caching."""
+        if not user_id:
+            return "Неизвестный отправитель"
+            
+        if user_id > 2000000000:
+            return f"Чат_{user_id - 2000000000}"
+            
+        if user_id < 0:
+            group_id = abs(user_id)
+            if group_id in self._group_cache:
+                return self._group_cache[group_id]
+            try:
+                params = {
+                    "group_ids": group_id,
+                    "access_token": self.token,
+                    "v": "5.131"
+                }
+                async with session.get("https://api.vk.com/method/groups.getById", params=params) as resp:
+                    res = await resp.json()
+                    if "response" in res and res["response"]:
+                        name = res["response"][0].get("name", f"Группа_{group_id}")
+                        self._group_cache[group_id] = name
+                        return name
+            except Exception:
+                pass
+            return f"Группа_{group_id}"
+
+        # Regular User
+        if user_id in self._user_cache:
+            return self._user_cache[user_id]
+            
+        try:
+            params = {
+                "user_ids": user_id,
+                "access_token": self.token,
+                "v": "5.131"
+            }
+            async with session.get("https://api.vk.com/method/users.get", params=params) as resp:
+                res = await resp.json()
+                if "response" in res and res["response"]:
+                    u = res["response"][0]
+                    first_name = u.get("first_name", "")
+                    last_name = u.get("last_name", "")
+                    name = f"{first_name} {last_name}".strip()
+                    if name:
+                        self._user_cache[user_id] = name
+                        return name
+        except Exception as e:
+            logger.warning(f"Error resolving VK user name: {e}")
+            
+        return f"VK_User_{user_id}"
 
     async def _listen_vk(self):
         """Supported User & Group LongPoll polling loop."""
@@ -103,7 +158,8 @@ class VKAdapter(BaseAdapter):
                                             raw_id = f"{user_id}_{msg.get('date', 0)}"
                                         msg_id = f"vk_grp_{raw_id}"
                                         
-                                        await self.emit_message(sender=f"VK_User_{user_id}", text=text, msg_uid=msg_id)
+                                        sender_name = await self._resolve_user_name(session, user_id)
+                                        await self.emit_message(sender=sender_name, text=text, msg_uid=msg_id)
                                 else:
                                     # User LongPoll format: [4, message_id, flags, peer_id, timestamp, text, ...]
                                     if isinstance(event, list) and len(event) > 5 and event[0] == 4:
@@ -115,7 +171,8 @@ class VKAdapter(BaseAdapter):
                                         is_outbox = bool(flags & 2)
                                         if not is_outbox and text:
                                             uid = f"vk_user_msg_{msg_id}"
-                                            await self.emit_message(sender=f"VK_Peer_{peer_id}", text=text, msg_uid=uid)
+                                            sender_name = await self._resolve_user_name(session, peer_id)
+                                            await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
 
                 except asyncio.CancelledError:
                     break
