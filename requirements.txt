@@ -6,3 +6,4 @@ python-dotenv>=1.0.0
 pydantic>=2.6.0
 aioimaplib>=1.0.1
 dnspython>=2.6.0
+aiohttp-socks>=0.8.4
