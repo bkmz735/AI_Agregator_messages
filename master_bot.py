@@ -48,6 +48,9 @@ class MasterBot:
         self.delivery_mode = config.DELIVERY_MODE  # "instant" or "digest"
         self.digest_interval = config.DIGEST_INTERVAL_MINUTES
         self.auto_delete_delay_hours = config.AUTO_DELETE_DELAY_HOURS
+        self.night_mode_enabled = config.NIGHT_MODE_ENABLED
+        self.night_start_hour = config.NIGHT_START_HOUR
+        self.night_end_hour = config.NIGHT_END_HOUR
         self._last_buffer_status_msg_id = None
         self.dp = None
         self.bot = None
@@ -60,6 +63,17 @@ class MasterBot:
 
     def set_flush_raw_queue_callback(self, callback: Callable[[], Awaitable[None]]):
         self.on_flush_raw_queue = callback
+
+    def is_night_time(self) -> bool:
+        """Returns True if Night Mode is enabled and current time falls in quiet hours."""
+        if not self.night_mode_enabled:
+            return False
+        from datetime import datetime
+        now_hour = datetime.now().hour
+        if self.night_start_hour > self.night_end_hour:
+            return now_hour >= self.night_start_hour or now_hour < self.night_end_hour
+        else:
+            return self.night_start_hour <= now_hour < self.night_end_hour
 
     def _init_bot_instance(self, use_proxy: bool = True):
         from aiogram import Bot, Dispatcher
@@ -122,12 +136,14 @@ class MasterBot:
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         mode_label = "⚡ СРАЗУ (Мгновенно)" if self.delivery_mode == "instant" else "📥 СВОДКА (Раз в час)"
         autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
+        night_label = f"🟢 Включен ({self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00)" if self.night_mode_enabled else "Выключен ❌"
         
         text = (
             "⚙️ <b>Панель настроек AI Message Aggregator</b>\n\n"
             f"⚡ <b>Режим отправки:</b> {mode_label}\n"
             f"⏱️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
-            f"🗑️ <b>Резервное автоудаление:</b> {autodelete_label}\n\n"
+            f"🗑️ <b>Резервное автоудаление:</b> {autodelete_label}\n"
+            f"🌙 <b>Ночной режим (Экономия ИИ):</b> {night_label}\n\n"
             "Вы можете изменить параметры, нажав на соответствующие кнопки ниже:"
         )
         
@@ -140,6 +156,12 @@ class MasterBot:
             ],
             [
                 InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")
+            ],
+            [
+                InlineKeyboardButton(text=f"🌙 Ночной режим: {'Вкл 🟢' if not self.night_mode_enabled else 'Выкл ❌'}", callback_data="settings_toggle_night_mode")
+            ],
+            [
+                InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")
             ],
             [
                 InlineKeyboardButton(text="❌ Закрыть настройки", callback_data="delete_msg")
@@ -455,6 +477,62 @@ class MasterBot:
             msg = f"Автоудаление изменено на {delay_val} ч!" if delay_val > 0 else "Автоудаление выключено!"
             await callback_query.answer(msg)
 
+        @self.dp.callback_query(F.data == "settings_toggle_night_mode")
+        async def process_settings_toggle_night_mode(callback_query: types.CallbackQuery):
+            self.night_mode_enabled = not self.night_mode_enabled
+            await self.storage.set_setting("night_mode_enabled", "true" if self.night_mode_enabled else "false")
+            
+            text, kb = await self._get_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            msg = "Ночной режим включен! 🌙" if self.night_mode_enabled else "Ночной режим выключен!"
+            await callback_query.answer(msg)
+
+        @self.dp.callback_query(F.data == "settings_menu_night_hours")
+        async def process_settings_menu_night_hours(callback_query: types.CallbackQuery):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            text = (
+                "🌙 <b>Настройка часов тишины ночного режима:</b>\n\n"
+                f"Текущий интервал: <b>{self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00</b>\n"
+                "Выберите удобный промежуток сна (в это время ИИ отключается, а сообщения не беспокоят):"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="23:00 - 07:00", callback_data="set_nighthours_23_7"),
+                    InlineKeyboardButton(text="00:00 - 08:00", callback_data="set_nighthours_0_8")
+                ],
+                [
+                    InlineKeyboardButton(text="22:00 - 06:00", callback_data="set_nighthours_22_6"),
+                    InlineKeyboardButton(text="01:00 - 09:00", callback_data="set_nighthours_1_9")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
+                ]
+            ])
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("set_nighthours_"))
+        async def process_set_nighthours(callback_query: types.CallbackQuery):
+            parts = callback_query.data.split("_")
+            start_h, end_h = int(parts[2]), int(parts[3])
+            self.night_start_hour = start_h
+            self.night_end_hour = end_h
+            await self.storage.set_setting("night_start_hour", str(start_h))
+            await self.storage.set_setting("night_end_hour", str(end_h))
+            
+            text, kb = await self._get_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer(f"Часы тишины установлены: {start_h:02d}:00 - {end_h:02d}:00!")
+
         @self.dp.message(Command("clear"))
         @self.dp.message(F.text == "🧹 Очистить чат")
         async def cmd_clear_chat(message: types.Message):
@@ -684,6 +762,9 @@ class MasterBot:
             self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
             self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
             self.auto_delete_delay_hours = int(await self.storage.get_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours)))
+            self.night_mode_enabled = (await self.storage.get_setting("night_mode_enabled", "false")).lower() in ("true", "1", "yes")
+            self.night_start_hour = int(await self.storage.get_setting("night_start_hour", str(self.night_start_hour)))
+            self.night_end_hour = int(await self.storage.get_setting("night_end_hour", str(self.night_end_hour)))
             
             await self._register_bot_commands()
             asyncio.create_task(self.start_digest_scheduler())

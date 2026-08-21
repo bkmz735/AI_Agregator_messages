@@ -37,6 +37,11 @@ class Config:
     DB_PATH: str = os.getenv("DB_PATH", "messages_database.db").strip()
     AUTO_DELETE_DELAY_HOURS: int = _get_int_env("AUTO_DELETE_DELAY_HOURS", 1)
     
+    # Night Mode (Quiet Hours - Pause AI & Notifications during sleep to save tokens)
+    NIGHT_MODE_ENABLED: bool = os.getenv("NIGHT_MODE_ENABLED", "false").strip().lower() in ("true", "1", "yes")
+    NIGHT_START_HOUR: int = _get_int_env("NIGHT_START_HOUR", 23)
+    NIGHT_END_HOUR: int = _get_int_env("NIGHT_END_HOUR", 7)
+    
     # System prompt for Gemini spam/importance classification
     AI_FILTER_PROMPT: str = """
 Ты — умный личный ассистент и фильтр спама.

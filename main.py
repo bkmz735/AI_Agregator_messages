@@ -76,6 +76,12 @@ class MessageAggregatorApp:
         async with self._queue_lock:
             if not self.raw_message_queue:
                 return
+            if self.bot and self.bot.is_night_time():
+                logger.info(
+                    f"🌙 Night mode active ({self.bot.night_start_hour:02d}:00 - {self.bot.night_end_hour:02d}:00). "
+                    f"Holding {len(self.raw_message_queue)} messages in queue to save Gemini tokens until morning..."
+                )
+                return
             batch = list(self.raw_message_queue)
             self.raw_message_queue.clear()
 
