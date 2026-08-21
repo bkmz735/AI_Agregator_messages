@@ -2,6 +2,7 @@ import asyncio
 import logging
 import ssl
 import email
+from typing import Optional, Any
 from email.header import decode_header
 from adapters.base_adapter import BaseAdapter
 from config import config
