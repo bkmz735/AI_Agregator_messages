@@ -145,7 +145,7 @@ class MasterBot:
         night_label = f"🟢 Включен ({self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00)" if self.night_mode_enabled else "Выключен ❌"
         
         custom_kws = await self.storage.get_custom_spam_keywords()
-        kw_count_label = f"{len(custom_kws)} слов" if custom_kws else "Пуст ⚪"
+        kw_count_label = f"{len(custom_kws)} своих" if custom_kws else "Базовые 🔒"
 
         text = (
             "⚙️ <b>Панель настроек AI Message Aggregator</b>\n\n"
@@ -153,7 +153,7 @@ class MasterBot:
             f"⏱️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
             f"🗑️ <b>Резервное автоудаление:</b> {autodelete_label}\n"
             f"🌙 <b>Ночной режим (Экономия ИИ):</b> {night_label}\n"
-            f"🚫 <b>Чёрный список спама:</b> {kw_count_label}\n\n"
+            f"🚫 <b>Банворды (Banwords):</b> {kw_count_label}\n\n"
             "Вы можете изменить параметры, нажав на соответствующие кнопки ниже:"
         )
         
@@ -174,7 +174,7 @@ class MasterBot:
                 InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")
             ],
             [
-                InlineKeyboardButton(text="🚫 Управление Чёрным списком", callback_data="settings_menu_blacklist")
+                InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist")
             ],
             [
                 InlineKeyboardButton(text="❌ Закрыть настройки", callback_data="delete_msg")
@@ -570,13 +570,15 @@ class MasterBot:
             rows.append([InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")])
             kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
-            kws_formatted = ", ".join([f"<code>{html.escape(k)}</code>" for k in kws]) if kws else "<i>Список пока пуст</i>"
+            kws_formatted = ", ".join([f"<code>{html.escape(k)}</code>" for k in kws]) if kws else "<i>Своих банвордов пока нет</i>"
             text = (
-                "🚫 <b>Управление Чёрным списком спама</b>\n\n"
-                f"Текущие слова: {kws_formatted}\n\n"
-                "📌 <b>Как использовать:</b>\n"
-                "• Отправьте <code>/block слово</code> — заблокировать новое слово (например: <code>/block ставки</code>)\n"
-                "• Отправьте <code>/unblock слово</code> — разблокировать слово\n"
+                "🚫 <b>Управление Банвордами (Banwords)</b>\n\n"
+                "🔒 <b>Базовые системые банворды (Включены):</b>\n"
+                "<code>казино, 1xbet, вулкан, слоты, фриспины, vpn, выплата, джекпот, букмекер, 1win...</code>\n\n"
+                f"✏️ <b>Ваши персональные банворды:</b>\n{kws_formatted}\n\n"
+                "📌 <b>Как добавить/удалить свой банворд:</b>\n"
+                "• <code>/block слово</code> — заблокировать слово (напр: <code>/block крипта</code>)\n"
+                "• <code>/unblock слово</code> — разблокировать слово\n"
                 "• Или нажимайте ❌ напротив слова ниже:"
             )
             try:
@@ -609,9 +611,9 @@ class MasterBot:
                 word = args[1].strip()
                 added = await self.storage.add_spam_keyword(word)
                 if added:
-                    sent_msg = await message.answer(f"🚫 Слово <b>«{html.escape(word)}»</b> добавлено в Чёрный список!", parse_mode="HTML")
+                    sent_msg = await message.answer(f"🚫 Банворд <b>«{html.escape(word)}»</b> успешно добавлен!", parse_mode="HTML")
                 else:
-                    sent_msg = await message.answer(f"ℹ️ Слово <b>«{html.escape(word)}»</b> уже есть в Чёрном списке.", parse_mode="HTML")
+                    sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word)}»</b> уже есть в списке.", parse_mode="HTML")
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
 
         @self.dp.message(Command("unblock"))
@@ -627,23 +629,34 @@ class MasterBot:
                 word = args[1].strip()
                 removed = await self.storage.remove_spam_keyword(word)
                 if removed:
-                    sent_msg = await message.answer(f"✅ Слово <b>«{html.escape(word)}»</b> удалено из Чёрного списка!", parse_mode="HTML")
+                    sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(word)}»</b> удален!", parse_mode="HTML")
                 else:
-                    sent_msg = await message.answer(f"ℹ️ Слова <b>«{html.escape(word)}»</b> не было в Чёрном списке.", parse_mode="HTML")
+                    sent_msg = await message.answer(f"ℹ️ Банворда <b>«{html.escape(word)}»</b> не было в списке.", parse_mode="HTML")
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
 
+        @self.dp.message(Command("banwords"))
         @self.dp.message(Command("blacklist"))
         async def cmd_blacklist(message: types.Message):
             try:
                 await message.delete()
             except Exception:
                 pass
+            await self._clear_previous_ui_panels()
             kws = await self.storage.get_custom_spam_keywords()
             if not kws:
-                txt = "🚫 <b>Ваш Чёрный список спама пуст.</b>\n\nЧтобы добавить слово: <code>/block слово</code>"
+                txt = (
+                    "🚫 <b>Список банвордов (Banwords)</b>\n\n"
+                    "🔒 <b>Базовые системные:</b> <code>казино, 1xbet, вулкан, слоты, vpn, выплата, джекпот...</code>\n\n"
+                    "<i>Персональных банвордов пока нет.</i>\n\n"
+                    "Чтобы добавить свой банворд: <code>/block слово</code>"
+                )
             else:
                 formatted = "\n".join([f"• <code>{html.escape(k)}</code>" for k in kws])
-                txt = f"🚫 <b>Ваш Чёрный список спама ({len(kws)}):</b>\n\n{formatted}\n\nДля добавления: <code>/block слово</code>\nДля удаления: <code>/unblock слово</code>"
+                txt = (
+                    f"🚫 <b>Ваши Банворды ({len(kws)}):</b>\n\n{formatted}\n\n"
+                    "Добавить: <code>/block слово</code>\n"
+                    "Удалить: <code>/unblock слово</code>"
+                )
             
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
