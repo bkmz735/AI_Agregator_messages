@@ -13,9 +13,10 @@ class BaseAdapter(ABC):
     def set_callback(self, callback: MessageCallback):
         self._callback = callback
 
-    async def emit_message(self, sender: str, text: str, msg_uid: str):
+    async def emit_message(self, sender: str, text: str, msg_uid: str, channel_override: str = None):
         if self._callback:
-            await self._callback(self.name, sender, text, msg_uid)
+            channel = channel_override or self.name
+            await self._callback(channel, sender, text, msg_uid)
 
     @abstractmethod
     async def start(self):

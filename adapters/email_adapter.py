@@ -16,7 +16,7 @@ def _create_ssl_context():
 
 class EmailAdapter(BaseAdapter):
     def __init__(self):
-        super().__init__(name="Email (Avito/Instagram)")
+        super().__init__(name="Email (Mail.ru)")
         self.server = config.IMAP_SERVER
         self.port = config.IMAP_PORT
         self.user = config.IMAP_USER
@@ -153,7 +153,7 @@ class EmailAdapter(BaseAdapter):
                                 text_full = f"Тема: {subject}\n\n{body[:500]}"
                                 
                                 logger.info(f"Emitting email: [{channel_name}] From: {from_addr} Subject: {subject}")
-                                await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid)
+                                await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid, channel_override=channel_name)
                                 self._seen_nums.add(num_str)
                             else:
                                 logger.warning(f"Email #{num_str}: could not extract raw body from IMAP response.")
