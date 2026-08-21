@@ -241,7 +241,8 @@ class MasterBot:
                 InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")
             ],
             [
-                InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist")
+                InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist"),
+                InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
             ],
             [
                 InlineKeyboardButton(text="❌ Закрыть настройки", callback_data="delete_msg")
@@ -307,10 +308,37 @@ class MasterBot:
             logger.info(f"Purged recent chat history ({len(msg_ids)} msgs) around ID {start_id}")
 
     async def update_status_banner(self, chat_id: Optional[int] = None):
-        """Creates or updates the single active status banner in-place."""
+        """Creates or updates the single active status banner in-place with interactive inline controls."""
         buf_count = await self.storage.get_buffer_count()
-        text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
-        kb = self._get_menu_keyboard(buf_count)
+        text = (
+            "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>\n\n"
+            "Выберите нужный раздел или действие на панели ниже:"
+        )
+        
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        inline_rows = []
+        if buf_count > 0:
+            inline_rows.append([
+                InlineKeyboardButton(text=f"📥 Буфер ({buf_count})", callback_data="cmd_buf_inline"),
+                InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")
+            ])
+        else:
+            inline_rows.append([
+                InlineKeyboardButton(text="📥 Буфер (0)", callback_data="cmd_buf_inline")
+            ])
+            
+        inline_rows.append([
+            InlineKeyboardButton(text="📊 Статистика", callback_data="cmd_stats_inline"),
+            InlineKeyboardButton(text="⚙️ Настройки", callback_data="settings_main_menu")
+        ])
+        
+        inline_rows.append([
+            InlineKeyboardButton(text="🛠️ Логи", callback_data="refresh_logs"),
+            InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
+        ])
+
+        kb = InlineKeyboardMarkup(inline_keyboard=inline_rows)
         await self.show_or_edit_ui_panel(text=text, keyboard=kb)
 
     def _setup_handlers(self):
@@ -1045,37 +1073,76 @@ class MasterBot:
                 pass
             await callback_query.answer("Статистика успешно сброшена!")
 
+        @self.dp.callback_query(F.data == "cmd_buf_inline")
+        async def process_cmd_buf_inline(callback_query: types.CallbackQuery):
+            await callback_query.answer()
+            buf_count = await self.storage.get_buffer_count()
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            if buf_count > 0:
+                text = (
+                    f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
+                    "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
+                )
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
+                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                ])
+            else:
+                text = (
+                    "📥 <b>Буфер пуст!</b> Новых сообщений для сводки пока нет.\n"
+                    "Бот собирает входящие письма и сообщения в фоновом режиме."
+                )
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                ])
+
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
+
+        @self.dp.callback_query(F.data == "cmd_stats_inline")
+        async def process_cmd_stats_inline(callback_query: types.CallbackQuery):
+            await callback_query.answer()
+            stats = await self.storage.get_stats()
+            buf_count = await self.storage.get_buffer_count()
+
+            stats_msg = (
+                "📊 <b>Статистика агрегатора:</b>\n\n"
+                f"🚨 <b>Срочные:</b> {stats.get('urgent', 0)}\n"
+                f"⭐ <b>Важные:</b> {stats.get('important', 0)}\n"
+                f"💬 <b>Обычные:</b> {stats.get('general', 0)}\n"
+                f"🚫 <b>Отфильтровано спама:</b> {stats.get('spam', 0)}\n\n"
+                f"📥 <b>Не доставлено в буфере:</b> {buf_count}"
+            )
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats"),
+                    InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
+                ]
+            ])
+            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
+
+        @self.dp.callback_query(F.data == "prompt_clear_chat")
         @self.dp.message(Command("clear"))
         @self.dp.message(F.text == "🧹 Очистить чат")
-        async def cmd_clear_chat(message: types.Message):
-            # Delete the user's trigger message to keep it clean
-            try:
-                await message.delete()
-            except Exception:
-                pass
-
-            # Auto-delete previous clear prompt if open
-            if self._last_clear_prompt_msg_id:
+        async def cmd_clear_chat(event: Any):
+            if isinstance(event, types.Message):
                 try:
-                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_clear_prompt_msg_id)
+                    await event.delete()
                 except Exception:
                     pass
-                self._last_clear_prompt_msg_id = None
+            elif isinstance(event, types.CallbackQuery):
+                await event.answer()
 
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [
                     InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat"),
-                    InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_clear_chat")
+                    InlineKeyboardButton(text="❌ Отмена", callback_data="delete_msg")
                 ]
             ])
-            sent_msg = await message.answer(
-                text="⚠️ <b>Вы действительно хотите очистить чат в Telegram?</b>\n<i>(Сообщения останутся в базе данных)</i>",
-                reply_markup=inline_kb,
-                parse_mode="HTML"
-            )
-            self._last_clear_prompt_msg_id = sent_msg.message_id
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+            text = "⚠️ <b>Вы действительно хотите очистить последние сообщения в чате?</b>\n<i>(Сообщения останутся в базе данных)</i>"
+            await self.show_or_edit_ui_panel(text=text, keyboard=inline_kb)
 
         # Handle inline "Close / Cancel" button click — smoothly returns UI to active status banner
         @self.dp.callback_query(F.data == "delete_msg")
@@ -1088,34 +1155,21 @@ class MasterBot:
         async def process_confirm_clear_chat(callback_query: types.CallbackQuery):
             await callback_query.answer("Очистка чата...")
             
-            # Delete the confirmation message immediately
-            try:
-                await callback_query.message.delete()
-            except Exception:
-                pass
-                
-            # Perform deletion loop and keyboard restoration asynchronously in background
+            # Reset UI msg id so fresh status banner is sent after purge
+            self._last_ui_msg_id = None
+            target_chat = callback_query.message.chat.id
+            current_id = callback_query.message.message_id
+
             async def _do_delete_bg():
-                current_id = callback_query.message.message_id
-                for msg_id in range(current_id, current_id - 100, -1):
+                for msg_id in range(current_id, current_id - 30, -1):
                     try:
-                        await self.bot.delete_message(chat_id=callback_query.message.chat.id, message_id=msg_id)
+                        await self.bot.delete_message(chat_id=target_chat, message_id=msg_id)
                     except Exception:
                         pass
 
-                self._last_buffer_status_msg_id = None
-                await self.update_status_banner(callback_query.message.chat.id)
+                await self.update_status_banner(target_chat)
 
             asyncio.create_task(_do_delete_bg())
-
-        @self.dp.callback_query(F.data == "cancel_clear_chat")
-        async def process_cancel_clear_chat(callback_query: types.CallbackQuery):
-            # Just delete the confirmation message
-            try:
-                await callback_query.message.delete()
-            except Exception:
-                pass
-            await callback_query.answer()
 
     async def handle_incoming_analyzed_message(
         self, channel: str, sender: str, text: str, category: str, summary: str, action_required: bool, suggested_reply: Optional[str] = None
