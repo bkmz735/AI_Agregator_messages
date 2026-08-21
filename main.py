@@ -3,7 +3,7 @@ import logging
 import sys
 import uuid
 from typing import List, Dict, Any
-from banwords import is_spam_text
+from banwords import is_text_spam
 from config import config
 from storage import Storage
 from ai_engine import AIEngine
