@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import html
-import urllib.parse
 from typing import Optional, Callable, Awaitable
 from config import config
 from storage import Storage
@@ -33,24 +32,15 @@ class MasterBot:
     def _init_bot_instance(self, use_proxy: bool = True):
         from aiogram import Bot, Dispatcher
         from aiogram.client.session.aiohttp import AiohttpSession
-        from aiohttp import BasicAuth
         
         session = None
         proxy_url = config.TELEGRAM_PROXY if use_proxy else None
         
         if proxy_url:
             try:
-                # Parse credentials if present in URL (http://user:pass@host:port)
-                parsed = urllib.parse.urlparse(proxy_url)
-                proxy_auth = None
-                clean_proxy_url = proxy_url
-
-                if parsed.username and parsed.password:
-                    proxy_auth = BasicAuth(parsed.username, parsed.password)
-                    clean_proxy_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
-
-                session = AiohttpSession(proxy=clean_proxy_url, proxy_auth=proxy_auth)
-                logger.info(f"Telegram Bot AiohttpSession initialized with proxy: {clean_proxy_url} (Auth: {'Yes' if proxy_auth else 'No'})")
+                # Pass full proxy URL (http://user:pass@host:port) directly to AiohttpSession
+                session = AiohttpSession(proxy=proxy_url)
+                logger.info(f"Telegram Bot AiohttpSession initialized with proxy: {proxy_url}")
             except Exception as pe:
                 logger.warning(f"Proxy setup warning ({proxy_url}): {pe}. Using direct connection.")
                 session = None
@@ -58,7 +48,7 @@ class MasterBot:
         self.bot = Bot(token=self.bot_token, session=session)
         self.dp = Dispatcher()
         self._setup_handlers()
-        logger.info(f"Telegram MasterBot initialized (Proxy: {clean_proxy_url if session else 'Direct'}).")
+        logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
