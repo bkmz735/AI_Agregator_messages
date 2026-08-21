@@ -148,8 +148,12 @@ class EmailAdapter(BaseAdapter):
                                 elif "instagram" in from_addr.lower():
                                     channel_name = "Instagram (Email)"
 
-                                msg_id_val = msg.get('Message-ID', num_str)
-                                msg_uid = f"email_{msg_id_val.strip('<>')}"
+                                msg_id_val = msg.get('Message-ID')
+                                if msg_id_val:
+                                    msg_uid = f"email_{str(msg_id_val).strip('<> ')}"
+                                else:
+                                    date_val = msg.get('Date', '')
+                                    msg_uid = f"email_fallback_{from_addr}_{subject}_{date_val}"
                                 text_full = f"Тема: {subject}\n\n{body[:500]}"
                                 
                                 logger.info(f"Emitting email: [{channel_name}] From: {from_addr} Subject: {subject}")

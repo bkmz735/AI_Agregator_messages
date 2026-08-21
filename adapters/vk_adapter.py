@@ -96,7 +96,13 @@ class VKAdapter(BaseAdapter):
                                         msg = event["object"]["message"]
                                         user_id = msg.get("from_id")
                                         text = msg.get("text", "")
-                                        msg_id = f"vk_grp_{msg.get('id', user_id)}"
+                                        
+                                        # Fix: generate a bulletproof unique ID
+                                        raw_id = msg.get("id") or msg.get("conversation_message_id")
+                                        if not raw_id or raw_id == 0:
+                                            raw_id = f"{user_id}_{msg.get('date', 0)}"
+                                        msg_id = f"vk_grp_{raw_id}"
+                                        
                                         await self.emit_message(sender=f"VK_User_{user_id}", text=text, msg_uid=msg_id)
                                 else:
                                     # User LongPoll format: [4, message_id, flags, peer_id, timestamp, text, ...]
