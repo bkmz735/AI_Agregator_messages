@@ -946,6 +946,20 @@ class MasterBot:
                 pass
             await callback_query.answer()
 
+            # If no active UI panels remain open, restore the active status banner to keep keyboard pinned
+            if not self._last_buffer_status_msg_id and not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
+                try:
+                    buf_count = await self.storage.get_buffer_count()
+                    sent_msg = await self.bot.send_message(
+                        chat_id=callback_query.message.chat.id,
+                        text="🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
+                        reply_markup=self._get_menu_keyboard(buf_count),
+                        parse_mode="HTML"
+                    )
+                    self._last_buffer_status_msg_id = sent_msg.message_id
+                except Exception as be:
+                    logger.error(f"Failed to post active status banner after closing panel: {be}")
+
         # Handle inline confirmation of chat clearing
         @self.dp.callback_query(F.data == "confirm_clear_chat")
         async def process_confirm_clear_chat(callback_query: types.CallbackQuery):
