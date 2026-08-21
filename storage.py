@@ -113,6 +113,13 @@ class Storage:
                         stats[category] = count
                 return stats
 
+    async def reset_stats(self):
+        """Clears all historical delivered and spam message records to reset statistics."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM messages WHERE is_delivered = 1 OR category = 'spam'")
+            await db.commit()
+            logger.info("Message statistics reset successfully.")
+
     async def save_sent_notification(self, chat_id: int, message_id: int, delay_seconds: int):
         """Saves sent message ID and calculates deletion time."""
         import datetime

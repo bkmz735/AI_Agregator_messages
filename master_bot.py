@@ -349,7 +349,10 @@ class MasterBot:
             )
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                [
+                    InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats"),
+                    InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
+                ]
             ])
             # Send stats with inline delete button, but also attach the reply keyboard to update the state
             sent_msg = await message.answer(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
@@ -532,6 +535,52 @@ class MasterBot:
             except Exception:
                 pass
             await callback_query.answer(f"Часы тишины установлены: {start_h:02d}:00 - {end_h:02d}:00!")
+
+        @self.dp.callback_query(F.data == "confirm_reset_stats")
+        async def process_confirm_reset_stats(callback_query: types.CallbackQuery):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Да, сбросить", callback_data="do_reset_stats"),
+                    InlineKeyboardButton(text="❌ Отмена", callback_data="delete_msg")
+                ]
+            ])
+            try:
+                await callback_query.message.edit_text(
+                    "⚠️ <b>Вы действительно хотите сбросить всю накопленную статистику сообщений?</b>",
+                    reply_markup=inline_kb,
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data == "do_reset_stats")
+        async def process_do_reset_stats(callback_query: types.CallbackQuery):
+            await self.storage.reset_stats()
+            stats = await self.storage.get_stats()
+            buf_count = await self.storage.get_buffer_count()
+
+            stats_msg = (
+                "📊 <b>Статистика агрегатора (Сброшено ✅):</b>\n\n"
+                f"🚨 <b>Срочные:</b> {stats.get('urgent', 0)}\n"
+                f"⭐ <b>Важные:</b> {stats.get('important', 0)}\n"
+                f"💬 <b>Обычные:</b> {stats.get('general', 0)}\n"
+                f"🚫 <b>Отфильтровано спама:</b> {stats.get('spam', 0)}\n\n"
+                f"📥 <b>Не доставлено в буфере:</b> {buf_count}"
+            )
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats"),
+                    InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
+                ]
+            ])
+            try:
+                await callback_query.message.edit_text(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer("Статистика успешно сброшена!")
 
         @self.dp.message(Command("clear"))
         @self.dp.message(F.text == "🧹 Очистить чат")
