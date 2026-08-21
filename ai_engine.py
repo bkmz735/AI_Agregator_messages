@@ -71,6 +71,12 @@ class AIEngine:
         self.rate_limit_until: float = 0.0
         self.last_error_reason: Optional[str] = None
 
+        # Dynamically test models in priority order. If one is exhausted (429 daily) or unsupported (404),
+        # we skip it and try the next one.
+        self.priority_models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
+        self.exhausted_models = set()  # Daily exhausted models (reset daily)
+        self.unsupported_models = set()  # Deprecated/invalid models (permanent during session)
+
         if self.api_key:
             try:
                 from google import genai
@@ -89,6 +95,7 @@ class AIEngine:
         # Reset daily counter at midnight
         if today != self.last_reset_date:
             self.requests_today = 0
+            self.exhausted_models.clear()
             self.last_reset_date = today
 
         self.requests_today += 1
@@ -140,7 +147,11 @@ class AIEngine:
                 "и предложи готовый черновик ответа (suggested_reply).\n"
                 "Ответ верни строго в формате JSON с ключами: transcription, category, summary, action_required, suggested_reply."
             )
-            for model_name in ['gemini-3.6-flash']:
+            active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+            if not active_models:
+                logger.warning("No active Gemini models available (all exhausted or unsupported for today).")
+            
+            for model_name in active_models:
                 try:
                     self._track_request()
                     response = await asyncio.wait_for(
@@ -164,14 +175,24 @@ class AIEngine:
                         )
                 except Exception as e:
                     err_str = str(e)
+                    # Handle 404 (model deprecated / unsupported)
+                    if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
+                        logger.warning(f"Gemini model {model_name} is unsupported (404). Adding to unsupported list permanently.")
+                        self.unsupported_models.add(model_name)
+                        continue
+                    
+                    # Handle 429 (quota exhausted)
                     if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                         if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
-                            self.rate_limit_until = time.time() + 86400.0
-                            logger.error(f"Gemini API Daily Quota Limit hit! Pausing API calls for 24h. Error: {e}")
+                            logger.error(f"Gemini model {model_name} hit daily quota limit. Adding to exhausted list.")
+                            self.exhausted_models.add(model_name)
+                            # Try next model in loop immediately
+                            continue
                         else:
+                            # RPM limit (minute block) - pause the engine briefly
                             self.rate_limit_until = time.time() + 60.0
-                            logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
-                        break
+                            logger.error(f"Gemini API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
+                            break
                     logger.warning(f"Audio transcription model {model_name} failed: {e}")
                     continue
 
@@ -218,7 +239,11 @@ class AIEngine:
                     f"Проанализируй список входящих сообщений ниже и верни массив JSON ответов для каждого сообщения:\n"
                     f"{batch_json_input}"
                 )
-                for model_name in ['gemini-3.6-flash']:
+                active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+                if not active_models:
+                    logger.warning("No active Gemini models available (all exhausted or unsupported for today).")
+                
+                for model_name in active_models:
                     try:
                         self._track_request()
                         response = await asyncio.wait_for(
@@ -246,14 +271,24 @@ class AIEngine:
                                 return results
                     except Exception as e:
                         err_str = str(e)
+                        # Handle 404 (model deprecated / unsupported)
+                        if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
+                            logger.warning(f"Gemini model {model_name} is unsupported (404). Adding to unsupported list permanently.")
+                            self.unsupported_models.add(model_name)
+                            continue
+                        
+                        # Handle 429 (quota exhausted)
                         if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                             if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
-                                self.rate_limit_until = time.time() + 86400.0
-                                logger.error(f"Gemini API Daily Quota Limit hit! Pausing API calls for 24h. Error: {e}")
+                                logger.error(f"Gemini model {model_name} hit daily quota limit. Adding to exhausted list.")
+                                self.exhausted_models.add(model_name)
+                                # Try next model in loop immediately
+                                continue
                             else:
+                                # RPM limit (minute block) - pause the engine briefly
                                 self.rate_limit_until = time.time() + 60.0
-                                logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
-                            break
+                                logger.error(f"Gemini API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
+                                break
                         logger.warning(f"Batch analysis model {model_name} failed: {e}")
                         continue
 
