@@ -1280,17 +1280,20 @@ class MasterBot:
         if self.bot and self.dp:
             logger.info("Starting Telegram Bot Polling loop...")
             
-            # Load settings asynchronously from DB
-            self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
-            self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
-            self.auto_delete_delay_hours = int(await self.storage.get_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours)))
-            self.night_mode_enabled = (await self.storage.get_setting("night_mode_enabled", "false")).lower() in ("true", "1", "yes")
-            self.night_start_hour = int(await self.storage.get_setting("night_start_hour", str(self.night_start_hour)))
-            self.night_end_hour = int(await self.storage.get_setting("night_end_hour", str(self.night_end_hour)))
-            
-            saved_status_id = await self.storage.get_setting("last_status_msg_id")
-            if saved_status_id and saved_status_id.isdigit():
-                self._last_buffer_status_msg_id = int(saved_status_id)
+            try:
+                # Load settings asynchronously from DB
+                self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
+                self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
+                self.auto_delete_delay_hours = int(await self.storage.get_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours)))
+                self.night_mode_enabled = (await self.storage.get_setting("night_mode_enabled", "false")).lower() in ("true", "1", "yes")
+                self.night_start_hour = int(await self.storage.get_setting("night_start_hour", str(self.night_start_hour)))
+                self.night_end_hour = int(await self.storage.get_setting("night_end_hour", str(self.night_end_hour)))
+                
+                saved_status_id = await self.storage.get_setting("last_status_msg_id")
+                if saved_status_id and saved_status_id.isdigit():
+                    self._last_buffer_status_msg_id = int(saved_status_id)
+            except Exception as se:
+                logger.error(f"Error loading settings from DB: {se}", exc_info=True)
 
             await self._register_bot_commands()
             asyncio.create_task(self.update_status_banner(self.master_chat_id))

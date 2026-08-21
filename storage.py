@@ -307,6 +307,22 @@ class Storage:
                 )
             await db.commit()
 
+    async def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Fetches a setting value from SQLite settings table."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else default
+
+    async def set_setting(self, key: str, value: str):
+        """Saves or updates a setting key-value pair in SQLite settings table."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, str(value))
+            )
+            await db.commit()
+
     # Legacy compatibility methods
     async def get_custom_spam_keywords(self) -> List[str]:
         bws = await self.get_banwords()
