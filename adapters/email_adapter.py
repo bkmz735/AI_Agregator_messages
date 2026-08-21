@@ -15,22 +15,7 @@ def _create_ssl_context():
     ctx.verify_mode = ssl.CERT_NONE
     return ctx
 
-SPAM_KEYWORDS = [
-    # Casino & Gambling
-    "казино", "casino", "1xbet", "1хбет", "vulkan", "вулкан", "pin-up", "pinup",
-    "pokerdom", "покердом", "слоты", "slots", "freespin", "фриспин", "ставка",
-    "ставки", "букмекер", "1win", "joycasino", "джойказино", "777",
-    "бездеп", "бездепозитный", "азартн", "игровой автомат", "игровые автоматы",
-    "рулетка", "рулетк", "джекпот", "jackpot",
-
-    # VPN Spam
-    "vpn", "впн", "бесплатный vpn", "скачать vpn",
-
-    # Winnings / Phishing / Fraud
-    "выигрыш", "выиграли", "бонус 500", "заберите бонус", "вам начислено",
-    "выплата одобрена", "перевод средств", "криптобонус", "финансовая пирамида",
-    "пассивный доход"
-]
+from banwords import SYSTEM_BANWORDS
 
 class EmailAdapter(BaseAdapter):
     def __init__(self, storage: Optional[Any] = None):
@@ -164,7 +149,7 @@ class EmailAdapter(BaseAdapter):
                                 # Check for Casino / VPN / Financial Scam & Custom Blacklist Spam
                                 combined_search_text = f"{subject} {from_addr} {body}".lower()
                                 custom_kws = await self.storage.get_custom_spam_keywords() if self.storage else []
-                                all_spam_kws = SPAM_KEYWORDS + custom_kws
+                                all_spam_kws = SYSTEM_BANWORDS + custom_kws
                                 matched_spam_kw = next((kw for kw in all_spam_kws if kw in combined_search_text), None)
                                 
                                 if matched_spam_kw:

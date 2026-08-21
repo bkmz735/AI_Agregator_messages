@@ -3,6 +3,7 @@ import logging
 import sys
 import uuid
 from typing import List, Dict, Any
+from banwords import is_spam_text
 from config import config
 from storage import Storage
 from ai_engine import AIEngine
@@ -53,19 +54,18 @@ class MessageAggregatorApp:
             logger.info(f"Duplicate message skipped: {msg_uid}")
             return
 
-        # 2. Pre-check custom spam keywords
+        # 2. Pre-check system & custom banwords
         custom_spam_kws = await self.storage.get_custom_spam_keywords()
-        combined_str = f"{sender} {text}".lower()
-        matched_kw = next((kw for kw in custom_spam_kws if kw in combined_str), None)
-        if matched_kw:
-            logger.warning(f"🚫 [SPAM FILTER] Message from [{channel}] '{sender}' matched custom spam keyword '{matched_kw}'. Auto-banned.")
+        combined_str = f"{sender} {text}"
+        if is_spam_text(combined_str, custom_spam_kws):
+            logger.warning(f"🚫 [SPAM FILTER] Message from [{channel}] '{sender}' matched banword. Auto-banned.")
             await self.storage.save_message(
                 msg_uid=msg_uid,
                 channel=channel,
                 sender=sender,
                 text=text,
                 category="spam",
-                summary=f"Отфильтровано по ключевому слову: {matched_kw}",
+                summary="Отфильтровано по Банворду (Banword)",
                 action_required=False,
                 is_delivered=True
             )
