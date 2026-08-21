@@ -293,14 +293,21 @@ class MasterBot:
             buf_count = await self.storage.get_buffer_count()
 
             stats_msg = (
-                "📊 **Статистика агрегатора:**\n\n"
-                f"🚨 Срочные: {stats.get('urgent', 0)}\n"
-                f"⭐ Важные: {stats.get('important', 0)}\n"
-                f"💬 Обычные: {stats.get('general', 0)}\n"
-                f"🚫 Отфильтровано спама: {stats.get('spam', 0)}\n\n"
-                f"📥 Не доставлено в буфере: {buf_count}"
+                "📊 <b>Статистика агрегатора:</b>\n\n"
+                f"🚨 <b>Срочные:</b> {stats.get('urgent', 0)}\n"
+                f"⭐ <b>Важные:</b> {stats.get('important', 0)}\n"
+                f"💬 <b>Обычные:</b> {stats.get('general', 0)}\n"
+                f"🚫 <b>Отфильтровано спама:</b> {stats.get('spam', 0)}\n\n"
+                f"📥 <b>Не доставлено в буфере:</b> {buf_count}"
             )
-            await message.answer(stats_msg, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+            ])
+            # Send stats with inline delete button, but also attach the reply keyboard to update the state
+            await message.answer(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
+            # Update reply keyboard count invisibly by just refreshing it if needed
+            # (or we can just leave it as is since reply keyboard is persistent)
 
         @self.dp.message(F.text == "⚙️ Настройки")
         @self.dp.message(Command("settings"))
@@ -436,9 +443,9 @@ class MasterBot:
                 ]
             ])
             await message.answer(
-                text="⚠️ **Вы действительно хотите очистить чат в Telegram?**\n*(Сообщения останутся в базе данных)*",
+                text="⚠️ <b>Вы действительно хотите очистить чат в Telegram?</b>\n<i>(Сообщения останутся в базе данных)</i>",
                 reply_markup=inline_kb,
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
 
         # Handle inline "Read/Delete" button click
