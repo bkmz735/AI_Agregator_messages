@@ -16,10 +16,11 @@ CATEGORY_EMOJIS = {
 }
 
 class MasterBot:
-    def __init__(self, storage: Storage, simulate_callback: Optional[Callable[[str, str, str], Awaitable[None]]] = None):
+    def __init__(self, storage: Storage, simulate_callback: Optional[Callable[[str, str, str], Awaitable[None]]] = None, ai_engine: Optional[Any] = None):
         self.bot_token = config.TELEGRAM_BOT_TOKEN
         self.master_chat_id = config.MASTER_CHAT_ID
         self.storage = storage
+        self.ai_engine = ai_engine
         self.simulate_callback = simulate_callback
         self.delivery_mode = config.DELIVERY_MODE  # "instant" or "digest"
         self.digest_interval = config.DIGEST_INTERVAL_MINUTES
@@ -28,6 +29,9 @@ class MasterBot:
 
         if self.bot_token:
             self._init_bot_instance(use_proxy=True if config.TELEGRAM_PROXY else False)
+
+    def set_ai_engine(self, ai_engine):
+        self.ai_engine = ai_engine
 
     def _init_bot_instance(self, use_proxy: bool = True):
         from aiogram import Bot, Dispatcher
@@ -38,7 +42,6 @@ class MasterBot:
         
         if proxy_url:
             try:
-                # Pass full proxy URL (http://user:pass@host:port) directly to AiohttpSession
                 session = AiohttpSession(proxy=proxy_url)
                 logger.info(f"Telegram Bot AiohttpSession initialized with proxy: {proxy_url}")
             except Exception as pe:
@@ -77,6 +80,7 @@ class MasterBot:
     def _setup_handlers(self):
         from aiogram.filters import Command
         from aiogram import types, F
+        import io
 
         @self.dp.message(Command("start"))
         async def cmd_start(message: types.Message):
@@ -85,6 +89,7 @@ class MasterBot:
                 "🤖 **AI Message Aggregator & Buffer Bot**\n\n"
                 "Я собираю сообщения из VK, Авито, TG и Mail.ru, отсеиваю спам через ИИ "
                 "и присылаю важные выжимки по вашему графику.\n\n"
+                "🎙️ **Отправьте мне голосовое сообщение** — я мгновенно переведу его в текст и подготовлю выжимку!\n\n"
                 "🚨 **Срочные сообщения** приходят мгновенно!\n"
                 "📥 **Обычные и важные** копятся в буфере и отправляются сводкой.\n\n"
                 "Используйте кнопку `/help` для справки по командам.",
@@ -102,12 +107,67 @@ class MasterBot:
                 "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать выжимку из буфера прямо сейчас\n"
                 "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику категорий и спама\n"
                 "🔹 `/mode` (или ⚙️ Режим) — Переключить режим (Мгновенный / По расписанию)\n\n"
+                "🎙️ **Расшифровка голосовых:** перешлите или отправьте голосуху, и ИИ переведет её в текст!\n\n"
                 "💡 **Как работает агрегатор:**\n"
                 "• Спам отсеивается ИИ и не беспокоит вас.\n"
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
                 "• Срочные сообщения приходят сразу с готовым черновиком ответа!"
             )
             await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
+
+        @self.dp.message(F.voice | F.audio)
+        async def handle_voice_message(message: types.Message):
+            """Transcribes voice or audio messages via Gemini Multimodal API."""
+            status_msg = await message.answer("🎙️ *Расшифровываю голосовое сообщение через Gemini AI...*", parse_mode="Markdown")
+            try:
+                voice_or_audio = message.voice or message.audio
+                file_info = await self.bot.get_file(voice_or_audio.file_id)
+                audio_stream = io.BytesIO()
+                await self.bot.download_file(file_info.file_path, destination=audio_stream)
+                audio_bytes = audio_stream.getvalue()
+                
+                mime_type = getattr(voice_or_audio, 'mime_type', 'audio/ogg') or 'audio/ogg'
+                sender_name = message.from_user.full_name or message.from_user.username or "Пользователь"
+
+                if self.ai_engine:
+                    res = await self.ai_engine.transcribe_and_analyze_audio(audio_bytes, mime_type=mime_type)
+                else:
+                    from ai_engine import AudioAnalysisResult
+                    res = AudioAnalysisResult(
+                        transcription="[Расшифровка недоступна]",
+                        category="important",
+                        summary="Голосовое сообщение",
+                        action_required=True,
+                        suggested_reply="Спасибо за сообщение!"
+                    )
+
+                emoji = CATEGORY_EMOJIS.get(res.category, "💬")
+                reply_part = f"\n\n💡 **Черновик ответа:**\n`{html.escape(res.suggested_reply)}`" if res.suggested_reply else ""
+                
+                text_response = (
+                    f"🎙️ **РАСШИФРОВКА ГОЛОСОВОГО** ({emoji})\n"
+                    f"👤 **От:** {html.escape(sender_name)}\n\n"
+                    f"🗣️ **Текст записи:**\n_{html.escape(res.transcription)}_\n\n"
+                    f"📝 **Выжимка ИИ:**\n{html.escape(res.summary)}{reply_part}"
+                )
+
+                await status_msg.edit_text(text_response, parse_mode="Markdown")
+
+                # Also queue it in DB
+                await self.storage.save_message(
+                    msg_uid=f"tg_voice_{message.message_id}",
+                    channel="Telegram Voice",
+                    sender=sender_name,
+                    text=f"[Voice] {res.transcription}",
+                    category=res.category,
+                    summary=res.summary,
+                    action_required=res.action_required,
+                    suggested_reply=res.suggested_reply,
+                    is_delivered=True
+                )
+            except Exception as e:
+                logger.error(f"Error processing voice message: {e}")
+                await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
 
         @self.dp.message(F.text.startswith("📥 Буфер"))
         async def cmd_buffer(message: types.Message):

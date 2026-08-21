@@ -43,7 +43,7 @@ class MessageAggregatorApp:
 
         self.storage = Storage()
         self.ai_engine = AIEngine()
-        self.bot = MasterBot(storage=self.storage, simulate_callback=self.process_incoming_message)
+        self.bot = MasterBot(storage=self.storage, simulate_callback=self.process_incoming_message, ai_engine=self.ai_engine)
         
         self.adapters = [
             VKAdapter(),

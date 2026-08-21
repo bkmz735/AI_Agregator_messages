@@ -46,6 +46,13 @@ class AnalysisResult(BaseModel):
 class AnalysisBatchResponse(BaseModel):
     results: List[AnalysisResult]
 
+class AudioAnalysisResult(BaseModel):
+    transcription: str
+    category: str
+    summary: str
+    action_required: bool
+    suggested_reply: Optional[str] = None
+
 class AIEngine:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or config.GEMINI_API_KEY
@@ -60,6 +67,51 @@ class AIEngine:
                 logger.warning(f"Could not initialize google.genai Client: {e}. Falling back to rule-based analysis.")
         else:
             logger.info("No GEMINI_API_KEY set. Running in rule-based simulation mode.")
+
+    async def transcribe_and_analyze_audio(self, audio_bytes: bytes, mime_type: str = "audio/ogg") -> AudioAnalysisResult:
+        """Transcribes audio/voice message using Gemini multimodal capabilities and analyzes it."""
+        if self.client and audio_bytes:
+            from google.genai import types
+            part = types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+            prompt = (
+                "Расшифруй это голосовое сообщение дословно на русском языке. "
+                "Затем определи его категорию (spam, urgent, important, general), "
+                "составь краткое резюме (summary), проверь требуется ли ответ (action_required), "
+                "и предложи готовый черновик ответа (suggested_reply).\n"
+                "Ответ верни строго в формате JSON с ключами: transcription, category, summary, action_required, suggested_reply."
+            )
+            for model_name in ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest']:
+                try:
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self.client.models.generate_content,
+                            model=model_name,
+                            contents=[part, prompt],
+                            config={'response_mime_type': 'application/json'}
+                        ),
+                        timeout=15.0
+                    )
+                    if response and response.text:
+                        parsed = json.loads(response.text)
+                        logger.info(f"Successfully transcribed audio ({len(audio_bytes)} bytes) using Gemini {model_name}.")
+                        return AudioAnalysisResult(
+                            transcription=parsed.get("transcription", "Расшифровка недоступна"),
+                            category=parsed.get("category", "important"),
+                            summary=parsed.get("summary", "Голосовое сообщение"),
+                            action_required=parsed.get("action_required", True),
+                            suggested_reply=parsed.get("suggested_reply", "Спасибо за голосовое сообщение! Прослушал, отвечу в ближайшее время.")
+                        )
+                except Exception as e:
+                    logger.warning(f"Audio transcription model {model_name} failed: {e}")
+                    continue
+
+        return AudioAnalysisResult(
+            transcription="[Голосовое сообщение полученo, но расшифровка в демо-режиме недоступна]",
+            category="important",
+            summary="Получено новое голосовое сообщение",
+            action_required=True,
+            suggested_reply="Здравствуйте! Прослушал ваше голосовое сообщение, скоро отвечу."
+        )
 
     async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
         """
@@ -77,7 +129,7 @@ class AIEngine:
                 f"{batch_json_input}"
             )
             
-            for model_name in ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash']:
+            for model_name in ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash']:
                 try:
                     response = await asyncio.wait_for(
                         asyncio.to_thread(
