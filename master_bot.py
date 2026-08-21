@@ -195,7 +195,47 @@ class MasterBot:
                     await self.bot.delete_message(chat_id=self.master_chat_id, message_id=msg_id)
                 except Exception:
                     pass
-                setattr(self, attr_name, None)
+    async def update_status_banner(self, chat_id: Optional[int] = None):
+        """Creates or updates the single active status banner to prevent duplicates."""
+        target_chat_id = chat_id or self.master_chat_id
+        if not target_chat_id or not self.bot:
+            return
+
+        buf_count = await self.storage.get_buffer_count()
+        text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
+        kb = self._get_menu_keyboard(buf_count)
+
+        # 1. If banner ID exists in memory or DB, attempt to edit it in place
+        if self._last_buffer_status_msg_id:
+            try:
+                await self.bot.edit_message_text(
+                    chat_id=target_chat_id,
+                    message_id=self._last_buffer_status_msg_id,
+                    text=text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+                return
+            except Exception:
+                # If editing failed (message deleted or expired), try deleting old message ID
+                try:
+                    await self.bot.delete_message(chat_id=target_chat_id, message_id=self._last_buffer_status_msg_id)
+                except Exception:
+                    pass
+                self._last_buffer_status_msg_id = None
+
+        # 2. If no valid banner exists, post a fresh one and save its ID to SQLite DB
+        try:
+            sent_msg = await self.bot.send_message(
+                chat_id=target_chat_id,
+                text=text,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+            self._last_buffer_status_msg_id = sent_msg.message_id
+            await self.storage.set_setting("last_status_msg_id", str(sent_msg.message_id))
+        except Exception as e:
+            logger.error(f"Failed to post status banner: {e}")
 
     def _setup_handlers(self):
         from aiogram.filters import Command
@@ -955,19 +995,9 @@ class MasterBot:
                 pass
             await callback_query.answer()
 
-            # If no active UI panels remain open, restore the active status banner to keep keyboard pinned
-            if not self._last_buffer_status_msg_id and not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
-                try:
-                    buf_count = await self.storage.get_buffer_count()
-                    sent_msg = await self.bot.send_message(
-                        chat_id=callback_query.message.chat.id,
-                        text="<b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
-                        reply_markup=self._get_menu_keyboard(buf_count),
-                        parse_mode="HTML"
-                    )
-                    self._last_buffer_status_msg_id = sent_msg.message_id
-                except Exception as be:
-                    logger.error(f"Failed to post active status banner after closing panel: {be}")
+            # If no active UI panels remain open, update/ensure active status banner
+            if not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
+                await self.update_status_banner(callback_query.message.chat.id)
 
         # Handle inline confirmation of chat clearing
         @self.dp.callback_query(F.data == "confirm_clear_chat")
@@ -989,17 +1019,8 @@ class MasterBot:
                     except Exception:
                         pass
 
-                try:
-                    buf_count = await self.storage.get_buffer_count()
-                    sent_msg = await self.bot.send_message(
-                        chat_id=callback_query.message.chat.id,
-                        text="<b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
-                        reply_markup=self._get_menu_keyboard(buf_count),
-                        parse_mode="HTML"
-                    )
-                    self._last_buffer_status_msg_id = sent_msg.message_id
-                except Exception as e:
-                    logger.error(f"Error restoring reply keyboard after clear: {e}")
+                self._last_buffer_status_msg_id = None
+                await self.update_status_banner(callback_query.message.chat.id)
 
             asyncio.create_task(_do_delete_bg())
 
@@ -1176,18 +1197,8 @@ class MasterBot:
                     await self.storage.delete_sent_notification(item['id'])
 
                 # Restore active status banner if auto-deletion cleared the chat
-                if expired and not self._last_buffer_status_msg_id and not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
-                    try:
-                        buf_count = await self.storage.get_buffer_count()
-                        sent_msg = await self.bot.send_message(
-                            chat_id=self.master_chat_id,
-                            text="<b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
-                            reply_markup=self._get_menu_keyboard(buf_count),
-                            parse_mode="HTML"
-                        )
-                        self._last_buffer_status_msg_id = sent_msg.message_id
-                    except Exception as be:
-                        logger.error(f"Failed to post active status banner after cleanup: {be}")
+                if expired and not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
+                    await self.update_status_banner(self.master_chat_id)
 
                 # 2. Database 7-day auto-purge for delivered/spam messages (runs once per hour)
                 now_ts = asyncio.get_running_loop().time()
@@ -1210,7 +1221,12 @@ class MasterBot:
             self.night_start_hour = int(await self.storage.get_setting("night_start_hour", str(self.night_start_hour)))
             self.night_end_hour = int(await self.storage.get_setting("night_end_hour", str(self.night_end_hour)))
             
+            saved_status_id = await self.storage.get_setting("last_status_msg_id")
+            if saved_status_id and saved_status_id.isdigit():
+                self._last_buffer_status_msg_id = int(saved_status_id)
+
             await self._register_bot_commands()
+            await self.update_status_banner(self.master_chat_id)
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
             
