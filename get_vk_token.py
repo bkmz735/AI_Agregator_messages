@@ -12,14 +12,11 @@ from pathlib import Path
 
 ENV_PATH = Path(__file__).parent / ".env"
 
-# Supported Standalone App IDs:
-# 6287487 = VK Admin
-# 2685278 = Kate Mobile
-# 6126148 = VK Me / Android
+# Known public standalone VK App credentials for direct password auth:
 APP_CLIENTS = {
-    "1": ("6287487", "c14b8e04c14b8e04c14b8e0466c12b9180cc14bc14b8e0413f41154564ee133e9d80d29", "VK Admin"),
-    "2": ("2685278", "b352b20f04c63f114c", "Kate Mobile"),
-    "3": ("6126148", "q14b8e04q14b8e04q14b8e04", "VK Me")
+    "1": ("2685278", "b352b20f04c63f114c", "Kate Mobile"),
+    "2": ("6126148", "q14b8e04q14b8e04q14b8e04", "VK Me / Official Android"),
+    "3": ("2274003", "hHbZxrA2u6jMFiM0bJ00", "VK Android Classic")
 }
 
 def main():
@@ -27,10 +24,10 @@ def main():
     print("🔑 VK Token Helper for Headless Linux VPS Console")
     print("==================================================")
     
-    print("Выберите клиент VK для токена:")
-    print("1. VK Admin (ID: 6287487) [Рекомендуется]")
-    print("2. Kate Mobile (ID: 2685278)")
-    print("3. VK Me (ID: 6126148)")
+    print("Выберите клиент VK для входа:")
+    print("1. Kate Mobile (ID: 2685278) [Рекомендуется]")
+    print("2. VK Me / Official Android (ID: 6126148)")
+    print("3. VK Android Classic (ID: 2274003)")
     choice = input("Введите номер [1-3] (по умолчанию 1): ").strip() or "1"
     
     client_id, client_secret, app_name = APP_CLIENTS.get(choice, APP_CLIENTS["1"])
@@ -49,13 +46,13 @@ def main():
         "client_secret": client_secret,
         "username": login,
         "password": password,
-        "scope": "messages,offline,friends,photos",
+        "scope": "messages,offline,friends,photos,wall",
         "v": "5.131"
     }
     
     url = f"https://oauth.vk.com/token?{urllib.parse.urlencode(params)}"
     
-    req = urllib.request.Request(url, headers={'User-Agent': 'VKAdmin/1.0 (Android; 10; ARM64; ru)'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'KateMobileAndroid/56 lite-ru'})
     try:
         with urllib.request.urlopen(req) as resp:
             data = json.loads(resp.read().decode('utf-8'))
@@ -76,7 +73,7 @@ def main():
                 code = input("Введите 2FA код из СМС / приложения: ").strip()
                 params["code"] = code
                 url_2fa = f"https://oauth.vk.com/token?{urllib.parse.urlencode(params)}"
-                req_2fa = urllib.request.Request(url_2fa, headers={'User-Agent': 'VKAdmin/1.0'})
+                req_2fa = urllib.request.Request(url_2fa, headers={'User-Agent': 'KateMobileAndroid/56 lite-ru'})
                 with urllib.request.urlopen(req_2fa) as resp_2fa:
                     data_2fa = json.loads(resp_2fa.read().decode('utf-8'))
                     token_2fa = data_2fa.get("access_token")
