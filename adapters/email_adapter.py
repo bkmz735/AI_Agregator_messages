@@ -32,8 +32,9 @@ SPAM_KEYWORDS = [
 ]
 
 class EmailAdapter(BaseAdapter):
-    def __init__(self):
+    def __init__(self, storage: Optional[Any] = None):
         super().__init__(name="Email (Mail.ru)")
+        self.storage = storage
         self.server = config.IMAP_SERVER
         self.port = config.IMAP_PORT
         self.user = config.IMAP_USER
@@ -159,9 +160,11 @@ class EmailAdapter(BaseAdapter):
                                     if payload:
                                         body = payload.decode("utf-8", errors="ignore")
 
-                                # Check for Casino / VPN / Financial Scam Spam
+                                # Check for Casino / VPN / Financial Scam & Custom Blacklist Spam
                                 combined_search_text = f"{subject} {from_addr} {body}".lower()
-                                matched_spam_kw = next((kw for kw in SPAM_KEYWORDS if kw in combined_search_text), None)
+                                custom_kws = await self.storage.get_custom_spam_keywords() if self.storage else []
+                                all_spam_kws = SPAM_KEYWORDS + custom_kws
+                                matched_spam_kw = next((kw for kw in all_spam_kws if kw in combined_search_text), None)
                                 
                                 if matched_spam_kw:
                                     logger.warning(

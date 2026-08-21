@@ -127,6 +127,9 @@ class MasterBot:
             BotCommand(command="settings", description="Настройки (интервал сводки, режим, автоудаление)"),
             BotCommand(command="flush", description="Выгрузить накопившийся буфер прямо сейчас"),
             BotCommand(command="stats", description="Посмотреть статистику сообщений"),
+            BotCommand(command="block", description="Добавить слово в Чёрный список спама"),
+            BotCommand(command="unblock", description="Удалить слово из Чёрного списка спама"),
+            BotCommand(command="blacklist", description="Посмотреть весь Чёрный список спама"),
             BotCommand(command="clear", description="Очистить последние сообщения чата")
         ]
         try:
@@ -141,12 +144,16 @@ class MasterBot:
         autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
         night_label = f"🟢 Включен ({self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00)" if self.night_mode_enabled else "Выключен ❌"
         
+        custom_kws = await self.storage.get_custom_spam_keywords()
+        kw_count_label = f"{len(custom_kws)} слов" if custom_kws else "Пуст ⚪"
+
         text = (
             "⚙️ <b>Панель настроек AI Message Aggregator</b>\n\n"
             f"⚡ <b>Режим отправки:</b> {mode_label}\n"
             f"⏱️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
             f"🗑️ <b>Резервное автоудаление:</b> {autodelete_label}\n"
-            f"🌙 <b>Ночной режим (Экономия ИИ):</b> {night_label}\n\n"
+            f"🌙 <b>Ночной режим (Экономия ИИ):</b> {night_label}\n"
+            f"🚫 <b>Чёрный список спама:</b> {kw_count_label}\n\n"
             "Вы можете изменить параметры, нажав на соответствующие кнопки ниже:"
         )
         
@@ -165,6 +172,9 @@ class MasterBot:
             ],
             [
                 InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")
+            ],
+            [
+                InlineKeyboardButton(text="🚫 Управление Чёрным списком", callback_data="settings_menu_blacklist")
             ],
             [
                 InlineKeyboardButton(text="❌ Закрыть настройки", callback_data="delete_msg")
@@ -553,6 +563,104 @@ class MasterBot:
             except Exception:
                 pass
             await callback_query.answer(f"Часы тишины установлены: {start_h:02d}:00 - {end_h:02d}:00!")
+
+        @self.dp.callback_query(F.data == "settings_menu_blacklist")
+        async def process_settings_menu_blacklist(callback_query: types.CallbackQuery):
+            kws = await self.storage.get_custom_spam_keywords()
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            rows = []
+            if kws:
+                for kw in kws[:10]:  # Show top 10 keywords with inline remove button
+                    rows.append([InlineKeyboardButton(text=f"❌ {kw}", callback_data=f"remove_kw_{kw[:20]}")])
+                if len(kws) > 10:
+                    rows.append([InlineKeyboardButton(text=f"...и ещё {len(kws) - 10} слов", callback_data="none")])
+                rows.append([InlineKeyboardButton(text="🧹 Очистить весь список", callback_data="clear_all_blacklist")])
+
+            rows.append([InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")])
+            kb = InlineKeyboardMarkup(inline_keyboard=rows)
+
+            kws_formatted = ", ".join([f"<code>{html.escape(k)}</code>" for k in kws]) if kws else "<i>Список пока пуст</i>"
+            text = (
+                "🚫 <b>Управление Чёрным списком спама</b>\n\n"
+                f"Текущие слова: {kws_formatted}\n\n"
+                "📌 <b>Как использовать:</b>\n"
+                "• Отправьте <code>/block слово</code> — заблокировать новое слово (например: <code>/block ставки</code>)\n"
+                "• Отправьте <code>/unblock слово</code> — разблокировать слово\n"
+                "• Или нажимайте ❌ напротив слова ниже:"
+            )
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("remove_kw_"))
+        async def process_remove_kw(callback_query: types.CallbackQuery):
+            kw_to_remove = callback_query.data.replace("remove_kw_", "").strip()
+            await self.storage.remove_spam_keyword(kw_to_remove)
+            await process_settings_menu_blacklist(callback_query)
+
+        @self.dp.callback_query(F.data == "clear_all_blacklist")
+        async def process_clear_all_blacklist(callback_query: types.CallbackQuery):
+            await self.storage.set_setting("custom_spam_keywords", "")
+            await process_settings_menu_blacklist(callback_query)
+
+        @self.dp.message(Command("block"))
+        async def cmd_block(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            args = message.text.split(maxsplit=1)
+            if len(args) < 2:
+                sent_msg = await message.answer("⚠️ Использование: <code>/block слово</code> (например: <code>/block казино</code>)", parse_mode="HTML")
+            else:
+                word = args[1].strip()
+                added = await self.storage.add_spam_keyword(word)
+                if added:
+                    sent_msg = await message.answer(f"🚫 Слово <b>«{html.escape(word)}»</b> добавлено в Чёрный список!", parse_mode="HTML")
+                else:
+                    sent_msg = await message.answer(f"ℹ️ Слово <b>«{html.escape(word)}»</b> уже есть в Чёрном списке.", parse_mode="HTML")
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+
+        @self.dp.message(Command("unblock"))
+        async def cmd_unblock(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            args = message.text.split(maxsplit=1)
+            if len(args) < 2:
+                sent_msg = await message.answer("⚠️ Использование: <code>/unblock слово</code> (например: <code>/unblock казино</code>)", parse_mode="HTML")
+            else:
+                word = args[1].strip()
+                removed = await self.storage.remove_spam_keyword(word)
+                if removed:
+                    sent_msg = await message.answer(f"✅ Слово <b>«{html.escape(word)}»</b> удалено из Чёрного списка!", parse_mode="HTML")
+                else:
+                    sent_msg = await message.answer(f"ℹ️ Слова <b>«{html.escape(word)}»</b> не было в Чёрном списке.", parse_mode="HTML")
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+
+        @self.dp.message(Command("blacklist"))
+        async def cmd_blacklist(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            kws = await self.storage.get_custom_spam_keywords()
+            if not kws:
+                txt = "🚫 <b>Ваш Чёрный список спама пуст.</b>\n\nЧтобы добавить слово: <code>/block слово</code>"
+            else:
+                formatted = "\n".join([f"• <code>{html.escape(k)}</code>" for k in kws])
+                txt = f"🚫 <b>Ваш Чёрный список спама ({len(kws)}):</b>\n\n{formatted}\n\nДля добавления: <code>/block слово</code>\nДля удаления: <code>/unblock слово</code>"
+            
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+            ])
+            sent_msg = await message.answer(txt, reply_markup=inline_kb, parse_mode="HTML")
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
         @self.dp.callback_query(F.data == "confirm_reset_stats")
         async def process_confirm_reset_stats(callback_query: types.CallbackQuery):

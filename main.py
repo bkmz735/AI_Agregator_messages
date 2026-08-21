@@ -36,7 +36,7 @@ class MessageAggregatorApp:
         
         self.adapters = [
             VKAdapter(),
-            EmailAdapter()
+            EmailAdapter(storage=self.storage)
         ]
 
         # Raw message queue for batching requests to Gemini API (token saving)
@@ -51,6 +51,24 @@ class MessageAggregatorApp:
         # 1. Deduplication check
         if await self.storage.is_duplicate(msg_uid):
             logger.info(f"Duplicate message skipped: {msg_uid}")
+            return
+
+        # 2. Pre-check custom spam keywords
+        custom_spam_kws = await self.storage.get_custom_spam_keywords()
+        combined_str = f"{sender} {text}".lower()
+        matched_kw = next((kw for kw in custom_spam_kws if kw in combined_str), None)
+        if matched_kw:
+            logger.warning(f"🚫 [SPAM FILTER] Message from [{channel}] '{sender}' matched custom spam keyword '{matched_kw}'. Auto-banned.")
+            await self.storage.save_message(
+                msg_uid=msg_uid,
+                channel=channel,
+                sender=sender,
+                text=text,
+                category="spam",
+                summary=f"Отфильтровано по ключевому слову: {matched_kw}",
+                action_required=False,
+                is_delivered=True
+            )
             return
 
         logger.info(f"Queued raw message from [{channel}] {sender} for batch AI processing...")
