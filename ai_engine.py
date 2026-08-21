@@ -2,6 +2,8 @@ import json
 import asyncio
 import logging
 import socket
+import time
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from config import config
@@ -54,10 +56,21 @@ class AudioAnalysisResult(BaseModel):
     suggested_reply: Optional[str] = None
 
 class AIEngine:
+    # Gemini Free Tier Limits
+    MAX_RPM = 15     # Requests per minute
+    MAX_RPD = 1500   # Requests per day
+
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or config.GEMINI_API_KEY
         self.client = None
         
+        # Quota and Rate Limit trackers
+        self.requests_today = 0
+        self.last_reset_date = date.today()
+        self.minute_request_timestamps: List[float] = []
+        self.rate_limit_until: float = 0.0
+        self.last_error_reason: Optional[str] = None
+
         if self.api_key:
             try:
                 from google import genai
@@ -68,8 +81,55 @@ class AIEngine:
         else:
             logger.info("No GEMINI_API_KEY set. Running in rule-based simulation mode.")
 
+    def _track_request(self):
+        """Updates internal rate limit counters."""
+        now = time.time()
+        today = date.today()
+
+        # Reset daily counter at midnight
+        if today != self.last_reset_date:
+            self.requests_today = 0
+            self.last_reset_date = today
+
+        self.requests_today += 1
+        self.minute_request_timestamps.append(now)
+
+        # Keep only timestamps within the last 60 seconds
+        self.minute_request_timestamps = [t for t in self.minute_request_timestamps if now - t <= 60]
+
+    def get_quota_stats(self) -> Dict[str, Any]:
+        """Returns current Gemini API rate limit and usage statistics."""
+        now = time.time()
+        self.minute_request_timestamps = [t for t in self.minute_request_timestamps if now - t <= 60]
+        
+        is_paused = now < self.rate_limit_until
+        pause_seconds_left = int(self.rate_limit_until - now) if is_paused else 0
+
+        return {
+            "requests_today": self.requests_today,
+            "max_rpd": self.MAX_RPD,
+            "remaining_today": max(0, self.MAX_RPD - self.requests_today),
+            "requests_this_minute": len(self.minute_request_timestamps),
+            "max_rpm": self.MAX_RPM,
+            "is_paused": is_paused,
+            "pause_seconds_left": pause_seconds_left,
+            "status_text": f"🔴 Пауза лимита ({pause_seconds_left}с)" if is_paused else "🟢 API Активен"
+        }
+
     async def transcribe_and_analyze_audio(self, audio_bytes: bytes, mime_type: str = "audio/ogg") -> AudioAnalysisResult:
         """Transcribes audio/voice message using Gemini multimodal capabilities and analyzes it."""
+        now = time.time()
+        if now < self.rate_limit_until:
+            wait_time = int(self.rate_limit_until - now)
+            logger.warning(f"Gemini API rate limited. Skipping audio API call for {wait_time}s.")
+            return AudioAnalysisResult(
+                transcription="[Обработка приостановлена: превышен лимит Gemini API (429)]",
+                category="important",
+                summary=f"Голосовое сообщение будет обработано через {wait_time} сек после возобновления лимита.",
+                action_required=True,
+                suggested_reply="Здравствуйте! Получил ваше голосовое, отвечу чуть позже."
+            )
+
         if self.client and audio_bytes:
             from google.genai import types
             part = types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
@@ -82,6 +142,7 @@ class AIEngine:
             )
             for model_name in ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest']:
                 try:
+                    self._track_request()
                     response = await asyncio.wait_for(
                         asyncio.to_thread(
                             self.client.models.generate_content,
@@ -102,11 +163,16 @@ class AIEngine:
                             suggested_reply=parsed.get("suggested_reply", "Спасибо за голосовое сообщение! Прослушал, отвечу в ближайшее время.")
                         )
                 except Exception as e:
+                    err_str = str(e)
+                    if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        self.rate_limit_until = time.time() + 60.0
+                        logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
+                        break
                     logger.warning(f"Audio transcription model {model_name} failed: {e}")
                     continue
 
         return AudioAnalysisResult(
-            transcription="[Голосовое сообщение полученo, но расшифровка в демо-режиме недоступна]",
+            transcription="[Голосовое сообщение полученo, но расшифровка временно недоступна]",
             category="important",
             summary="Получено новое голосовое сообщение",
             action_required=True,
@@ -116,10 +182,23 @@ class AIEngine:
     async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
         """
         Analyzes a BATCH of raw incoming messages in a single Gemini API call to save tokens!
-        messages_batch = [{"msg_uid": "...", "channel": "...", "sender": "...", "text": "..."}, ...]
         """
         if not messages_batch:
             return []
+
+        now = time.time()
+        if now < self.rate_limit_until:
+            wait_time = int(self.rate_limit_until - now)
+            logger.warning(f"Gemini API rate limited (429). Retrying batch after {wait_time}s...")
+            return [
+                AnalysisResult(
+                    msg_uid=msg.get("msg_uid", ""),
+                    category="important",
+                    summary=f"В буфере (ожидание сброса лимита ИИ {wait_time}с)",
+                    action_required=True,
+                    suggested_reply=None
+                ) for msg in messages_batch
+            ]
 
         if self.client:
             batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
@@ -131,6 +210,7 @@ class AIEngine:
             
             for model_name in ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash']:
                 try:
+                    self._track_request()
                     response = await asyncio.wait_for(
                         asyncio.to_thread(
                             self.client.models.generate_content,
@@ -142,8 +222,6 @@ class AIEngine:
                     )
                     if response and response.text:
                         parsed = json.loads(response.text)
-                        
-                        # Handle list or object wrapping
                         items = parsed.get("results", parsed) if isinstance(parsed, dict) else parsed
                         results = []
                         if isinstance(items, list):
@@ -152,6 +230,11 @@ class AIEngine:
                             logger.info(f"Successfully analyzed BATCH of {len(results)} messages via Gemini API ({model_name}).")
                             return results
                 except Exception as e:
+                    err_str = str(e)
+                    if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        self.rate_limit_until = time.time() + 60.0
+                        logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
+                        break
                     logger.warning(f"Batch analysis model {model_name} failed: {e}")
                     continue
 

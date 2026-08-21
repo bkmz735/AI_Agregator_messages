@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import html
-from typing import Optional, Callable, Awaitable
+import io
+from typing import Optional, Callable, Awaitable, Any
 from config import config
 from storage import Storage
 
@@ -68,7 +69,7 @@ class MasterBot:
             BotCommand(command="start", description="Главное меню и статус"),
             BotCommand(command="help", description="Справка по командам и работе бота"),
             BotCommand(command="flush", description="Отправить накопившийся буфер прямо сейчас"),
-            BotCommand(command="stats", description="Статистика обработанных сообщений"),
+            BotCommand(command="stats", description="Статистика сообщений и лимитов ИИ"),
             BotCommand(command="mode", description="Переключить режим (Instant / Digest)")
         ]
         try:
@@ -80,7 +81,6 @@ class MasterBot:
     def _setup_handlers(self):
         from aiogram.filters import Command
         from aiogram import types, F
-        import io
 
         @self.dp.message(Command("start"))
         async def cmd_start(message: types.Message):
@@ -105,13 +105,13 @@ class MasterBot:
                 "🔹 `/start` — Показать главное меню\n"
                 "🔹 `/help` — Эта справка\n"
                 "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать выжимку из буфера прямо сейчас\n"
-                "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику категорий и спама\n"
+                "🔹 `/stats` (или 📊 Статистика) — Статистика категорий и лимитов Gemini API\n"
                 "🔹 `/mode` (или ⚙️ Режим) — Переключить режим (Мгновенный / По расписанию)\n\n"
                 "🎙️ **Расшифровка голосовых:** перешлите или отправьте голосуху, и ИИ переведет её в текст!\n\n"
                 "💡 **Как работает агрегатор:**\n"
                 "• Спам отсеивается ИИ и не беспокоит вас.\n"
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
-                "• Срочные сообщения приходят сразу с готовым черновиком ответа!"
+                "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу на 60с без потери сообщений!"
             )
             await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
 
@@ -194,6 +194,17 @@ class MasterBot:
         async def cmd_stats(message: types.Message):
             stats = await self.storage.get_stats()
             buf_count = await self.storage.get_buffer_count()
+
+            ai_quota_info = ""
+            if self.ai_engine:
+                q = self.ai_engine.get_quota_stats()
+                ai_quota_info = (
+                    f"\n\n🤖 **Лимиты Gemini API (Free Tier):**\n"
+                    f"• Статус: {q['status_text']}\n"
+                    f"• Запросов сегодня: {q['requests_today']} / {q['max_rpd']} RPD (Осталось: {q['remaining_today']})\n"
+                    f"• Минутный поток: {q['requests_this_minute']} / {q['max_rpm']} RPM"
+                )
+
             stats_msg = (
                 "📊 **Статистика агрегатора:**\n\n"
                 f"🚨 Срочные: {stats.get('urgent', 0)}\n"
@@ -201,6 +212,7 @@ class MasterBot:
                 f"💬 Обычные: {stats.get('general', 0)}\n"
                 f"🚫 Отфильтровано спама: {stats.get('spam', 0)}\n\n"
                 f"📥 Не доставлено в буфере: {buf_count}"
+                f"{ai_quota_info}"
             )
             await message.answer(stats_msg, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
 
