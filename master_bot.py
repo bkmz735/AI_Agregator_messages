@@ -56,7 +56,7 @@ class MasterBot:
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-        mode_label = "МГНОВЕННЫЙ" if self.delivery_mode == "instant" else "СВОДКА"
+        mode_label = "⚡ СРАЗУ" if self.delivery_mode == "instant" else "📥 СВОДКА"
         kb = [
             [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text=f"⚙️ Режим: {mode_label}"), KeyboardButton(text="🧹 Очистить чат")]
@@ -115,13 +115,13 @@ class MasterBot:
                 "🔹 `/start` — Показать главное меню\n"
                 "🔹 `/help` — Эта справка\n"
                 "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать выжимку из буфера прямо сейчас\n"
-                "🔹 `/stats` (или 📊 Статистика) — Статистика категорий и лимитов Gemini API\n"
-                "🔹 `/mode` (или ⚙️ Режим) — Переключить режим (Мгновенный / По расписанию)\n\n"
+                "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику сообщений\n"
+                "🔹 `/mode` (или ⚙️ Режим) — Переключить режим (Сразу / Сводка)\n\n"
                 "🎙️ **Расшифровка голосовых:** перешлите или отправьте голосуху, и ИИ переведет её в текст!\n\n"
                 "💡 **Как работает агрегатор:**\n"
                 "• Спам отсеивается ИИ и не беспокоит вас.\n"
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
-                "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу на 60с без потери сообщений!"
+                "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу без потери сообщений!"
             )
             await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
 
@@ -233,12 +233,17 @@ class MasterBot:
             # Toggle mode between digest and instant
             self.delivery_mode = "instant" if self.delivery_mode == "digest" else "digest"
             buf_count = await self.storage.get_buffer_count()
-            mode_label = "МГНОВЕННЫЙ" if self.delivery_mode == "instant" else "СВОДКА"
+            mode_label = "⚡ СРАЗУ" if self.delivery_mode == "instant" else "📥 СВОДКА"
+            
             msg = f"⚙️ Режим отправки изменен на: **{mode_label}**\n\n"
             if self.delivery_mode == "digest":
-                msg += "🚨 Срочные — мгновенно.\n📥 Важные/Обычные — по расписанию."
+                msg += "📥 **СВОДКА (Буферизация):**\n"
+                msg += "Все обычные и важные сообщения копятcя в буфере и приходят раз в час в виде одного удобного отчета.\n"
+                msg += "*(Срочные сообщения всё равно придут мгновенно)*"
             else:
-                msg += "⚡ Все не-спам сообщения приходят мгновенно."
+                msg += "⚡ **СРАЗУ (Мгновенно):**\n"
+                msg += "Все новые входящие сообщения будут моментально присылаться в Телеграм по одному, без накопления."
+            
             await message.answer(msg, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
 
         @self.dp.message(Command("clear"))
