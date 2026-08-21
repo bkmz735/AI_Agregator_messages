@@ -206,4 +206,9 @@ class MasterBot:
         if self.bot and self.dp:
             logger.info("Starting Telegram Bot Polling loop...")
             asyncio.create_task(self.start_digest_scheduler())
-            await self.dp.start_polling(self.bot)
+            while True:
+                try:
+                    await self.dp.start_polling(self.bot)
+                except Exception as e:
+                    logger.error(f"Telegram polling error: {e}. Retrying in 5 seconds...")
+                    await asyncio.sleep(5)
