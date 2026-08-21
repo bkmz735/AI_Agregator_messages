@@ -1160,14 +1160,7 @@ class MasterBot:
                     parse_mode="HTML",
                     reply_markup=inline_kb
                 )
-                # Register for auto-deletion if config value is greater than 0
-                if self.auto_delete_delay_hours > 0:
-                    delay = self.auto_delete_delay_hours * 3600
-                    await self.storage.save_sent_notification(
-                        chat_id=self.master_chat_id,
-                        message_id=sent_msg.message_id,
-                        delay_seconds=delay
-                    )
+                # Notifications are NOT auto-deleted — they persist until user presses "🗑️ Прочитано"
             except Exception as e:
                 logger.error(f"Error sending Telegram notification: {e}")
 
@@ -1204,33 +1197,20 @@ class MasterBot:
                 # Split long messages if needed
                 if len(full_digest) > 4000:
                     for chunk in [full_digest[i:i+4000] for i in range(0, len(full_digest), 4000)]:
-                        sent_msg = await self.bot.send_message(
+                        await self.bot.send_message(
                             chat_id=self.master_chat_id, 
                             text=chunk, 
                             parse_mode="HTML",
                             reply_markup=inline_kb
                         )
-                        if self.auto_delete_delay_hours > 0:
-                            delay = self.auto_delete_delay_hours * 3600
-                            await self.storage.save_sent_notification(
-                                chat_id=self.master_chat_id,
-                                message_id=sent_msg.message_id,
-                                delay_seconds=delay
-                            )
                 else:
-                    sent_msg = await self.bot.send_message(
+                    await self.bot.send_message(
                         chat_id=self.master_chat_id,
                         text=full_digest,
                         parse_mode="HTML",
                         reply_markup=inline_kb
                     )
-                    if self.auto_delete_delay_hours > 0:
-                        delay = self.auto_delete_delay_hours * 3600
-                        await self.storage.save_sent_notification(
-                            chat_id=self.master_chat_id,
-                            message_id=sent_msg.message_id,
-                            delay_seconds=delay
-                        )
+                    # Digests are NOT auto-deleted — they persist until user presses "🗑️ Прочитано"
             except Exception as e:
                 logger.error(f"Error sending digest: {e}")
 
