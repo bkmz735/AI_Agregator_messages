@@ -255,12 +255,20 @@ class MasterBot:
                 self._last_buffer_status_msg_id = None
                 
             buf_count = await self.storage.get_buffer_count()
-            status_msg = await message.answer(
-                f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
-                "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию.",
-                reply_markup=self._get_menu_keyboard(buf_count),
-                parse_mode="HTML"
-            )
+            if buf_count > 0:
+                status_msg = await message.answer(
+                    f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
+                    "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию.",
+                    reply_markup=self._get_menu_keyboard(buf_count),
+                    parse_mode="HTML"
+                )
+            else:
+                status_msg = await message.answer(
+                    "📥 <b>Буфер пуст!</b> Новых сообщений для сводки пока нет.\n"
+                    "Бот собирает входящие письма и сообщения в фоновом режиме.",
+                    reply_markup=self._get_menu_keyboard(0),
+                    parse_mode="HTML"
+                )
             self._last_buffer_status_msg_id = status_msg.message_id
 
         @self.dp.message(F.text == "🚀 Отправить сводку")
