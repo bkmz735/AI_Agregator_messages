@@ -21,15 +21,9 @@ class AIEngine:
         if self.api_key:
             try:
                 from google import genai
-                from google.genai import types
-                
-                http_opts = None
-                if config.TELEGRAM_PROXY:
-                    http_opts = types.HttpOptions(proxy=config.TELEGRAM_PROXY)
-                    logger.info(f"Gemini API configured with Proxy: {config.TELEGRAM_PROXY}")
-                
-                self.client = genai.Client(api_key=self.api_key, http_options=http_opts)
-                logger.info("Gemini API client initialized successfully.")
+                # Connect directly from local server (no VPN proxy for Gemini)
+                self.client = genai.Client(api_key=self.api_key)
+                logger.info("Gemini API client initialized directly (no VPN proxy).")
             except Exception as e:
                 logger.warning(f"Could not initialize google.genai Client: {e}. Falling back to rule-based analysis.")
         else:
