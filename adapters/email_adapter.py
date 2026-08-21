@@ -89,9 +89,22 @@ class EmailAdapter(BaseAdapter):
                             
                             if fetch_resp.result == 'OK':
                                 raw_email = None
+                                
+                                # Let's log the structure to understand aioimaplib parsing
+                                line_info = [(type(l), len(l) if isinstance(l, (bytes, str)) else 'N/A') for l in fetch_resp.lines]
+                                logger.info(f"Email #{num_str} lines structure: {line_info}")
+                                
+                                # Aioimaplib usually puts the literal as a separate bytes item after the FETCH line or inside a tuple
                                 for line in fetch_resp.lines:
-                                    if isinstance(line, bytes) and len(line) > 100:
+                                    if isinstance(line, tuple):
+                                        for part in line:
+                                            if isinstance(part, bytes) and b"Return-Path:" in part:
+                                                raw_email = part
+                                                break
+                                    elif isinstance(line, bytes) and (b"Return-Path:" in line or b"Subject:" in line or len(line) > 200):
                                         raw_email = line
+                                    
+                                    if raw_email:
                                         break
                                 
                                 if raw_email:
