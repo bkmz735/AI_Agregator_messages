@@ -79,7 +79,10 @@ class MessageAggregatorApp:
         """Background worker that flushes raw messages to Gemini API in 1 batch call."""
         while True:
             await asyncio.sleep(config.AI_BATCH_INTERVAL_SECONDS)
-            await self._flush_raw_queue()
+            try:
+                await self._flush_raw_queue()
+            except Exception as e:
+                logger.error(f"Critical error in AI batch worker during flush: {e}", exc_info=True)
 
     async def _flush_raw_queue(self):
         async with self._queue_lock:

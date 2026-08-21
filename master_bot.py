@@ -320,7 +320,10 @@ class MasterBot:
             await asyncio.sleep(self.digest_interval * 60)
             if self.delivery_mode == "digest":
                 logger.info("Executing scheduled buffer digest flush...")
-                await self.flush_buffer_now()
+                try:
+                    await self.flush_buffer_now()
+                except Exception as e:
+                    logger.error(f"Critical error in digest scheduler: {e}", exc_info=True)
 
     async def start_polling(self):
         if self.bot and self.dp:
