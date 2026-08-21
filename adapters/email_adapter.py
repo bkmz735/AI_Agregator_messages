@@ -70,34 +70,31 @@ class EmailAdapter(BaseAdapter):
 
                 await imap_client.select('INBOX')
 
-                # Search both UNSEEN and recent messages
-                status, data = await imap_client.search('UNSEEN')
-                
-                # Fallback to ALL if no unseen found, check latest 5 messages
-                if status == 'OK' and not data[0]:
-                    status, data = await imap_client.search('ALL')
-                    if status == 'OK' and data[0]:
-                        nums = data[0].split()
-                        # Pick last 3 messages for safety
-                        data = [b" ".join(nums[-3:])]
+                # Search UNSEEN or ALL
+                status_resp, data = await imap_client.search('UNSEEN')
+                msg_numbers = data[0].split() if status_resp == 'OK' and data and data[0] else []
 
-                if status == 'OK' and data[0]:
-                    msg_nums = data[0].split()
-                    logger.info(f"Mail.ru IMAP fetched {len(msg_nums)} emails to process.")
-                    for num in msg_nums:
+                if not msg_numbers:
+                    status_resp, data = await imap_client.search('ALL')
+                    if status_resp == 'OK' and data and data[0]:
+                        all_nums = data[0].split()
+                        msg_numbers = all_nums[-5:]  # Get last 5 emails
+
+                if msg_numbers:
+                    logger.info(f"Mail.ru IMAP processing {len(msg_numbers)} emails...")
+                    for num in msg_numbers:
                         try:
-                            fetch_status, msg_data = await imap_client.fetch(num.decode(), '(RFC822)')
-                            if fetch_status == 'OK':
+                            num_str = num.decode() if isinstance(num, bytes) else str(num)
+                            fetch_resp = await imap_client.fetch(num_str, '(RFC822)')
+                            
+                            if fetch_resp.result == 'OK':
                                 raw_email = None
-                                for item in msg_data:
-                                    if isinstance(item, bytes) and len(item) > 50:
-                                        raw_email = item
+                                for line in fetch_resp.lines:
+                                    if isinstance(line, bytes) and len(line) > 100:
+                                        raw_email = line
                                         break
                                 
-                                if not raw_email and len(msg_data) >= 2:
-                                    raw_email = msg_data[1]
-
-                                if raw_email and isinstance(raw_email, bytes):
+                                if raw_email:
                                     msg = email.message_from_bytes(raw_email)
                                     subject = self._decode_str(msg.get("Subject", "Без темы"))
                                     from_addr = self._decode_str(msg.get("From", "Неизвестный отправитель"))
@@ -121,10 +118,11 @@ class EmailAdapter(BaseAdapter):
                                     elif "instagram" in from_addr.lower():
                                         channel_name = "Instagram (Email)"
 
-                                    msg_id = msg.get('Message-ID', num.decode())
-                                    msg_uid = f"email_{msg_id}"
+                                    msg_id_val = msg.get('Message-ID', num_str)
+                                    msg_uid = f"email_{msg_id_val.strip('<>')}"
                                     text_full = f"Тема: {subject}\n\n{body[:500]}"
                                     
+                                    logger.info(f"Emitting email message: [{channel_name}] From: {from_addr} Subject: {subject}")
                                     await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid)
                         except Exception as fe:
                             logger.warning(f"Error fetching email #{num}: {fe}")
