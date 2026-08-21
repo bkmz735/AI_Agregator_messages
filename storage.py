@@ -260,24 +260,38 @@ class Storage:
             except Exception:
                 return None
 
-    async def remove_banword(self, identifier: str) -> Optional[str]:
-        """Deletes a banword either by ID number or by exact word string."""
+    async def remove_banword(self, identifier: str, scope: Optional[str] = None) -> Optional[str]:
+        """Deletes a banword either by category relative number (1..N), DB ID, or exact word string."""
         clean_val = identifier.strip().lower()
+        clean_scope = scope.strip().lower() if scope else None
+        
         async with aiosqlite.connect(self.db_path) as db:
             deleted_word = None
             if clean_val.isdigit():
-                bw_id = int(clean_val)
-                async with db.execute("SELECT word FROM banwords WHERE id = ?", (bw_id,)) as cursor:
-                    row = await cursor.fetchone()
-                    if row:
-                        deleted_word = row[0]
-                        await db.execute("DELETE FROM banwords WHERE id = ?", (bw_id,))
+                idx = int(clean_val)
+                # First check if idx matches relative 1-based index in category list
+                if clean_scope:
+                    bws = await self.get_banwords(scope=clean_scope)
+                    if 1 <= idx <= len(bws):
+                        target_bw = bws[idx - 1]
+                        deleted_word = target_bw["word"]
+                        await db.execute("DELETE FROM banwords WHERE id = ?", (target_bw["id"],))
+                
+                if not deleted_word:
+                    # Fallback to direct DB primary key ID
+                    async with db.execute("SELECT word FROM banwords WHERE id = ?", (idx,)) as cursor:
+                        row = await cursor.fetchone()
+                        if row:
+                            deleted_word = row[0]
+                            await db.execute("DELETE FROM banwords WHERE id = ?", (idx,))
             else:
+                # Delete by exact word match
                 async with db.execute("SELECT word FROM banwords WHERE word = ?", (clean_val,)) as cursor:
                     row = await cursor.fetchone()
                     if row:
                         deleted_word = row[0]
                         await db.execute("DELETE FROM banwords WHERE word = ?", (clean_val,))
+
             await db.commit()
             return deleted_word
 

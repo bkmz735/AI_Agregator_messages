@@ -557,58 +557,155 @@ class MasterBot:
         @self.dp.callback_query(F.data == "settings_menu_blacklist")
         async def process_settings_menu_blacklist(callback_query: types.CallbackQuery):
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            bws = await self.storage.get_banwords()
+            bws_email = await self.storage.get_banwords(scope="email")
+            bws_vk = await self.storage.get_banwords(scope="vk")
             
-            lines = ["🚫 <b>Единый список Банвордов (Banwords)</b>\n"]
-            emails_list = [b for b in bws if b.get("scope", "email") in ("email", "global")]
-            vks_list = [b for b in bws if b.get("scope") == "vk"]
-
-            if emails_list:
-                lines.append("✉️ <b>Категория Mail.ru:</b>")
-                for b in emails_list:
-                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
-                lines.append("")
-
-            if vks_list:
-                lines.append("💬 <b>Категория ВКонтакте (VK):</b>")
-                for b in vks_list:
-                    lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
-                lines.append("")
-
-            lines.append(
-                "📌 <b>Управление:</b>\n"
-                "• Нажмите ➕ ниже для добавления в нужную категорию\n"
-                "• Или отправьте: <code>/block слово email</code> или <code>/block слово vk</code>\n"
-                "• Для удаления: <code>/unblock номер</code> (напр: <code>/unblock 1</code>)"
+            text = (
+                "🚫 <b>Управление Банвордами (Banwords)</b>\n\n"
+                "Выберите категорию для просмотра полного списка и удаления слов:\n\n"
+                f"✉️ <b>Mail.ru:</b> {len(bws_email)} банвордов\n"
+                f"💬 <b>ВКонтакте (VK):</b> {len(bws_vk)} банвордов\n\n"
+                "📌 <b>Команды в чате:</b>\n"
+                "• <code>/block слово email</code> — добавить в Mail.ru\n"
+                "• <code>/block слово vk</code> — добавить в VK\n"
+                "• <code>/unblock номер email</code> или <code>/unblock номер vk</code> — удалить"
             )
 
-            rows = [
+            kb = InlineKeyboardMarkup(inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="➕ В Mail.ru", callback_data="add_bw_prompt_email"),
-                    InlineKeyboardButton(text="➕ В VK", callback_data="add_bw_prompt_vk")
+                    InlineKeyboardButton(text=f"✉️ Mail.ru ({len(bws_email)})", callback_data="bw_view_email_1"),
+                    InlineKeyboardButton(text=f"💬 ВКонтакте ({len(bws_vk)})", callback_data="bw_view_vk_1")
+                ],
+                [
+                    InlineKeyboardButton(text="🔄 Сбросить все к базовым", callback_data="reset_banwords_confirm")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")
                 ]
-            ]
+            ])
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("bw_view_email_"))
+        async def process_bw_view_email(callback_query: types.CallbackQuery):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            page = int(callback_query.data.replace("bw_view_email_", ""))
+            bws = await self.storage.get_banwords(scope="email")
             
-            top_bws = bws[:12]
+            per_page = 10
+            total_pages = max(1, (len(bws) + per_page - 1) // per_page)
+            page = max(1, min(page, total_pages))
+            
+            start_idx = (page - 1) * per_page
+            page_bws = bws[start_idx:start_idx + per_page]
+
+            lines = [f"✉️ <b>Банворды Mail.ru</b> (Стр. {page}/{total_pages}, всего: {len(bws)})\n"]
+            if not bws:
+                lines.append("<i>Список банвордов Mail.ru пуст.</i>")
+            else:
+                for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
+                    lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
+
+            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления или отправьте <code>/unblock номер email</code></i>")
+
+            rows = []
             row_buttons = []
-            for b in top_bws:
-                row_buttons.append(InlineKeyboardButton(text=f"❌ #{b['id']}", callback_data=f"remove_bw_{b['id']}"))
+            for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
+                row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"remove_bw_email_{idx_in_page}_{page}"))
                 if len(row_buttons) == 3:
                     rows.append(row_buttons)
                     row_buttons = []
             if row_buttons:
                 rows.append(row_buttons)
 
-            rows.append([InlineKeyboardButton(text="🔄 Сбросить к базовым", callback_data="reset_banwords_confirm")])
-            rows.append([InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")])
+            # Pagination buttons
+            nav_row = []
+            if page > 1:
+                nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bw_view_email_{page - 1}"))
+            nav_row.append(InlineKeyboardButton(text="➕ Добавить", callback_data="add_bw_prompt_email"))
+            if page < total_pages:
+                nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"bw_view_email_{page + 1}"))
+            rows.append(nav_row)
+
+            rows.append([InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")])
 
             kb = InlineKeyboardMarkup(inline_keyboard=rows)
-            text = "\n".join(lines)
             try:
-                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+                await callback_query.message.edit_text(text="\n".join(lines), reply_markup=kb, parse_mode="HTML")
             except Exception:
                 pass
             await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("bw_view_vk_"))
+        async def process_bw_view_vk(callback_query: types.CallbackQuery):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            page = int(callback_query.data.replace("bw_view_vk_", ""))
+            bws = await self.storage.get_banwords(scope="vk")
+            
+            per_page = 10
+            total_pages = max(1, (len(bws) + per_page - 1) // per_page)
+            page = max(1, min(page, total_pages))
+            
+            start_idx = (page - 1) * per_page
+            page_bws = bws[start_idx:start_idx + per_page]
+
+            lines = [f"💬 <b>Банворды ВКонтакте (VK)</b> (Стр. {page}/{total_pages}, всего: {len(bws)})\n"]
+            if not bws:
+                lines.append("<i>Список банвордов VK пуст.</i>")
+            else:
+                for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
+                    lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
+
+            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления или отправьте <code>/unblock номер vk</code></i>")
+
+            rows = []
+            row_buttons = []
+            for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
+                row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"remove_bw_vk_{idx_in_page}_{page}"))
+                if len(row_buttons) == 3:
+                    rows.append(row_buttons)
+                    row_buttons = []
+            if row_buttons:
+                rows.append(row_buttons)
+
+            # Pagination buttons
+            nav_row = []
+            if page > 1:
+                nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bw_view_vk_{page - 1}"))
+            nav_row.append(InlineKeyboardButton(text="➕ Добавить", callback_data="add_bw_prompt_vk"))
+            if page < total_pages:
+                nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"bw_view_vk_{page + 1}"))
+            rows.append(nav_row)
+
+            rows.append([InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")])
+
+            kb = InlineKeyboardMarkup(inline_keyboard=rows)
+            try:
+                await callback_query.message.edit_text(text="\n".join(lines), reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("remove_bw_email_"))
+        async def process_remove_bw_email(callback_query: types.CallbackQuery):
+            parts = callback_query.data.replace("remove_bw_email_", "").split("_")
+            idx = parts[0]
+            page = parts[1] if len(parts) > 1 else "1"
+            await self.storage.remove_banword(idx, scope="email")
+            callback_query.data = f"bw_view_email_{page}"
+            await process_bw_view_email(callback_query)
+
+        @self.dp.callback_query(F.data.startswith("remove_bw_vk_"))
+        async def process_remove_bw_vk(callback_query: types.CallbackQuery):
+            parts = callback_query.data.replace("remove_bw_vk_", "").split("_")
+            idx = parts[0]
+            page = parts[1] if len(parts) > 1 else "1"
+            await self.storage.remove_banword(idx, scope="vk")
+            callback_query.data = f"bw_view_vk_{page}"
+            await process_bw_view_vk(callback_query)
 
         @self.dp.callback_query(F.data == "add_bw_prompt_email")
         async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
@@ -633,12 +730,6 @@ class MasterBot:
                 parse_mode="HTML"
             )
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
-
-        @self.dp.callback_query(F.data.startswith("remove_bw_"))
-        async def process_remove_bw(callback_query: types.CallbackQuery):
-            bw_id = callback_query.data.replace("remove_bw_", "").strip()
-            await self.storage.remove_banword(bw_id)
-            await process_settings_menu_blacklist(callback_query)
 
         @self.dp.callback_query(F.data == "reset_banwords_confirm")
         async def process_reset_banwords_confirm(callback_query: types.CallbackQuery):
@@ -682,15 +773,19 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
-            args = message.text.split(maxsplit=1)
+            args = message.text.split(maxsplit=2)
             if len(args) < 2:
                 sent_msg = await message.answer(
-                    "⚠️ Использование: <code>/unblock номер_или_слово</code> (например: <code>/unblock 3</code> или <code>/unblock казино</code>)",
+                    "⚠️ <b>Использование /unblock:</b>\n"
+                    "• <code>/unblock номер email</code> (удалить из Mail.ru)\n"
+                    "• <code>/unblock номер vk</code> (удалить из VK)\n"
+                    "• <code>/unblock слово</code> (удалить слово по названию)",
                     parse_mode="HTML"
                 )
             else:
                 target = args[1].strip()
-                deleted_word = await self.storage.remove_banword(target)
+                scope = args[2].strip().lower() if len(args) >= 3 else None
+                deleted_word = await self.storage.remove_banword(target, scope=scope)
                 if deleted_word:
                     sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(deleted_word)}»</b> удален из списка!", parse_mode="HTML")
                 else:
