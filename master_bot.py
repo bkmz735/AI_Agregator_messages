@@ -200,7 +200,7 @@ class MasterBot:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔄 Обновить логи", callback_data="refresh_logs"),
-                InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
+                InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")
             ]
         ])
         return text, kb
@@ -245,7 +245,7 @@ class MasterBot:
                 InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
             ],
             [
-                InlineKeyboardButton(text="❌ Закрыть настройки", callback_data="delete_msg")
+                InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")
             ]
         ])
         return text, inline_kb
@@ -444,7 +444,7 @@ class MasterBot:
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
-                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
             else:
                 text = (
@@ -452,7 +452,7 @@ class MasterBot:
                     "Бот собирает входящие письма и сообщения в фоновом режиме."
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
 
             await self.show_or_edit_ui_panel(text=text, keyboard=kb)
@@ -504,7 +504,7 @@ class MasterBot:
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [
                     InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats"),
-                    InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
+                    InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")
                 ]
             ])
             await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
@@ -1068,7 +1068,7 @@ class MasterBot:
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
-                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
             else:
                 text = (
@@ -1076,7 +1076,7 @@ class MasterBot:
                     "Бот собирает входящие письма и сообщения в фоновом режиме."
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
 
             await self.show_or_edit_ui_panel(text=text, keyboard=kb)
@@ -1099,7 +1099,7 @@ class MasterBot:
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [
                     InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats"),
-                    InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
+                    InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")
                 ]
             ])
             await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
