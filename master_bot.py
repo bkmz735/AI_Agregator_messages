@@ -27,24 +27,26 @@ class MasterBot:
         self.bot = None
 
         if self.bot_token:
+            self._init_bot_instance(use_proxy=True if config.TELEGRAM_PROXY else False)
+
+    def _init_bot_instance(self, use_proxy: bool = True):
+        from aiogram import Bot, Dispatcher
+        from aiogram.client.session.aiohttp import AiohttpSession
+        
+        session = None
+        proxy_url = config.TELEGRAM_PROXY if use_proxy else None
+        
+        if proxy_url:
             try:
-                from aiogram import Bot, Dispatcher
-                from aiogram.client.session.aiohttp import AiohttpSession
-                
+                session = AiohttpSession(proxy=proxy_url)
+            except Exception as pe:
+                logger.warning(f"Proxy setup warning ({proxy_url}): {pe}. Using direct connection.")
                 session = None
-                if config.TELEGRAM_PROXY:
-                    try:
-                        session = AiohttpSession(proxy=config.TELEGRAM_PROXY)
-                    except Exception as pe:
-                        logger.warning(f"Proxy setup warning ({config.TELEGRAM_PROXY}): {pe}. Falling back to direct connection.")
-                        session = None
-                
-                self.bot = Bot(token=self.bot_token, session=session)
-                self.dp = Dispatcher()
-                self._setup_handlers()
-                logger.info(f"Telegram MasterBot initialized (Proxy: {'Active' if session else 'Direct'}).")
-            except Exception as e:
-                logger.error(f"Could not initialize aiogram Bot: {e}")
+        
+        self.bot = Bot(token=self.bot_token, session=session)
+        self.dp = Dispatcher()
+        self._setup_handlers()
+        logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
@@ -251,11 +253,18 @@ class MasterBot:
             logger.info("Starting Telegram Bot Polling loop...")
             await self._register_bot_commands()
             asyncio.create_task(self.start_digest_scheduler())
+            
+            use_proxy_mode = True if config.TELEGRAM_PROXY else False
             while True:
                 try:
-                    # Automatically delete previous webhooks/sessions & drop pending updates to force single active instance
                     await self.bot.delete_webhook(drop_pending_updates=True)
                     await self.dp.start_polling(self.bot, drop_pending_updates=True)
                 except Exception as e:
-                    logger.error(f"Telegram polling error: {e}. Retrying in 5 seconds...")
-                    await asyncio.sleep(5)
+                    logger.warning(f"Telegram polling error: {e}")
+                    # If proxy connection failed (ClientOSError), auto fallback to Direct connection
+                    if use_proxy_mode:
+                        logger.warning("Proxy connection failed. Auto-switching to DIRECT connection for Telegram Bot...")
+                        use_proxy_mode = False
+                        self._init_bot_instance(use_proxy=False)
+                        await self._register_bot_commands()
+                    await asyncio.sleep(3)
