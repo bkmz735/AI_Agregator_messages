@@ -86,6 +86,10 @@ class MasterBot:
 
         @self.dp.message(Command("start"))
         async def cmd_start(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
             buf_count = await self.storage.get_buffer_count()
             await message.answer(
                 "🤖 **AI Message Aggregator & Buffer Bot**\n\n"
@@ -101,6 +105,10 @@ class MasterBot:
 
         @self.dp.message(Command("help"))
         async def cmd_help(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
             buf_count = await self.storage.get_buffer_count()
             help_text = (
                 "📖 **Справка по командам бота:**\n\n"
@@ -173,6 +181,10 @@ class MasterBot:
 
         @self.dp.message(F.text.startswith("📥 Буфер"))
         async def cmd_buffer(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
             buf_count = await self.storage.get_buffer_count()
             await message.answer(
                 f"📥 **В буфере ожидают отправки:** {buf_count} сообщ.\n\n"
@@ -184,6 +196,10 @@ class MasterBot:
         @self.dp.message(F.text == "🚀 Отправить сводку")
         @self.dp.message(Command("flush"))
         async def cmd_send_digest(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
             sent_count = await self.flush_buffer_now()
             buf_count = await self.storage.get_buffer_count()
             if sent_count == 0:
@@ -194,6 +210,10 @@ class MasterBot:
         @self.dp.message(F.text == "📊 Статистика")
         @self.dp.message(Command("stats"))
         async def cmd_stats(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
             stats = await self.storage.get_stats()
             buf_count = await self.storage.get_buffer_count()
 
@@ -221,6 +241,10 @@ class MasterBot:
         @self.dp.message(F.text.startswith("⚙️ Режим"))
         @self.dp.message(Command("mode"))
         async def cmd_toggle_mode(message: types.Message):
+            try:
+                await message.delete()
+            except Exception:
+                pass
             # Toggle mode between digest and instant
             self.delivery_mode = "instant" if self.delivery_mode == "digest" else "digest"
             buf_count = await self.storage.get_buffer_count()
