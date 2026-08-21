@@ -288,8 +288,8 @@ class MasterBot:
         except Exception as e:
             logger.error(f"Error updating single UI panel: {e}")
 
-    async def purge_recent_chat_history(self, chat_id: Optional[int] = None, max_messages: int = 25):
-        """Purges recent chat history in the master chat on startup to give a clean slate."""
+    async def purge_recent_chat_history(self, chat_id: Optional[int] = None, max_messages: int = 5):
+        """Purges recent chat history in the master chat on startup to give a clean slate quickly."""
         target_chat = chat_id or self.master_chat_id
         if not target_chat or not self.bot:
             return
@@ -298,13 +298,13 @@ class MasterBot:
         start_id = int(saved_ui_id) if saved_ui_id and saved_ui_id.isdigit() else None
         
         if start_id:
-            msg_ids = list(range(max(1, start_id - max_messages), start_id + 10))
+            msg_ids = list(range(max(1, start_id - max_messages), start_id + 2))
             for mid in reversed(msg_ids):
                 try:
                     await self.bot.delete_message(chat_id=target_chat, message_id=mid)
                 except Exception:
                     pass
-            logger.info(f"Purged recent chat history around ID {start_id}")
+            logger.info(f"Purged recent chat history ({len(msg_ids)} msgs) around ID {start_id}")
 
     async def update_status_banner(self, chat_id: Optional[int] = None):
         """Creates or updates the single active status banner in-place."""
