@@ -310,12 +310,20 @@ class MasterBot:
         if self.bot and self.master_chat_id:
             try:
                 buf_count = await self.storage.get_buffer_count()
-                await self.bot.send_message(
+                sent_msg = await self.bot.send_message(
                     chat_id=self.master_chat_id,
                     text=message_text,
                     parse_mode="Markdown",
                     reply_markup=self._get_menu_keyboard(buf_count)
                 )
+                # Register for auto-deletion if config value is greater than 0
+                if config.AUTO_DELETE_DELAY_HOURS > 0:
+                    delay = config.AUTO_DELETE_DELAY_HOURS * 3600
+                    await self.storage.save_sent_notification(
+                        chat_id=self.master_chat_id,
+                        message_id=sent_msg.message_id,
+                        delay_seconds=delay
+                    )
             except Exception as e:
                 logger.error(f"Error sending Telegram notification: {e}")
 
@@ -341,14 +349,28 @@ class MasterBot:
                 # Split long messages if needed
                 if len(full_digest) > 4000:
                     for chunk in [full_digest[i:i+4000] for i in range(0, len(full_digest), 4000)]:
-                        await self.bot.send_message(chat_id=self.master_chat_id, text=chunk, parse_mode="Markdown")
+                        sent_msg = await self.bot.send_message(chat_id=self.master_chat_id, text=chunk, parse_mode="Markdown")
+                        if config.AUTO_DELETE_DELAY_HOURS > 0:
+                            delay = config.AUTO_DELETE_DELAY_HOURS * 3600
+                            await self.storage.save_sent_notification(
+                                chat_id=self.master_chat_id,
+                                message_id=sent_msg.message_id,
+                                delay_seconds=delay
+                            )
                 else:
-                    await self.bot.send_message(
+                    sent_msg = await self.bot.send_message(
                         chat_id=self.master_chat_id,
                         text=full_digest,
                         parse_mode="Markdown",
                         reply_markup=self._get_menu_keyboard(0)
                     )
+                    if config.AUTO_DELETE_DELAY_HOURS > 0:
+                        delay = config.AUTO_DELETE_DELAY_HOURS * 3600
+                        await self.storage.save_sent_notification(
+                            chat_id=self.master_chat_id,
+                            message_id=sent_msg.message_id,
+                            delay_seconds=delay
+                        )
             except Exception as e:
                 logger.error(f"Error sending digest: {e}")
 
@@ -366,11 +388,30 @@ class MasterBot:
                 except Exception as e:
                     logger.error(f"Critical error in digest scheduler: {e}", exc_info=True)
 
+    async def start_cleanup_scheduler(self):
+        """Background task that periodically deletes expired notifications from Telegram."""
+        logger.info(f"Cleanup scheduler running (auto-delete delay: {config.AUTO_DELETE_DELAY_HOURS}h)...")
+        while True:
+            await asyncio.sleep(60)  # Check every minute
+            try:
+                expired = await self.storage.get_expired_notifications()
+                for item in expired:
+                    try:
+                        await self.bot.delete_message(chat_id=item['chat_id'], message_id=item['message_id'])
+                        logger.info(f"Auto-deleted expired message {item['message_id']} in chat {item['chat_id']}.")
+                    except Exception as de:
+                        logger.debug(f"Failed to auto-delete message {item['message_id']} in chat {item['chat_id']}: {de}")
+                    # Always delete from DB so we don't retry endlessly
+                    await self.storage.delete_sent_notification(item['id'])
+            except Exception as e:
+                logger.error(f"Error in cleanup scheduler: {e}")
+
     async def start_polling(self):
         if self.bot and self.dp:
             logger.info("Starting Telegram Bot Polling loop...")
             await self._register_bot_commands()
             asyncio.create_task(self.start_digest_scheduler())
+            asyncio.create_task(self.start_cleanup_scheduler())
             
             use_proxy_mode = True if config.TELEGRAM_PROXY else False
             while True:

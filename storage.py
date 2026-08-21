@@ -28,6 +28,14 @@ class Storage:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS sent_notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    delete_at TIMESTAMP NOT NULL
+                )
+            """)
             await db.commit()
             logger.info("Database schema initialized.")
 
@@ -98,3 +106,32 @@ class Storage:
                     if category in stats:
                         stats[category] = count
                 return stats
+
+    async def save_sent_notification(self, chat_id: int, message_id: int, delay_seconds: int):
+        """Saves sent message ID and calculates deletion time."""
+        import datetime
+        delete_at = (datetime.datetime.now() + datetime.timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT INTO sent_notifications (chat_id, message_id, delete_at) VALUES (?, ?, ?)",
+                (chat_id, message_id, delete_at)
+            )
+            await db.commit()
+
+    async def get_expired_notifications(self) -> List[Dict[str, Any]]:
+        """Gets all notifications that should be deleted."""
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM sent_notifications WHERE delete_at <= ?", (now_str,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+
+    async def delete_sent_notification(self, notification_id: int):
+        """Deletes a notification record from DB."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM sent_notifications WHERE id = ?", (notification_id,))
+            await db.commit()

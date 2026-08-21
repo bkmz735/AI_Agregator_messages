@@ -35,6 +35,7 @@ class Config:
     AI_BATCH_INTERVAL_SECONDS: int = _get_int_env("AI_BATCH_INTERVAL_SECONDS", 60)
     
     DB_PATH: str = os.getenv("DB_PATH", "messages_database.db").strip()
+    AUTO_DELETE_DELAY_HOURS: int = _get_int_env("AUTO_DELETE_DELAY_HOURS", 1)
     
     # System prompt for Gemini spam/importance classification
     AI_FILTER_PROMPT: str = """
