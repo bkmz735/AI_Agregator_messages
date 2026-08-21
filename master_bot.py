@@ -772,10 +772,7 @@ class MasterBot:
                     buf_count = await self.storage.get_buffer_count()
                     sent_msg = await self.bot.send_message(
                         chat_id=callback_query.message.chat.id,
-                        text=(
-                            "🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>\n\n"
-                            "Чат очищен. Бот работает в фоновом режиме и собирает входящие сообщения."
-                        ),
+                        text="🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
                         reply_markup=self._get_menu_keyboard(buf_count),
                         parse_mode="HTML"
                     )
