@@ -1,13 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "=================================================="
 echo "🚀 Развертывание AI Message Aggregator на Linux VPS"
 echo "=================================================="
 
-# Install Python & system dependencies
+# Install Python & system dependencies including console browser (links)
 apt-get update
-apt-get install -y python3 python3-pip python3-venv wget unzip curl
+apt-get install -y python3 python3-pip python3-venv wget unzip curl links
 
 # Directory setup
 APP_DIR="/opt/ai-message-aggregator"
