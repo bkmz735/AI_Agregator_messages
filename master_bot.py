@@ -210,7 +210,7 @@ class MasterBot:
                 pass
             buf_count = await self.storage.get_buffer_count()
             sent_msg = await message.answer(
-                "🤖 <b>AI Message Aggregator</b>\n\n"
+                "<b>AI Message Aggregator</b>\n\n"
                 "Я собираю сообщения из VK и Mail.ru (Авито / Instagram), отсеиваю спам через ИИ "
                 "и присылаю важные выжимки по вашему графику.\n\n"
                 "🎙️ <b>Отправьте мне голосовое сообщение</b> — я мгновенно переведу его в текст и подготовлю выжимку!\n\n"
@@ -952,7 +952,7 @@ class MasterBot:
                     buf_count = await self.storage.get_buffer_count()
                     sent_msg = await self.bot.send_message(
                         chat_id=callback_query.message.chat.id,
-                        text="🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
+                        text="<b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
                         reply_markup=self._get_menu_keyboard(buf_count),
                         parse_mode="HTML"
                     )
@@ -984,7 +984,7 @@ class MasterBot:
                     buf_count = await self.storage.get_buffer_count()
                     sent_msg = await self.bot.send_message(
                         chat_id=callback_query.message.chat.id,
-                        text="🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
+                        text="<b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
                         reply_markup=self._get_menu_keyboard(buf_count),
                         parse_mode="HTML"
                     )
@@ -1172,7 +1172,7 @@ class MasterBot:
                         buf_count = await self.storage.get_buffer_count()
                         sent_msg = await self.bot.send_message(
                             chat_id=self.master_chat_id,
-                            text="🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
+                            text="<b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
                             reply_markup=self._get_menu_keyboard(buf_count),
                             parse_mode="HTML"
                         )
