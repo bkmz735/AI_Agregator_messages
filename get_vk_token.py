@@ -12,22 +12,37 @@ from pathlib import Path
 
 ENV_PATH = Path(__file__).parent / ".env"
 
+# Supported Standalone App IDs:
+# 6287487 = VK Admin
+# 2685278 = Kate Mobile
+# 6126148 = VK Me / Android
+APP_CLIENTS = {
+    "1": ("6287487", "c14b8e04c14b8e04c14b8e0466c12b9180cc14bc14b8e0413f41154564ee133e9d80d29", "VK Admin"),
+    "2": ("2685278", "b352b20f04c63f114c", "Kate Mobile"),
+    "3": ("6126148", "q14b8e04q14b8e04q14b8e04", "VK Me")
+}
+
 def main():
     print("==================================================")
     print("🔑 VK Token Helper for Headless Linux VPS Console")
     print("==================================================")
     
-    login = input("Введите логин VK (телефон или email): ").strip()
+    print("Выберите клиент VK для токена:")
+    print("1. VK Admin (ID: 6287487) [Рекомендуется]")
+    print("2. Kate Mobile (ID: 2685278)")
+    print("3. VK Me (ID: 6126148)")
+    choice = input("Введите номер [1-3] (по умолчанию 1): ").strip() or "1"
+    
+    client_id, client_secret, app_name = APP_CLIENTS.get(choice, APP_CLIENTS["1"])
+    print(f"Используем клиент: {app_name} (ID: {client_id})")
+    
+    login = input("\nВведите логин VK (телефон или email): ").strip()
     password = input("Введите пароль VK: ").strip()
     
     if not login or not password:
         print("❌ Логин и пароль обязательны!")
         sys.exit(1)
         
-    # App ID 2685278 (Kate Mobile)
-    client_id = "2685278"
-    client_secret = "b352b20f04c63f114c"
-    
     params = {
         "grant_type": "password",
         "client_id": client_id,
@@ -40,7 +55,7 @@ def main():
     
     url = f"https://oauth.vk.com/token?{urllib.parse.urlencode(params)}"
     
-    req = urllib.request.Request(url, headers={'User-Agent': 'KateMobileAndroid/56 lite-ru'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'VKAdmin/1.0 (Android; 10; ARM64; ru)'})
     try:
         with urllib.request.urlopen(req) as resp:
             data = json.loads(resp.read().decode('utf-8'))
@@ -48,7 +63,7 @@ def main():
             user_id = data.get("user_id")
             
             if token:
-                print(f"✅ Успешно получении токен для пользователя VK ID {user_id}!")
+                print(f"\n✅ Успешно получен токен {app_name} для пользователя VK ID {user_id}!")
                 update_env_file("VK_TOKEN", token)
                 print("🎉 Токен автоматически сохранен в .env файле сервера!")
                 return
@@ -57,24 +72,24 @@ def main():
         try:
             err_data = json.loads(body)
             if err_data.get("error") == "need_2fa":
-                print("🔐 Включена двухфакторная аутентификация (2FA)!")
-                code = input("Введите 2FA код из СМС / привязаного приложения: ").strip()
+                print("\n🔐 Включена двухфакторная аутентификация (2FA)!")
+                code = input("Введите 2FA код из СМС / приложения: ").strip()
                 params["code"] = code
                 url_2fa = f"https://oauth.vk.com/token?{urllib.parse.urlencode(params)}"
-                req_2fa = urllib.request.Request(url_2fa, headers={'User-Agent': 'KateMobileAndroid/56 lite-ru'})
+                req_2fa = urllib.request.Request(url_2fa, headers={'User-Agent': 'VKAdmin/1.0'})
                 with urllib.request.urlopen(req_2fa) as resp_2fa:
                     data_2fa = json.loads(resp_2fa.read().decode('utf-8'))
                     token_2fa = data_2fa.get("access_token")
                     if token_2fa:
-                        print("✅ Успешно получении токен с 2FA!")
+                        print(f"\n✅ Успешно получен токен {app_name} с 2FA!")
                         update_env_file("VK_TOKEN", token_2fa)
                         print("🎉 Токен автоматически сохранен в .env файле сервера!")
                         return
         except Exception:
             pass
-        print(f"❌ Ошибка входа VK: {body}")
+        print(f"\n❌ Ошибка входа VK ({app_name}): {body}")
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"\n❌ Ошибка: {e}")
 
 def update_env_file(key: str, value: str):
     lines = []
