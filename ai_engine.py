@@ -1,17 +1,50 @@
 import json
 import asyncio
 import logging
-from typing import Optional
+import socket
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from config import config
 
 logger = logging.getLogger(__name__)
 
+# Xbox DNS Servers configuration
+XBOX_DNS_SERVERS = ["111.88.96.50", "111.88.96.51"]
+
+# Enable Custom Xbox DNS Resolver for Google / Gemini domains
+try:
+    import dns.resolver
+    _original_getaddrinfo = socket.getaddrinfo
+
+    def _xbox_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if isinstance(host, str) and ("googleapis.com" in host or "google" in host):
+            try:
+                resolver = dns.resolver.Resolver(configure=False)
+                resolver.nameservers = XBOX_DNS_SERVERS
+                resolver.timeout = 2.5
+                resolver.lifetime = 2.5
+                answers = resolver.resolve(host, "A")
+                for rdata in answers:
+                    ip = rdata.address
+                    return _original_getaddrinfo(ip, port, family, type, proto, flags)
+            except Exception as e:
+                logger.debug(f"Xbox DNS fallback for {host}: {e}")
+        return _original_getaddrinfo(host, port, family, type, proto, flags)
+
+    socket.getaddrinfo = _xbox_getaddrinfo
+    logger.info(f"Xbox DNS Resolver enabled for Gemini domains ({', '.join(XBOX_DNS_SERVERS)}).")
+except Exception as e:
+    logger.warning(f"Could not initialize Xbox DNS Resolver: {e}")
+
 class AnalysisResult(BaseModel):
+    msg_uid: str
     category: str  # "spam", "urgent", "important", "general"
     summary: str
     action_required: bool
     suggested_reply: Optional[str] = None
+
+class AnalysisBatchResponse(BaseModel):
+    results: List[AnalysisResult]
 
 class AIEngine:
     def __init__(self, api_key: Optional[str] = None):
@@ -21,21 +54,28 @@ class AIEngine:
         if self.api_key:
             try:
                 from google import genai
-                # Connect directly from local server (no VPN proxy for Gemini)
                 self.client = genai.Client(api_key=self.api_key)
-                logger.info("Gemini API client initialized directly (no VPN proxy).")
+                logger.info("Gemini API client initialized successfully.")
             except Exception as e:
                 logger.warning(f"Could not initialize google.genai Client: {e}. Falling back to rule-based analysis.")
         else:
             logger.info("No GEMINI_API_KEY set. Running in rule-based simulation mode.")
 
-    async def analyze_message(self, channel: str, sender: str, text: str) -> AnalysisResult:
+    async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
         """
-        Analyzes an incoming message using Gemini API structured output (JSON).
-        If API key is missing or fails, uses robust rule-based mock analysis.
+        Analyzes a BATCH of raw incoming messages in a single Gemini API call to save tokens!
+        messages_batch = [{"msg_uid": "...", "channel": "...", "sender": "...", "text": "..."}, ...]
         """
+        if not messages_batch:
+            return []
+
         if self.client:
-            prompt = f"{config.AI_FILTER_PROMPT}\n\n[Канал]: {channel}\n[Отправитель]: {sender}\n[Текст]:\n{text}"
+            batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
+            prompt = (
+                f"{config.AI_FILTER_PROMPT}\n\n"
+                f"Проанализируй список входящих сообщений ниже и верни массив JSON ответов для каждого сообщения:\n"
+                f"{batch_json_input}"
+            )
             
             for model_name in ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.5-flash']:
                 try:
@@ -46,22 +86,54 @@ class AIEngine:
                             contents=prompt,
                             config={'response_mime_type': 'application/json'}
                         ),
-                        timeout=6.0
+                        timeout=10.0
                     )
                     if response and response.text:
-                        result_data = json.loads(response.text)
-                        logger.info(f"Successfully analyzed via Gemini API ({model_name}): {result_data.get('category')}")
-                        return AnalysisResult(**result_data)
+                        parsed = json.loads(response.text)
+                        
+                        # Handle list or object wrapping
+                        items = parsed.get("results", parsed) if isinstance(parsed, dict) else parsed
+                        results = []
+                        if isinstance(items, list):
+                            for item in items:
+                                results.append(AnalysisResult(**item))
+                            logger.info(f"Successfully analyzed BATCH of {len(results)} messages via Gemini API ({model_name}).")
+                            return results
                 except Exception as e:
-                    logger.warning(f"Model {model_name} skipped or timed out: {e}")
+                    logger.warning(f"Batch analysis model {model_name} failed: {e}")
                     continue
 
-        # Fallback / Mock analysis engine
-        return self._mock_analyze(channel, sender, text)
+        # Fallback / Mock analysis engine for batch
+        results = []
+        for msg in messages_batch:
+            mock = self._mock_analyze(msg.get("channel", ""), msg.get("sender", ""), msg.get("text", ""))
+            results.append(AnalysisResult(
+                msg_uid=msg.get("msg_uid", ""),
+                category=mock.category,
+                summary=mock.summary,
+                action_required=mock.action_required,
+                suggested_reply=mock.suggested_reply
+            ))
+        return results
+
+    async def analyze_message(self, channel: str, sender: str, text: str, msg_uid: str = "single_msg") -> AnalysisResult:
+        """Single message wrapper around batch engine."""
+        res_list = await self.analyze_batch_messages([
+            {"msg_uid": msg_uid, "channel": channel, "sender": sender, "text": text}
+        ])
+        if res_list:
+            return res_list[0]
+        mock = self._mock_analyze(channel, sender, text)
+        return AnalysisResult(
+            msg_uid=msg_uid,
+            category=mock.category,
+            summary=mock.summary,
+            action_required=mock.action_required,
+            suggested_reply=mock.suggested_reply
+        )
 
     def _mock_analyze(self, channel: str, sender: str, text: str) -> AnalysisResult:
         text_lower = text.lower()
-        
         spam_keywords = ["выигрыш", "казино", "ставка", "заработок в интернете", "крипта 100%", "кредит", "подпишись на канал", "бесплатно жми"]
         urgent_keywords = ["срочно", "купить", "цена", "где забрать", "оплата", "доставка", "когда отправите"]
         
@@ -82,6 +154,7 @@ class AIEngine:
             suggested_reply = None
             
         return AnalysisResult(
+            msg_uid="mock_uid",
             category=category,
             summary=summary,
             action_required=action_required,

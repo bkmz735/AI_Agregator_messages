@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import uuid
+from typing import List, Dict, Any
 from config import config
 from storage import Storage
 from ai_engine import AIEngine
@@ -48,8 +49,12 @@ class MessageAggregatorApp:
             TelegramAdapter()
         ]
 
+        # Raw message queue for batching requests to Gemini API (token saving)
+        self.raw_message_queue: List[Dict[str, Any]] = []
+        self._queue_lock = asyncio.Lock()
+
     async def process_incoming_message(self, channel: str, sender: str, text: str, msg_uid: str = None):
-        """Pipeline for processing incoming messages from any adapter."""
+        """Collects raw incoming messages into batch queue."""
         if not msg_uid:
             msg_uid = f"{channel}_{uuid.uuid4().hex[:8]}"
 
@@ -58,34 +63,68 @@ class MessageAggregatorApp:
             logger.info(f"Duplicate message skipped: {msg_uid}")
             return
 
-        logger.info(f"Processing new message from [{channel}] {sender}...")
+        logger.info(f"Queued raw message from [{channel}] {sender} for batch AI processing...")
 
-        # 2. AI Analysis via Gemini API
-        analysis = await self.ai_engine.analyze_message(channel=channel, sender=sender, text=text)
+        async with self._queue_lock:
+            self.raw_message_queue.append({
+                "msg_uid": msg_uid,
+                "channel": channel,
+                "sender": sender,
+                "text": text
+            })
 
-        # 3. Process via MasterBot (determines if sent immediately or buffered)
-        is_delivered = await self.bot.handle_incoming_analyzed_message(
-            channel=channel,
-            sender=sender,
-            text=text,
-            category=analysis.category,
-            summary=analysis.summary,
-            action_required=analysis.action_required,
-            suggested_reply=analysis.suggested_reply
-        )
+    async def _ai_batch_worker(self):
+        """Background worker that flushes raw messages to Gemini API in 1 batch call."""
+        while True:
+            await asyncio.sleep(config.AI_BATCH_INTERVAL_SECONDS)
+            await self._flush_raw_queue()
 
-        # 4. Save to SQLite DB with delivered status
-        await self.storage.save_message(
-            msg_uid=msg_uid,
-            channel=channel,
-            sender=sender,
-            text=text,
-            category=analysis.category,
-            summary=analysis.summary,
-            action_required=analysis.action_required,
-            suggested_reply=analysis.suggested_reply,
-            is_delivered=is_delivered
-        )
+    async def _flush_raw_queue(self):
+        async with self._queue_lock:
+            if not self.raw_message_queue:
+                return
+            batch = list(self.raw_message_queue)
+            self.raw_message_queue.clear()
+
+        logger.info(f"Processing BATCH of {len(batch)} messages via Gemini API...")
+
+        # Analyze entire batch in ONE Gemini API call
+        analysis_results = await self.ai_engine.analyze_batch_messages(batch)
+        results_map = {res.msg_uid: res for res in analysis_results}
+
+        for msg in batch:
+            uid = msg["msg_uid"]
+            channel = msg["channel"]
+            sender = msg["sender"]
+            text = msg["text"]
+
+            analysis = results_map.get(uid)
+            if not analysis:
+                analysis = await self.ai_engine.analyze_message(channel, sender, text, msg_uid=uid)
+
+            # Process via MasterBot
+            is_delivered = await self.bot.handle_incoming_analyzed_message(
+                channel=channel,
+                sender=sender,
+                text=text,
+                category=analysis.category,
+                summary=analysis.summary,
+                action_required=analysis.action_required,
+                suggested_reply=analysis.suggested_reply
+            )
+
+            # Save to SQLite DB
+            await self.storage.save_message(
+                msg_uid=uid,
+                channel=channel,
+                sender=sender,
+                text=text,
+                category=analysis.category,
+                summary=analysis.summary,
+                action_required=analysis.action_required,
+                suggested_reply=analysis.suggested_reply,
+                is_delivered=is_delivered
+            )
 
     async def run(self):
         # Initialize Database
@@ -96,8 +135,12 @@ class MessageAggregatorApp:
             adapter.set_callback(self.process_incoming_message)
             await adapter.start()
 
+        # Start AI Batch processing background worker
+        batch_task = asyncio.create_task(self._ai_batch_worker())
+
         logger.info("==================================================")
         logger.info("🚀 AI Message Aggregator & Buffer Service Started!")
+        logger.info(f"AI Batching: Processing raw messages every {config.AI_BATCH_INTERVAL_SECONDS}s")
         logger.info("==================================================")
 
         # Start Bot polling task if enabled
@@ -110,6 +153,7 @@ class MessageAggregatorApp:
                 await asyncio.sleep(3600)
         except (KeyboardInterrupt, asyncio.CancelledError):
             logger.info("Shutting down AI Message Aggregator...")
+            batch_task.cancel()
             for adapter in self.adapters:
                 await adapter.stop()
             if self.xray_tunnel:

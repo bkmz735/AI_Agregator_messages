@@ -33,6 +33,7 @@ class Config:
     # Delivery Mode: "instant" or "digest" (urgent instant, rest buffered)
     DELIVERY_MODE: str = os.getenv("DELIVERY_MODE", "digest").strip()
     DIGEST_INTERVAL_MINUTES: int = _get_int_env("DIGEST_INTERVAL_MINUTES", 60)
+    AI_BATCH_INTERVAL_SECONDS: int = _get_int_env("AI_BATCH_INTERVAL_SECONDS", 60)
     
     DB_PATH: str = os.getenv("DB_PATH", "messages_database.db").strip()
     
