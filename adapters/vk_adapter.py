@@ -174,8 +174,8 @@ class VKAdapter(BaseAdapter):
                                             sender_name = await self._resolve_user_name(session, peer_id)
                                             await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
 
-                        # Sleep for 60 seconds before next check to save RAM & CPU
-                        await asyncio.sleep(60)
+                        # Sleep for configured interval before next check to save RAM & CPU
+                        await asyncio.sleep(config.VK_POLL_INTERVAL_SECONDS)
 
                 except asyncio.CancelledError:
                     break

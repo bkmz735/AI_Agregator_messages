@@ -29,18 +29,23 @@ class Config:
     IMAP_USER: str = os.getenv("IMAP_USER", "").strip()
     IMAP_PASSWORD: str = os.getenv("IMAP_PASSWORD", "").strip()
     
-    # Delivery Mode: "instant" or "digest" (urgent instant, rest buffered)
+    # ==========================================
+    # ⏱️ TIME & INTERVAL CONFIGURATION
+    # ==========================================
     DELIVERY_MODE: str = os.getenv("DELIVERY_MODE", "digest").strip()
     DIGEST_INTERVAL_MINUTES: int = _get_int_env("DIGEST_INTERVAL_MINUTES", 60)
     AI_BATCH_INTERVAL_SECONDS: int = _get_int_env("AI_BATCH_INTERVAL_SECONDS", 60)
-    
-    DB_PATH: str = os.getenv("DB_PATH", "messages_database.db").strip()
+    VK_POLL_INTERVAL_SECONDS: int = _get_int_env("VK_POLL_INTERVAL_SECONDS", 60)
+    EMAIL_POLL_INTERVAL_SECONDS: int = _get_int_env("EMAIL_POLL_INTERVAL_SECONDS", 60)
     AUTO_DELETE_DELAY_HOURS: int = _get_int_env("AUTO_DELETE_DELAY_HOURS", 1)
+    DB_PURGE_DAYS: int = _get_int_env("DB_PURGE_DAYS", 7)
     
     # Night Mode (Quiet Hours - Pause AI & Notifications during sleep to save tokens)
     NIGHT_MODE_ENABLED: bool = os.getenv("NIGHT_MODE_ENABLED", "false").strip().lower() in ("true", "1", "yes")
     NIGHT_START_HOUR: int = _get_int_env("NIGHT_START_HOUR", 23)
     NIGHT_END_HOUR: int = _get_int_env("NIGHT_END_HOUR", 7)
+    
+    DB_PATH: str = os.getenv("DB_PATH", "messages_database.db").strip()
     
     # System prompt for Gemini spam/importance classification
     AI_FILTER_PROMPT: str = """
