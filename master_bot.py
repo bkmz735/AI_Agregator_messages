@@ -88,10 +88,7 @@ class MasterBot:
         self.night_mode_enabled = config.NIGHT_MODE_ENABLED
         self.night_start_hour = config.NIGHT_START_HOUR
         self.night_end_hour = config.NIGHT_END_HOUR
-        self._last_buffer_status_msg_id = None
-        self._last_buffer_panel_msg_id = None
-        self._last_settings_msg_id = None
-        self._last_stats_msg_id = None
+        self._last_ui_msg_id = None
         self._last_clear_prompt_msg_id = None
         self.dp = None
         self.bot = None
@@ -252,21 +249,44 @@ class MasterBot:
         ])
         return text, inline_kb
 
-    async def _clear_previous_ui_panels(self):
-        """Deletes any previously active UI panel (settings, stats, buffer, clear prompt) to keep chat clean."""
-        panels = [
-            ("_last_settings_msg_id", self._last_settings_msg_id),
-            ("_last_stats_msg_id", self._last_stats_msg_id),
-            ("_last_buffer_panel_msg_id", self._last_buffer_panel_msg_id),
-            ("_last_clear_prompt_msg_id", self._last_clear_prompt_msg_id),
-        ]
-        for attr_name, msg_id in panels:
-            if msg_id:
+    async def show_or_edit_ui_panel(self, text: str, keyboard: Any, parse_mode: str = "HTML"):
+        """Displays or smoothly edits the single active UI window in-place."""
+        target_chat = self.master_chat_id
+        if not target_chat or not self.bot:
+            return
+
+        if self._last_ui_msg_id:
+            try:
+                await self.bot.edit_message_text(
+                    chat_id=target_chat,
+                    message_id=self._last_ui_msg_id,
+                    text=text,
+                    reply_markup=keyboard,
+                    parse_mode=parse_mode
+                )
+                return
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not modified" in err_str:
+                    return
+                # Message missing or deleted, reset ID to recreate
                 try:
-                    await self.bot.delete_message(chat_id=self.master_chat_id, message_id=msg_id)
+                    await self.bot.delete_message(chat_id=target_chat, message_id=self._last_ui_msg_id)
                 except Exception:
                     pass
-                setattr(self, attr_name, None)
+                self._last_ui_msg_id = None
+
+        try:
+            sent_msg = await self.bot.send_message(
+                chat_id=target_chat,
+                text=text,
+                reply_markup=keyboard,
+                parse_mode=parse_mode
+            )
+            self._last_ui_msg_id = sent_msg.message_id
+            await self.storage.set_setting("last_ui_msg_id", str(sent_msg.message_id))
+        except Exception as e:
+            logger.error(f"Error updating single UI panel: {e}")
 
     async def purge_recent_chat_history(self, chat_id: Optional[int] = None, max_messages: int = 25):
         """Purges recent chat history in the master chat on startup to give a clean slate."""
@@ -274,8 +294,8 @@ class MasterBot:
         if not target_chat or not self.bot:
             return
             
-        saved_status_id = await self.storage.get_setting("last_status_msg_id")
-        start_id = int(saved_status_id) if saved_status_id and saved_status_id.isdigit() else None
+        saved_ui_id = await self.storage.get_setting("last_ui_msg_id") or await self.storage.get_setting("last_status_msg_id")
+        start_id = int(saved_ui_id) if saved_ui_id and saved_ui_id.isdigit() else None
         
         if start_id:
             msg_ids = list(range(max(1, start_id - max_messages), start_id + 10))
@@ -287,50 +307,11 @@ class MasterBot:
             logger.info(f"Purged recent chat history around ID {start_id}")
 
     async def update_status_banner(self, chat_id: Optional[int] = None):
-        """Creates or updates the single active status banner to prevent duplicates."""
-        target_chat_id = chat_id or self.master_chat_id
-        if not target_chat_id or not self.bot:
-            return
-
+        """Creates or updates the single active status banner in-place."""
         buf_count = await self.storage.get_buffer_count()
         text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
         kb = self._get_menu_keyboard(buf_count)
-
-        # 1. If banner ID exists in memory or DB, attempt to edit it in place
-        if self._last_buffer_status_msg_id:
-            try:
-                await self.bot.edit_message_text(
-                    chat_id=target_chat_id,
-                    message_id=self._last_buffer_status_msg_id,
-                    text=text,
-                    reply_markup=kb,
-                    parse_mode="HTML"
-                )
-                return
-            except Exception as e:
-                err_str = str(e).lower()
-                if "not modified" in err_str:
-                    # Message is already identical and active — nothing to change!
-                    return
-                # If editing failed (message deleted or expired), try deleting old message ID
-                try:
-                    await self.bot.delete_message(chat_id=target_chat_id, message_id=self._last_buffer_status_msg_id)
-                except Exception:
-                    pass
-                self._last_buffer_status_msg_id = None
-
-        # 2. If no valid banner exists, post a fresh one and save its ID to SQLite DB
-        try:
-            sent_msg = await self.bot.send_message(
-                chat_id=target_chat_id,
-                text=text,
-                reply_markup=kb,
-                parse_mode="HTML"
-            )
-            self._last_buffer_status_msg_id = sent_msg.message_id
-            await self.storage.set_setting("last_status_msg_id", str(sent_msg.message_id))
-        except Exception as e:
-            logger.error(f"Failed to post status banner: {e}")
+        await self.show_or_edit_ui_panel(text=text, keyboard=kb)
 
     def _setup_handlers(self):
         from aiogram.filters import Command
@@ -443,8 +424,6 @@ class MasterBot:
             except Exception:
                 pass
                 
-            await self._clear_previous_ui_panels()
-                
             buf_count = await self.storage.get_buffer_count()
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             
@@ -466,18 +445,16 @@ class MasterBot:
                     [InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")]
                 ])
 
-            sent_msg = await message.answer(text, reply_markup=kb, parse_mode="HTML")
-            self._last_buffer_panel_msg_id = sent_msg.message_id
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
 
         @self.dp.callback_query(F.data == "flush_now")
         async def process_flush_now_callback(callback_query: types.CallbackQuery):
-            await self._clear_previous_ui_panels()
             sent_count = await self.flush_buffer_now()
             if sent_count == 0:
                 await callback_query.answer("📥 Буфер пуст!", show_alert=True)
             else:
                 await callback_query.answer("🚀 Сводка отправлена!")
+            await self.update_status_banner()
 
         @self.dp.message(F.text == "🚀 Отправить сводку")
         @self.dp.message(Command("flush"))
@@ -487,16 +464,12 @@ class MasterBot:
             except Exception:
                 pass
                 
-            await self._clear_previous_ui_panels()
-                
             try:
                 sent_count = await self.flush_buffer_now()
                 if sent_count == 0:
-                    sent_msg = await message.answer("📥 Буфер пуст! Новых сообщений нет.", reply_markup=self._get_menu_keyboard(0))
-                    await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+                    await self.update_status_banner()
             except Exception as e:
                 logger.error(f"Error in manual digest flush: {e}", exc_info=True)
-                await message.answer(f"❌ Ошибка отправки сводки: {e}")
 
         @self.dp.message(F.text == "📊 Статистика")
         @self.dp.message(Command("stats"))
@@ -505,8 +478,6 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
-
-            await self._clear_previous_ui_panels()
 
             stats = await self.storage.get_stats()
             buf_count = await self.storage.get_buffer_count()
@@ -526,9 +497,7 @@ class MasterBot:
                     InlineKeyboardButton(text="🗑️ Закрыть", callback_data="delete_msg")
                 ]
             ])
-            sent_msg = await message.answer(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
-            self._last_stats_msg_id = sent_msg.message_id
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
 
         @self.dp.message(Command("logs"))
         @self.dp.message(Command("debug"))
@@ -537,19 +506,13 @@ class MasterBot:
                 await message.delete()
             except Exception:
                 pass
-            await self._clear_previous_ui_panels()
             text, kb = await self._get_diagnostic_logs_text_and_keyboard()
-            sent_msg = await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
-            self._last_stats_msg_id = sent_msg.message_id
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
 
         @self.dp.callback_query(F.data == "refresh_logs")
         async def process_refresh_logs(callback_query: types.CallbackQuery):
             text, kb = await self._get_diagnostic_logs_text_and_keyboard()
-            try:
-                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
-            except Exception:
-                pass
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
             await callback_query.answer("Логи обновлены!")
 
         @self.dp.message(F.text == "⚙️ Настройки")
@@ -560,12 +523,8 @@ class MasterBot:
             except Exception:
                 pass
 
-            await self._clear_previous_ui_panels()
-
             text, kb = await self._get_settings_text_and_keyboard()
-            sent_msg = await message.answer(text=text, reply_markup=kb, parse_mode="HTML")
-            self._last_settings_msg_id = sent_msg.message_id
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
 
         # Handle inline settings menu navigation and callbacks
         @self.dp.callback_query(F.data == "settings_main_menu")
@@ -1114,27 +1073,11 @@ class MasterBot:
             self._last_clear_prompt_msg_id = sent_msg.message_id
             await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=300)
 
-        # Handle inline "Read/Delete" button click
+        # Handle inline "Close / Cancel" button click — smoothly returns UI to active status banner
         @self.dp.callback_query(F.data == "delete_msg")
         async def process_delete_msg(callback_query: types.CallbackQuery):
-            msg_id = callback_query.message.message_id
-            if msg_id == self._last_settings_msg_id:
-                self._last_settings_msg_id = None
-            if msg_id == self._last_stats_msg_id:
-                self._last_stats_msg_id = None
-            if msg_id == self._last_buffer_status_msg_id:
-                self._last_buffer_status_msg_id = None
-            if msg_id == self._last_clear_prompt_msg_id:
-                self._last_clear_prompt_msg_id = None
-            try:
-                await callback_query.message.delete()
-            except Exception:
-                pass
+            await self.update_status_banner(callback_query.message.chat.id)
             await callback_query.answer()
-
-            # If no active UI panels remain open, update/ensure active status banner
-            if not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
-                await self.update_status_banner(callback_query.message.chat.id)
 
         # Handle inline confirmation of chat clearing
         @self.dp.callback_query(F.data == "confirm_clear_chat")
@@ -1332,10 +1275,6 @@ class MasterBot:
                         logger.debug(f"Failed to auto-delete message {item['message_id']} in chat {item['chat_id']}: {de}")
                     # Always delete from DB so we don't retry endlessly
                     await self.storage.delete_sent_notification(item['id'])
-
-                # Restore active status banner if auto-deletion cleared the chat
-                if expired and not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
-                    await self.update_status_banner(self.master_chat_id)
 
                 # 2. Database 7-day auto-purge for delivered/spam messages (runs once per hour)
                 now_ts = asyncio.get_running_loop().time()
