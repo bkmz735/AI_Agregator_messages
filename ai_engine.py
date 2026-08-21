@@ -75,10 +75,10 @@ class AIEngine:
         # we skip it and try the next one.
         # Added high-limit Lite models (500 RPD each) as excellent fallbacks.
         self.priority_models = [
+            'gemini-3.5-flash-lite', 
             'gemini-3.7-flash', 
             'gemini-3.6-flash', 
             'gemini-3.5-flash', 
-            'gemini-3.5-flash-lite', 
             'gemini-3.1-flash-lite',
             'gemini-3-flash'
         ]
