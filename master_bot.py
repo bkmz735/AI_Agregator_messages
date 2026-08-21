@@ -954,6 +954,20 @@ class MasterBot:
                     # Always delete from DB so we don't retry endlessly
                     await self.storage.delete_sent_notification(item['id'])
 
+                # Restore active status banner if auto-deletion cleared the chat
+                if expired and not self._last_buffer_status_msg_id and not self._last_settings_msg_id and not self._last_stats_msg_id and not self._last_clear_prompt_msg_id:
+                    try:
+                        buf_count = await self.storage.get_buffer_count()
+                        sent_msg = await self.bot.send_message(
+                            chat_id=self.master_chat_id,
+                            text="🤖 <b>AI Message Aggregator</b> — <i>Активен 🟢</i>",
+                            reply_markup=self._get_menu_keyboard(buf_count),
+                            parse_mode="HTML"
+                        )
+                        self._last_buffer_status_msg_id = sent_msg.message_id
+                    except Exception as be:
+                        logger.error(f"Failed to post active status banner after cleanup: {be}")
+
                 # 2. Database 7-day auto-purge for delivered/spam messages (runs once per hour)
                 now_ts = asyncio.get_running_loop().time()
                 if now_ts - last_db_purge_time >= 3600:
