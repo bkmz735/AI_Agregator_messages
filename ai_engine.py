@@ -214,11 +214,28 @@ class AIEngine:
 
     async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
         """
-        Analyzes a BATCH of raw incoming messages in a single Gemini API call to save tokens!
+        Analyzes a BATCH of raw incoming messages.
+        If batch size exceeds 5 messages, automatically splits into chunks of 5 for optimal Gemini accuracy.
         """
         if not messages_batch:
             return []
 
+        # Chunking: split large batches into sub-batches of max 5 items
+        CHUNK_SIZE = 5
+        if len(messages_batch) > CHUNK_SIZE:
+            chunks = [messages_batch[i:i + CHUNK_SIZE] for i in range(0, len(messages_batch), CHUNK_SIZE)]
+            logger.info(f"Splitting batch of {len(messages_batch)} messages into {len(chunks)} sub-chunks (max {CHUNK_SIZE} msgs each)...")
+            all_results = []
+            for idx, chunk in enumerate(chunks, 1):
+                logger.info(f"Processing chunk {idx}/{len(chunks)} ({len(chunk)} messages)...")
+                chunk_results = await self._analyze_single_batch_chunk(chunk)
+                all_results.extend(chunk_results)
+            return all_results
+        else:
+            return await self._analyze_single_batch_chunk(messages_batch)
+
+    async def _analyze_single_batch_chunk(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
+        """Analyzes a single chunk (up to 5 messages) in ONE Gemini API call."""
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)
@@ -267,7 +284,7 @@ class AIEngine:
                                     elif "msg_uid" not in item:
                                         item["msg_uid"] = f"fallback_{time.time()}_{i}"
                                     results.append(AnalysisResult(**item))
-                                logger.info(f"Successfully analyzed BATCH of {len(results)} messages via Gemini API ({model_name}).")
+                                logger.info(f"Successfully analyzed CHUNK of {len(results)} messages via Gemini API ({model_name}).")
                                 return results
                     except Exception as e:
                         err_str = str(e)

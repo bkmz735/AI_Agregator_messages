@@ -13,7 +13,7 @@
 
 ## 🛠️ Запуск на Linux VPS
 ```bash
-git clone https://github.com/bkmz735/AI_Agregator_messages.git /opt/ai-message-aggregator
+git clone https://github.com/your-username/AI_Agregator_messages.git /opt/ai-message-aggregator
 cd /opt/ai-message-aggregator
 cp .env.example .env
 # заполните ключи в .env
@@ -30,3 +30,4 @@ bot-update
 ```bash
 bot-logs
 ```
+

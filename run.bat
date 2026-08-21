@@ -1,5 +1,5 @@
 @echo off
-cd /d "c:\Users\BKMZ\.gemini\antigravity-ide\scratch\ai-message-aggregator"
+cd /d "%~dp0"
 title AI Message Aggregator
 
 echo Starting AI Message Aggregator...

@@ -32,6 +32,7 @@ class MessageAggregatorApp:
         self.storage = Storage()
         self.ai_engine = AIEngine()
         self.bot = MasterBot(storage=self.storage, simulate_callback=self.process_incoming_message, ai_engine=self.ai_engine)
+        self.bot.set_flush_raw_queue_callback(self._flush_raw_queue)
         
         self.adapters = [
             VKAdapter(),

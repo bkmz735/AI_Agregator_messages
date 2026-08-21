@@ -44,6 +44,7 @@ class MasterBot:
         self.storage = storage
         self.ai_engine = ai_engine
         self.simulate_callback = simulate_callback
+        self.on_flush_raw_queue: Optional[Callable[[], Awaitable[None]]] = None
         self.delivery_mode = config.DELIVERY_MODE  # "instant" or "digest"
         self.digest_interval = config.DIGEST_INTERVAL_MINUTES
         self.auto_delete_delay_hours = config.AUTO_DELETE_DELAY_HOURS
@@ -56,6 +57,9 @@ class MasterBot:
 
     def set_ai_engine(self, ai_engine):
         self.ai_engine = ai_engine
+
+    def set_flush_raw_queue_callback(self, callback: Callable[[], Awaitable[None]]):
+        self.on_flush_raw_queue = callback
 
     def _init_bot_instance(self, use_proxy: bool = True):
         from aiogram import Bot, Dispatcher
@@ -571,6 +575,13 @@ class MasterBot:
 
     async def flush_buffer_now(self) -> int:
         """Sends all buffered messages as a formatted digest."""
+        # 1. Flush any pending raw messages in queue to AI/DB first
+        if self.on_flush_raw_queue:
+            try:
+                await self.on_flush_raw_queue()
+            except Exception as fe:
+                logger.error(f"Error flushing raw queue prior to digest: {fe}")
+
         messages = await self.storage.get_buffered_messages(mark_as_delivered=True)
         if not messages:
             return 0
