@@ -56,9 +56,10 @@ class MasterBot:
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+        mode_label = "МГНОВЕННЫЙ" if self.delivery_mode == "instant" else "СВОДКА"
         kb = [
             [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text=f"⚙️ Режим: {self.delivery_mode.upper()}"), KeyboardButton(text="🧹 Очистить чат")]
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text=f"⚙️ Режим: {mode_label}"), KeyboardButton(text="🧹 Очистить чат")]
         ]
         return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
@@ -223,7 +224,8 @@ class MasterBot:
             # Toggle mode between digest and instant
             self.delivery_mode = "instant" if self.delivery_mode == "digest" else "digest"
             buf_count = await self.storage.get_buffer_count()
-            msg = f"⚙️ Режим отправки изменен на: **{self.delivery_mode.upper()}**\n\n"
+            mode_label = "МГНОВЕННЫЙ" if self.delivery_mode == "instant" else "СВОДКА"
+            msg = f"⚙️ Режим отправки изменен на: **{mode_label}**\n\n"
             if self.delivery_mode == "digest":
                 msg += "🚨 Срочные — мгновенно.\n📥 Важные/Обычные — по расписанию."
             else:
