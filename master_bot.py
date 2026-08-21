@@ -139,7 +139,7 @@ class MasterBot:
             BotCommand(command="clear", description="Очистить последние сообщения чата")
         ]
         try:
-            await self.bot.set_my_commands(commands)
+            await asyncio.wait_for(self.bot.set_my_commands(commands), timeout=5.0)
             logger.info("Registered Telegram Bot slash commands menu.")
         except Exception as e:
             logger.warning(f"Could not set bot commands: {e}")
@@ -1247,9 +1247,9 @@ class MasterBot:
             use_proxy_mode = True if config.TELEGRAM_PROXY else False
             while True:
                 try:
-                    me = await self.bot.get_me()
+                    me = await asyncio.wait_for(self.bot.get_me(), timeout=5.0)
                     logger.info(f"🤖 Connected to Telegram Bot: @{me.username} (ID: {me.id})")
-                    await self.bot.delete_webhook(drop_pending_updates=False)
+                    await asyncio.wait_for(self.bot.delete_webhook(drop_pending_updates=False), timeout=5.0)
                     await self.dp.start_polling(self.bot, drop_pending_updates=False)
                 except Exception as e:
                     logger.warning(f"Telegram polling error: {e}")
