@@ -216,7 +216,11 @@ class MasterBot:
                     parse_mode="HTML"
                 )
                 return
-            except Exception:
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not modified" in err_str:
+                    # Message is already identical and active — nothing to change!
+                    return
                 # If editing failed (message deleted or expired), try deleting old message ID
                 try:
                     await self.bot.delete_message(chat_id=target_chat_id, message_id=self._last_buffer_status_msg_id)
@@ -1226,7 +1230,7 @@ class MasterBot:
                 self._last_buffer_status_msg_id = int(saved_status_id)
 
             await self._register_bot_commands()
-            await self.update_status_banner(self.master_chat_id)
+            asyncio.create_task(self.update_status_banner(self.master_chat_id))
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
             
