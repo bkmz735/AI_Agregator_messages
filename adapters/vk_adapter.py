@@ -1,0 +1,118 @@
+import asyncio
+import logging
+import ssl
+import aiohttp
+from adapters.base_adapter import BaseAdapter
+from config import config
+
+logger = logging.getLogger(__name__)
+
+def _create_ssl_context():
+    """Creates SSL context ignoring self-signed/missing Windows root CA errors."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+class VKAdapter(BaseAdapter):
+    def __init__(self):
+        super().__init__(name="VK")
+        self.token = config.VK_TOKEN
+        self.group_id = config.VK_GROUP_ID
+        self._running = False
+        self._task = None
+
+    async def start(self):
+        self.token = config.VK_TOKEN
+        self.group_id = config.VK_GROUP_ID
+        self._running = True
+        
+        if self.token:
+            logger.info("Starting VK Adapter...")
+            self._task = asyncio.create_task(self._listen_vk())
+        else:
+            logger.info("No VK_TOKEN configured. Running VK adapter in standby / mock mode.")
+
+    async def stop(self):
+        self._running = False
+        if self._task:
+            self._task.cancel()
+
+    async def _listen_vk(self):
+        """Supported User & Group LongPoll polling loop."""
+        ssl_ctx = _create_ssl_context()
+        connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+
+        async with aiohttp.ClientSession(connector=connector) as session:
+            while self._running:
+                try:
+                    if self.group_id > 0:
+                        params = {
+                            "group_id": self.group_id,
+                            "access_token": self.token,
+                            "v": "5.131"
+                        }
+                        method = "https://api.vk.com/method/groups.getLongPollServer"
+                    else:
+                        params = {
+                            "access_token": self.token,
+                            "v": "5.131",
+                            "lp_version": "3"
+                        }
+                        method = "https://api.vk.com/method/messages.getLongPollServer"
+
+                    async with session.get(method, params=params) as resp:
+                        data = await resp.json()
+                        if "error" in data:
+                            logger.error(f"VK LongPoll Server Error: {data['error']}")
+                            await asyncio.sleep(10)
+                            continue
+                        
+                        res = data["response"]
+                        server = res["server"]
+                        key = res["key"]
+                        ts = res["ts"]
+                        if not server.startswith("http"):
+                            server = f"https://{server}"
+
+                    # LongPoll Loop
+                    while self._running:
+                        if self.group_id > 0:
+                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=25"
+                        else:
+                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=25&mode=2&version=3"
+
+                        async with session.get(lp_url) as lp_resp:
+                            lp_data = await lp_resp.json()
+                            if "failed" in lp_data:
+                                logger.warning(f"VK LongPoll failed code {lp_data.get('failed')}, reconnecting...")
+                                break
+                            
+                            ts = lp_data.get("ts", ts)
+                            updates = lp_data.get("updates", [])
+                            for event in updates:
+                                if self.group_id > 0:
+                                    if event.get("type") == "message_new":
+                                        msg = event["object"]["message"]
+                                        user_id = msg.get("from_id")
+                                        text = msg.get("text", "")
+                                        msg_id = f"vk_grp_{msg.get('id', user_id)}"
+                                        await self.emit_message(sender=f"VK_User_{user_id}", text=text, msg_uid=msg_id)
+                                else:
+                                    # User LongPoll format: [4, message_id, flags, peer_id, timestamp, text, ...]
+                                    if isinstance(event, list) and len(event) > 5 and event[0] == 4:
+                                        msg_id = event[1]
+                                        flags = event[2]
+                                        peer_id = event[3]
+                                        text = event[5]
+                                        
+                                        is_outbox = bool(flags & 2)
+                                        if not is_outbox and text:
+                                            uid = f"vk_user_msg_{msg_id}"
+                                            await self.emit_message(sender=f"VK_Peer_{peer_id}", text=text, msg_uid=uid)
+
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Error in VK listener: {e}")
+                    await asyncio.sleep(5)

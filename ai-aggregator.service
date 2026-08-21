@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Message Aggregator & Filter Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-message-aggregator
+ExecStart=/opt/ai-message-aggregator/venv/bin/python main.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/ai-message-aggregator/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+# Sensitive credentials & environment files
+.env
+
+# SQLite Database
+*.db
+*.sqlite3
+messages_database.db
+
+# Virtual Environment & Python cache
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# Downloaded Xray binaries & temporary files
+bin/
+*.zip
+*.log

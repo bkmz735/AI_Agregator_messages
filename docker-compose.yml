@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  ai-aggregator:
+    build: .
+    container_name: ai-aggregator
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./messages_database.db:/app/messages_database.db
