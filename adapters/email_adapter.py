@@ -14,6 +14,23 @@ def _create_ssl_context():
     ctx.verify_mode = ssl.CERT_NONE
     return ctx
 
+SPAM_KEYWORDS = [
+    # Casino & Gambling
+    "казино", "casino", "1xbet", "1хбет", "vulkan", "вулкан", "pin-up", "pinup",
+    "pokerdom", "покердом", "слоты", "slots", "freespin", "фриспин", "ставка",
+    "ставки", "букмекер", "1win", "joycasino", "джойказино", "777",
+    "бездеп", "бездепозитный", "азартн", "игровой автомат", "игровые автоматы",
+    "рулетка", "рулетк", "джекпот", "jackpot",
+
+    # VPN Spam
+    "vpn", "впн", "бесплатный vpn", "скачать vpn",
+
+    # Winnings / Phishing / Fraud
+    "выигрыш", "выиграли", "бонус 500", "заберите бонус", "вам начислено",
+    "выплата одобрена", "перевод средств", "криптобонус", "финансовая пирамида",
+    "пассивный доход"
+]
+
 class EmailAdapter(BaseAdapter):
     def __init__(self):
         super().__init__(name="Email (Mail.ru)")
@@ -141,6 +158,23 @@ class EmailAdapter(BaseAdapter):
                                     payload = msg.get_payload(decode=True)
                                     if payload:
                                         body = payload.decode("utf-8", errors="ignore")
+
+                                # Check for Casino / VPN / Financial Scam Spam
+                                combined_search_text = f"{subject} {from_addr} {body}".lower()
+                                matched_spam_kw = next((kw for kw in SPAM_KEYWORDS if kw in combined_search_text), None)
+                                
+                                if matched_spam_kw:
+                                    logger.warning(
+                                        f"🚫 [SPAM AUTO-DELETE] Deleting Casino/VPN/Scam email #{num_str} from '{from_addr}' "
+                                        f"(Trigger keyword: '{matched_spam_kw}', Subject: '{subject}')"
+                                    )
+                                    try:
+                                        await imap_client.store(num_str, '+FLAGS', '(\\Deleted)')
+                                        await imap_client.expunge()
+                                    except Exception as de:
+                                        logger.error(f"Failed to delete spam email #{num_str} via IMAP: {de}")
+                                    self._seen_nums.add(num_str)
+                                    continue
 
                                 channel_name = "Email (Mail.ru)"
                                 if "avito" in from_addr.lower() or "авито" in subject.lower():
