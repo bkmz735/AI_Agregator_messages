@@ -786,11 +786,13 @@ class MasterBot:
                     logger.error(f"Critical error in digest scheduler: {e}", exc_info=True)
 
     async def start_cleanup_scheduler(self):
-        """Background task that periodically deletes expired notifications from Telegram."""
-        logger.info(f"Cleanup scheduler running (auto-delete delay: {self.auto_delete_delay_hours}h)...")
+        """Background task that periodically deletes expired notifications from Telegram and purges old DB records."""
+        logger.info(f"Cleanup scheduler running (auto-delete delay: {self.auto_delete_delay_hours}h, DB 7-day purge active)...")
+        last_db_purge_time = 0
         while True:
             await asyncio.sleep(60)  # Check every minute
             try:
+                # 1. Telegram Message Auto-Deletion
                 expired = await self.storage.get_expired_notifications()
                 for item in expired:
                     try:
@@ -800,6 +802,13 @@ class MasterBot:
                         logger.debug(f"Failed to auto-delete message {item['message_id']} in chat {item['chat_id']}: {de}")
                     # Always delete from DB so we don't retry endlessly
                     await self.storage.delete_sent_notification(item['id'])
+
+                # 2. Database 7-day auto-purge for delivered/spam messages (runs once per hour)
+                now_ts = asyncio.get_running_loop().time()
+                if now_ts - last_db_purge_time >= 3600:
+                    await self.storage.purge_old_messages(days=7)
+                    last_db_purge_time = now_ts
+
             except Exception as e:
                 logger.error(f"Error in cleanup scheduler: {e}")
 

@@ -120,6 +120,20 @@ class Storage:
             await db.commit()
             logger.info("Message statistics reset successfully.")
 
+    async def purge_old_messages(self, days: int = 7) -> int:
+        """Purges delivered messages and spam older than N days to prevent database bloat."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                DELETE FROM messages 
+                WHERE (is_delivered = 1 OR category = 'spam')
+                AND created_at <= datetime('now', '-' || ? || ' days')
+            """, (days,))
+            await db.commit()
+            deleted_count = cursor.rowcount
+            if deleted_count > 0:
+                logger.info(f"Auto-purged {deleted_count} delivered/spam messages older than {days} days from database.")
+            return deleted_count
+
     async def save_sent_notification(self, chat_id: int, message_id: int, delay_seconds: int):
         """Saves sent message ID and calculates deletion time."""
         import datetime
