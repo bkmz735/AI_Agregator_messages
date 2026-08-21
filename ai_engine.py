@@ -225,7 +225,12 @@ class AIEngine:
                         items = parsed.get("results", parsed) if isinstance(parsed, dict) else parsed
                         results = []
                         if isinstance(items, list):
-                            for item in items:
+                            for i, item in enumerate(items):
+                                # Fallback if AI forgot to include msg_uid
+                                if "msg_uid" not in item and i < len(messages_batch):
+                                    item["msg_uid"] = messages_batch[i]["msg_uid"]
+                                elif "msg_uid" not in item:
+                                    item["msg_uid"] = f"fallback_{time.time()}_{i}"
                                 results.append(AnalysisResult(**item))
                             logger.info(f"Successfully analyzed BATCH of {len(results)} messages via Gemini API ({model_name}).")
                             return results
