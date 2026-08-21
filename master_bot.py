@@ -47,6 +47,22 @@ class MasterBot:
         ]
         return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
+    async def _register_bot_commands(self):
+        """Registers blue '/' commands menu in Telegram app UI."""
+        from aiogram.types import BotCommand
+        commands = [
+            BotCommand(command="start", description="Главное меню и статус"),
+            BotCommand(command="help", description="Справка по командам и работе бота"),
+            BotCommand(command="flush", description="Отправить накопившийся буфер прямо сейчас"),
+            BotCommand(command="stats", description="Статистика обработанных сообщений"),
+            BotCommand(command="mode", description="Переключить режим (Instant / Digest)")
+        ]
+        try:
+            await self.bot.set_my_commands(commands)
+            logger.info("Registered Telegram Bot slash commands menu.")
+        except Exception as e:
+            logger.warning(f"Could not set bot commands: {e}")
+
     def _setup_handlers(self):
         from aiogram.filters import Command
         from aiogram import types, F
@@ -59,10 +75,28 @@ class MasterBot:
                 "Я собираю сообщения из VK, Авито, TG и Mail.ru, отсеиваю спам через ИИ "
                 "и присылаю важные выжимки по вашему графику.\n\n"
                 "🚨 **Срочные сообщения** приходят мгновенно!\n"
-                "📥 **Обычные и важные** копятся в буфере и отправляются сводкой.",
+                "📥 **Обычные и важные** копятся в буфере и отправляются сводкой.\n\n"
+                "Используйте кнопку `/help` для справки по командам.",
                 reply_markup=self._get_menu_keyboard(buf_count),
                 parse_mode="Markdown"
             )
+
+        @self.dp.message(Command("help"))
+        async def cmd_help(message: types.Message):
+            buf_count = await self.storage.get_buffer_count()
+            help_text = (
+                "📖 **Справка по командам бота:**\n\n"
+                "🔹 `/start` — Показать главное меню\n"
+                "🔹 `/help` — Эта справка\n"
+                "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать выжимку из буфера прямо сейчас\n"
+                "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику категорий и спама\n"
+                "🔹 `/mode` (или ⚙️ Режим) — Переключить режим (Мгновенный / По расписанию)\n\n"
+                "💡 **Как работает агрегатор:**\n"
+                "• Спам отсеивается ИИ и не беспокоит вас.\n"
+                "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
+                "• Срочные сообщения приходят сразу с готовым черновиком ответа!"
+            )
+            await message.answer(help_text, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
 
         @self.dp.message(F.text.startswith("📥 Буфер"))
         async def cmd_buffer(message: types.Message):
@@ -75,6 +109,7 @@ class MasterBot:
             )
 
         @self.dp.message(F.text == "🚀 Отправить сводку")
+        @self.dp.message(Command("flush"))
         async def cmd_send_digest(message: types.Message):
             sent_count = await self.flush_buffer_now()
             buf_count = await self.storage.get_buffer_count()
@@ -84,6 +119,7 @@ class MasterBot:
                 await message.answer(f"✅ Сводка отправлена ({sent_count} сообщ.)", reply_markup=self._get_menu_keyboard(buf_count))
 
         @self.dp.message(F.text == "📊 Статистика")
+        @self.dp.message(Command("stats"))
         async def cmd_stats(message: types.Message):
             stats = await self.storage.get_stats()
             buf_count = await self.storage.get_buffer_count()
@@ -98,6 +134,7 @@ class MasterBot:
             await message.answer(stats_msg, reply_markup=self._get_menu_keyboard(buf_count), parse_mode="Markdown")
 
         @self.dp.message(F.text.startswith("⚙️ Режим"))
+        @self.dp.message(Command("mode"))
         async def cmd_toggle_mode(message: types.Message):
             # Toggle mode between digest and instant
             self.delivery_mode = "instant" if self.delivery_mode == "digest" else "digest"
@@ -205,6 +242,7 @@ class MasterBot:
     async def start_polling(self):
         if self.bot and self.dp:
             logger.info("Starting Telegram Bot Polling loop...")
+            await self._register_bot_commands()
             asyncio.create_task(self.start_digest_scheduler())
             while True:
                 try:
