@@ -165,8 +165,12 @@ class AIEngine:
                 except Exception as e:
                     err_str = str(e)
                     if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                        self.rate_limit_until = time.time() + 60.0
-                        logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
+                        if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                            self.rate_limit_until = time.time() + 86400.0
+                            logger.error(f"Gemini API Daily Quota Limit hit! Pausing API calls for 24h. Error: {e}")
+                        else:
+                            self.rate_limit_until = time.time() + 60.0
+                            logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
                         break
                     logger.warning(f"Audio transcription model {model_name} failed: {e}")
                     continue
@@ -243,8 +247,12 @@ class AIEngine:
                     except Exception as e:
                         err_str = str(e)
                         if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                            self.rate_limit_until = time.time() + 60.0
-                            logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
+                            if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                                self.rate_limit_until = time.time() + 86400.0
+                                logger.error(f"Gemini API Daily Quota Limit hit! Pausing API calls for 24h. Error: {e}")
+                            else:
+                                self.rate_limit_until = time.time() + 60.0
+                                logger.error(f"Gemini API 429 Rate Limit hit! Pausing API calls for 60s. Error: {e}")
                             break
                         logger.warning(f"Batch analysis model {model_name} failed: {e}")
                         continue
