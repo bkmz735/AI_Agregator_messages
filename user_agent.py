@@ -5,6 +5,39 @@ from settings_manager import SettingsManager
 
 logger = logging.getLogger(__name__)
 
+# Tool definitions for schema generation
+def add_banword(word: str, scope: str = "global") -> str:
+    """Adds a new banword to filter out unwanted messages."""
+    return ''
+
+def add_news_topic(topic: str, preference: str) -> str:
+    """Adds a news topic. Preference must be either 'liked' (interesting) or 'disliked' (ignore)."""
+    return ''
+
+def remove_news_topic(topic: str, preference: str) -> str:
+    """Removes a news topic. Preference must be either 'liked' or 'disliked'."""
+    return ''
+
+def add_tg_channel(channel_username: str) -> str:
+    """Adds a Telegram channel to the bot's watchlist. Make sure channel_username is a valid @username or t.me/ link."""
+    return ''
+
+def get_bot_stats() -> str:
+    """Returns the current message statistics."""
+    return ''
+
+def set_timezone(offset_hours: int) -> str:
+    """Sets the bot's timezone offset in hours from UTC (e.g., 3 for Moscow, 5 for Yekaterinburg)."""
+    return ''
+
+def set_digest_interval(minutes: int) -> str:
+    """Sets the interval in minutes for sending automatic news digests (e.g., 60 for 1 hour)."""
+    return ''
+
+def clear_chat() -> str:
+    """Clears the entire chat history and removes all stored messages from the bot's database. Requires confirmation."""
+    return ''
+
 class ConversationalAgent:
     def __init__(self, ai_engine: Any, storage):
         self.ai_engine = ai_engine
@@ -24,49 +57,16 @@ class ConversationalAgent:
             "При выполнении команд (добавление, удаление) отвечай кратко. НО если пользователь просит найти информацию или новости в интернете (через ИИ-поиск), давай максимально развернутый, подробный и полезный ответ, не делай сухих кратких выжимок."
         )
 
-    # Tool definitions
-    def add_banword(self, word: str, scope: str = "global") -> str:
-        """Adds a new banword to filter out unwanted messages."""
-        return ''
-
-    def add_news_topic(self, topic: str, preference: str) -> str:
-        """Adds a news topic. Preference must be either 'liked' (interesting) or 'disliked' (ignore)."""
-        return ''
-
-    def remove_news_topic(self, topic: str, preference: str) -> str:
-        """Removes a news topic. Preference must be either 'liked' or 'disliked'."""
-        return ''
-
-    def add_tg_channel(self, channel_username: str) -> str:
-        """Adds a Telegram channel to the bot's watchlist. Make sure channel_username is a valid @username or t.me/ link."""
-        return ''
-
-    def get_bot_stats(self) -> str:
-        """Returns the current message statistics."""
-        return ''
-
-    def set_timezone(self, offset_hours: int) -> str:
-        """Sets the bot's timezone offset in hours from UTC (e.g., 3 for Moscow, 5 for Yekaterinburg)."""
-        return ''
-
-    def set_digest_interval(self, minutes: int) -> str:
-        """Sets the interval in minutes for sending automatic news digests (e.g., 60 for 1 hour)."""
-        return ''
-
-    def clear_chat(self) -> str:
-        """Clears the entire chat history and removes all stored messages from the bot's database. Requires confirmation."""
-        return ''
-
     def _get_tools(self):
         return [
-            self.add_banword, 
-            self.add_news_topic, 
-            self.remove_news_topic, 
-            self.add_tg_channel,
-            self.get_bot_stats,
-            self.set_timezone,
-            self.set_digest_interval,
-            self.clear_chat,
+            add_banword, 
+            add_news_topic, 
+            remove_news_topic, 
+            add_tg_channel,
+            get_bot_stats,
+            set_timezone,
+            set_digest_interval,
+            clear_chat,
             {"google_search": {}} # Native AI Google Search tool
         ]
 
