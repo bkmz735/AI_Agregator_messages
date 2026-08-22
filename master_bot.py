@@ -489,7 +489,7 @@ class MasterBot:
                         )
                         copied = True
                     except Exception as e:
-                        logger.error(f"Failed to copy tg_news message {m['msg_uid']}: {e}. Fallback to text digest.")
+                        logger.warning(f"Failed to copy tg_news message {m['msg_uid']}: {e}. Fallback to text digest.")
                 
                 if not copied:
                     regular_messages.append(m)
