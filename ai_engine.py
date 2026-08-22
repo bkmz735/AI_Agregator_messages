@@ -6,7 +6,7 @@ import time
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
-from config import config
+from config import config as app_config
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class AudioAnalysisResult(BaseModel):
 
 class AIEngine:
     def __init__(self, api_key: Optional[str] = None, storage=None):
-        self.api_key = api_key or config.AI_API_KEY
+        self.api_key = api_key or app_config.AI_API_KEY
         self.client = None
         self.storage = storage
         
@@ -68,19 +68,20 @@ class AIEngine:
         self.rate_limit_until: float = 0.0
         self.last_error_reason: Optional[str] = None
 
-        # Dynamically test models in priority order. If one is exhausted (429 daily) or unsupported (404),
-        # we skip it and try the next one.
-        # Added high-limit Lite models (500 RPD each) as excellent fallbacks.
+        # Priority order: Lite models first (500 RPD, 15 RPM), then standard Flash models (20 RPD, 5 RPM)
         self.priority_models = [
             'gemini-3.5-flash-lite', 
+            'gemini-3.1-flash-lite',
             'gemini-3.7-flash', 
             'gemini-3.6-flash', 
             'gemini-3.5-flash', 
-            'gemini-3.1-flash-lite',
+            'gemini-2.5-flash-lite',
+            'gemini-2.5-flash',
             'gemini-3-flash'
         ]
-        self.exhausted_models: set[str] = set()  # Daily exhausted models (reset daily)
-        self.unsupported_models: set[str] = set()  # Deprecated/invalid models (permanent during session)
+        self.exhausted_models: set[str] = set()       # Daily exhausted models (reset daily)
+        self.unsupported_models: set[str] = set()     # Deprecated/invalid models (permanent during session)
+        self.model_cooldowns: Dict[str, float] = {}   # Temporary cooldowns per model for minute-limit (429)
 
         if self.api_key:
             try:
@@ -109,6 +110,28 @@ class AIEngine:
         # Keep only timestamps within the last 60 seconds
         self.minute_request_timestamps = [t for t in self.minute_request_timestamps if now - t <= 60]
 
+    def _get_active_models(self) -> List[str]:
+        """Returns list of currently usable models sorted by priority."""
+        now = time.time()
+        return [
+            m for m in self.priority_models 
+            if m not in self.exhausted_models 
+            and m not in self.unsupported_models 
+            and self.model_cooldowns.get(m, 0.0) <= now
+        ]
+
+    def _get_cooldown_wait_time(self) -> int:
+        """Calculates minimum wait time for models in minute cooldown."""
+        now = time.time()
+        active_cooldowns = [
+            self.model_cooldowns[m] - now 
+            for m in self.priority_models 
+            if m not in self.exhausted_models and m not in self.unsupported_models and self.model_cooldowns.get(m, 0.0) > now
+        ]
+        if active_cooldowns:
+            return max(1, int(min(active_cooldowns)))
+        return 60
+
     async def get_quota_stats(self) -> Dict[str, Any]:
         """Returns current AI API rate limit and usage statistics."""
         now = time.time()
@@ -119,7 +142,7 @@ class AIEngine:
 
         from settings_manager import SettingsManager
         settings = SettingsManager(self.storage) if self.storage else None
-        max_rpm = (await settings.get_ai_max_rpm()) if settings else config.AI_MAX_RPM
+        max_rpm = (await settings.get_ai_max_rpm()) if settings else app_config.AI_MAX_RPM
 
         return {
             "requests_today": self.requests_today,
@@ -130,8 +153,8 @@ class AIEngine:
             "status_text": f"🔴 Пауза лимита ({pause_seconds_left}с)" if is_paused else "🟢 API Активен"
         }
 
-    async def generate_content_with_retry(self, contents: Any, config: Any) -> Any:
-        """Executes a AI API request with the priority models fallback and rate limit protections."""
+    async def generate_content_with_retry(self, contents: Any, genai_config: Any) -> Any:
+        """Executes a AI API request with priority models fallback and rate limit protections."""
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)
@@ -139,7 +162,7 @@ class AIEngine:
             
         from settings_manager import SettingsManager
         settings = SettingsManager(self.storage) if self.storage else None
-        max_rpm = (await settings.get_ai_max_rpm()) if settings else config.AI_MAX_RPM
+        max_rpm = (await settings.get_ai_max_rpm()) if settings else app_config.AI_MAX_RPM
 
         rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
         if rpm_count >= max_rpm:
@@ -149,9 +172,11 @@ class AIEngine:
         if not self.client:
             raise RuntimeError("AI client not initialized.")
             
-        active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+        active_models = self._get_active_models()
         if not active_models:
-            raise RuntimeError("No active AI models available (all exhausted or unsupported for today).")
+            wait_time = self._get_cooldown_wait_time()
+            self.rate_limit_until = time.time() + wait_time
+            raise RuntimeError(f"Все модели ИИ временно на паузе (лимит). Возобновление через {wait_time}с.")
             
         last_error = None
         for model_name in active_models:
@@ -161,28 +186,29 @@ class AIEngine:
                     self.client.aio.models.generate_content(
                         model=model_name,
                         contents=contents,
-                        config=config
+                        config=genai_config
                     ),
-                    timeout=20.0
+                    timeout=25.0
                 )
                 return response
             except Exception as e:
                 err_str = str(e)
                 last_error = e
-                # Handle 404
+                # Handle 404 (model unsupported or not found in region)
                 if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
                     logger.warning(f"AI model {model_name} is unsupported (404).")
                     self.unsupported_models.add(model_name)
                     continue
-                # Handle 429
+                # Handle 429 (quota exhausted)
                 if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                     if "day" in err_str.lower() or "daily" in err_str.lower():
                         logger.error(f"AI model {model_name} hit daily quota.")
                         self.exhausted_models.add(model_name)
                         continue
                     else:
-                        self.rate_limit_until = time.time() + 60.0
-                        raise RuntimeError(f"AI API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
+                        logger.warning(f"AI model {model_name} hit minute rate limit. Cooling down for 60s.")
+                        self.model_cooldowns[model_name] = time.time() + 60.0
+                        continue
                 logger.warning(f"Model {model_name} failed: {e}")
                 continue
                 
@@ -213,9 +239,9 @@ class AIEngine:
                 "и предложи готовый черновик ответа (suggested_reply).\n"
                 "Ответ верни строго в формате JSON с ключами: transcription, category, summary, action_required, suggested_reply."
             )
-            active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+            active_models = self._get_active_models()
             if not active_models:
-                logger.warning("No active AI models available (all exhausted or unsupported for today).")
+                logger.warning("No active AI models available for audio transcription.")
             
             for model_name in active_models:
                 try:
@@ -226,7 +252,7 @@ class AIEngine:
                             contents=[part, prompt],
                             config=types.GenerateContentConfig(response_mime_type="application/json")
                         ),
-                        timeout=15.0
+                        timeout=20.0
                     )
                     if response and response.text:
                         parsed = json.loads(response.text)
@@ -242,22 +268,20 @@ class AIEngine:
                     err_str = str(e)
                     # Handle 404 (model deprecated / unsupported)
                     if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
-                        logger.warning(f"AI model {model_name} is unsupported (404). Adding to unsupported list permanently.")
+                        logger.warning(f"AI model {model_name} is unsupported (404).")
                         self.unsupported_models.add(model_name)
                         continue
                     
                     # Handle 429 (quota exhausted)
                     if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                         if "day" in err_str.lower() or "daily" in err_str.lower():
-                            logger.error(f"AI model {model_name} hit daily quota limit. Adding to exhausted list.")
+                            logger.error(f"AI model {model_name} hit daily quota limit.")
                             self.exhausted_models.add(model_name)
-                            # Try next model in loop immediately
                             continue
                         else:
-                            # RPM limit (minute block) - pause the engine briefly
-                            self.rate_limit_until = time.time() + 60.0
-                            logger.error(f"AI API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
-                            break
+                            logger.warning(f"AI model {model_name} hit minute limit during audio. Cooling down.")
+                            self.model_cooldowns[model_name] = time.time() + 60.0
+                            continue
                     logger.warning(f"Audio transcription model {model_name} failed: {e}")
                     continue
 
@@ -309,7 +333,7 @@ class AIEngine:
         # Chunking: split large batches into sub-batches
         from settings_manager import SettingsManager
         settings = SettingsManager(self.storage) if self.storage else None
-        CHUNK_SIZE = (await settings.get_ai_batch_chunk_size()) if settings else config.AI_BATCH_CHUNK_SIZE
+        CHUNK_SIZE = (await settings.get_ai_batch_chunk_size()) if settings else app_config.AI_BATCH_CHUNK_SIZE
         
         all_ai_results = []
         if len(ai_batch) > CHUNK_SIZE:
@@ -326,7 +350,6 @@ class AIEngine:
                     except RuntimeError as e:
                         if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
                             logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
-                            import asyncio
                             await asyncio.sleep(60)
                         else:
                             raise e
@@ -338,7 +361,6 @@ class AIEngine:
                 except RuntimeError as e:
                     if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
                         logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
-                        import asyncio
                         await asyncio.sleep(60)
                     else:
                         raise e
@@ -359,7 +381,7 @@ class AIEngine:
         if self.client:
             from settings_manager import SettingsManager
             settings = SettingsManager(self.storage) if self.storage else None
-            max_rpm = (await settings.get_ai_max_rpm()) if settings else config.AI_MAX_RPM
+            max_rpm = (await settings.get_ai_max_rpm()) if settings else app_config.AI_MAX_RPM
 
             # Pre-check: don't waste an API call if we already know we're over limit
             rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
@@ -371,15 +393,18 @@ class AIEngine:
                 anonymized_batch = [{"id": i, "text": m["text"]} for i, m in enumerate(messages_batch)]
                 batch_json_input = json.dumps(anonymized_batch, ensure_ascii=False)
                 prompt = (
-                    f"{config.AI_FILTER_PROMPT}\n"
+                    f"{app_config.AI_FILTER_PROMPT}\n"
                     f"{custom_prompt_suffix}\n\n"
                     f"Проанализируй список входящих сообщений ниже и верни массив JSON ответов для каждого сообщения:\n"
                     f"{batch_json_input}"
                 )
-                active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+                active_models = self._get_active_models()
                 if not active_models:
-                    logger.warning("No active AI models available (all exhausted or unsupported for today).")
+                    wait_time = self._get_cooldown_wait_time()
+                    self.rate_limit_until = time.time() + wait_time
+                    raise RuntimeError(f"Все модели ИИ на паузе лимита. Ожидание {wait_time}с.")
                 
+                from google.genai import types
                 for model_name in active_models:
                     try:
                         self._track_request()
@@ -387,9 +412,9 @@ class AIEngine:
                             self.client.aio.models.generate_content(
                                 model=model_name,
                                 contents=prompt,
-                                config={'response_mime_type': 'application/json'}
+                                config=types.GenerateContentConfig(response_mime_type="application/json")
                             ),
-                            timeout=10.0
+                            timeout=20.0
                         )
                         if response and response.text:
                             text_resp = response.text
@@ -439,22 +464,20 @@ class AIEngine:
                         err_str = str(e)
                         # Handle 404 (model deprecated / unsupported)
                         if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
-                            logger.warning(f"AI model {model_name} is unsupported (404). Adding to unsupported list permanently.")
+                            logger.warning(f"AI model {model_name} is unsupported (404).")
                             self.unsupported_models.add(model_name)
                             continue
                         
                         # Handle 429 (quota exhausted)
                         if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                             if "day" in err_str.lower() or "daily" in err_str.lower():
-                                logger.error(f"AI model {model_name} hit daily quota limit. Adding to exhausted list.")
+                                logger.error(f"AI model {model_name} hit daily quota limit.")
                                 self.exhausted_models.add(model_name)
-                                # Try next model in loop immediately
                                 continue
                             else:
-                                # RPM limit (minute block) - pause the engine briefly
-                                self.rate_limit_until = time.time() + 60.0
-                                logger.error(f"AI API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
-                                raise RuntimeError(f"AI API minute limit hit (429): {e}")
+                                logger.warning(f"AI model {model_name} hit minute limit during batch. Cooling down.")
+                                self.model_cooldowns[model_name] = time.time() + 60.0
+                                continue
                         logger.warning(f"Batch analysis model {model_name} failed: {e}")
                         continue
 
@@ -561,9 +584,10 @@ class AIEngine:
             f"Сообщение пользователя:\n{user_text}"
         )
         
-        active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+        active_models = self._get_active_models()
         if not active_models:
-            return "К сожалению, все доступные модели ИИ исчерпали дневной лимит."
+            wait_time = self._get_cooldown_wait_time()
+            return f"К сожалению, все модели ИИ временно на паузе лимита. Пожалуйста, подождите {wait_time} сек."
             
         from google.genai import types
         
@@ -592,8 +616,9 @@ class AIEngine:
                         self.exhausted_models.add(model_name)
                         continue
                     else:
-                        self.rate_limit_until = time.time() + 60.0
-                        return f"Сработал минутный лимит запросов. Пожалуйста, подождите минуту. Ошибка: {e}"
+                        logger.warning(f"AI model {model_name} hit minute limit. Cooling down.")
+                        self.model_cooldowns[model_name] = time.time() + 60.0
+                        continue
                 continue
                 
         return "Произошла ошибка при обращении к ИИ. Попробуйте позже."
