@@ -716,7 +716,7 @@ class MasterBot:
             start_idx = (page - 1) * per_page
             page_bws = bws[start_idx:start_idx + per_page]
 
-            lines = [f"✉️ <b>Банворды Mail.ru</b> (Стр. {page}/{total_pages}, всего: {len(bws)})\n"]
+            lines = [f"✉️ <b>Банворды Mail.ru</b>\n<i>(Стр. {page}/{total_pages}, всего: {len(bws)})</i>\n"]
             if not bws:
                 lines.append("<i>Список банвордов Mail.ru пуст.</i>")
             else:
@@ -743,7 +743,7 @@ class MasterBot:
             start_idx = (page - 1) * per_page
             page_bws = bws[start_idx:start_idx + per_page]
 
-            lines = [f"💬 <b>Банворды ВКонтакте (VK)</b> (Стр. {page}/{total_pages}, всего: {len(bws)})\n"]
+            lines = [f"💬 <b>Банворды ВКонтакте</b>\n<i>(Стр. {page}/{total_pages}, всего: {len(bws)})</i>\n"]
             if not bws:
                 lines.append("<i>Список банвордов VK пуст.</i>")
             else:
