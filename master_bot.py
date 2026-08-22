@@ -1225,23 +1225,33 @@ class MasterBot:
                 inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🗑️ Прочитано", callback_data="delete_this_message")]
                 ])
-                # Split long messages if needed
-                if len(full_digest) > 4000:
-                    for chunk in [full_digest[i:i+4000] for i in range(0, len(full_digest), 4000)]:
-                        await self.bot.send_message(
-                            chat_id=self.master_chat_id, 
-                            text=chunk, 
-                            parse_mode="HTML",
-                            reply_markup=inline_kb
-                        )
-                else:
+                # Отправляем сводку, разбивая по сообщениям, чтобы не разорвать HTML-теги
+                current_chunk = ""
+                for part in digest_parts:
+                    # Если добавление части превысит лимит Telegram (4096), отправляем накопленное
+                    if len(current_chunk) + len(part) + 5 > 4000:
+                        if current_chunk:
+                            await self.bot.send_message(
+                                chat_id=self.master_chat_id, 
+                                text=current_chunk, 
+                                parse_mode="HTML",
+                                reply_markup=inline_kb
+                            )
+                        current_chunk = part
+                    else:
+                        if current_chunk:
+                            current_chunk += "\n---\n" + part
+                        else:
+                            current_chunk = part
+                
+                # Отправляем последний кусочек
+                if current_chunk:
                     await self.bot.send_message(
                         chat_id=self.master_chat_id,
-                        text=full_digest,
+                        text=current_chunk,
                         parse_mode="HTML",
                         reply_markup=inline_kb
                     )
-                    # Digests are NOT auto-deleted — they persist until user presses "🗑️ Прочитано"
             except Exception as e:
                 logger.error(f"Error sending digest: {e}")
 
