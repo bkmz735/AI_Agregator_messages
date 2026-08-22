@@ -480,7 +480,7 @@ class MasterBot:
                 else:
                     sent_msg = await message.answer(f"ℹ️ Канал <b>«@{html.escape(clean_user)}»</b> уже есть в отслеживании.", parse_mode="HTML")
 
-                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
                 await self._show_tg_channels_page(1)
                 return
 
@@ -503,7 +503,7 @@ class MasterBot:
                 else:
                     sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word_to_add)}»</b> уже есть в {scope_name}.", parse_mode="HTML")
 
-                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
                 
                 # Refresh UI panel to show banword list cleanly (per_page = 9)
                 bws = await self.storage.get_banwords(scope=scope)
@@ -944,7 +944,7 @@ class MasterBot:
                     )
                 else:
                     sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word)}»</b> уже есть в списке.", parse_mode="HTML")
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
 
         @self.dp.message(Command("unblock"))
         async def cmd_unblock(message: types.Message):
@@ -969,7 +969,7 @@ class MasterBot:
                     sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(deleted_word)}»</b> удален из списка!", parse_mode="HTML")
                 else:
                     sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(target)}»</b> не найден.", parse_mode="HTML")
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
 
         @self.dp.message(Command("reset_banwords"))
         async def cmd_reset_banwords(message: types.Message):
@@ -979,7 +979,7 @@ class MasterBot:
                 pass
             await self.storage.reset_banwords_to_default()
             sent_msg = await message.answer("🔄 Все банворды сброшены к базовым системным настройкам!", parse_mode="HTML")
-            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+            await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
 
         @self.dp.message(Command("banwords"))
         @self.dp.message(Command("blacklist"))
