@@ -268,10 +268,10 @@ class MasterBot:
     async def _get_night_settings_text_and_keyboard(self):
         night_status = "🟢 Включен" if self.night_mode_enabled else "❌ Выключен"
         text = (
-            "🌙 <b>Настройки ночного режима (Экономия ИИ)</b>\n\n"
+            "🌙 <b>Настройки ночного режима</b>\n\n"
             f"Статус: <b>{night_status}</b>\n"
             f"Часы тишины: <b>{self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00</b>\n\n"
-            "В ночное время ИИ отключается, а сообщения накапливаются без отправки уведомлений."
+            "В ночное время уведомления отключаются, а новые сообщения накапливаются в буфере."
         )
         return text, kb_ui.get_night_settings_keyboard(self.night_mode_enabled)
 
@@ -377,18 +377,14 @@ class MasterBot:
                 "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать сообщения из буфера прямо сейчас\n"
                 "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику сообщений\n"
                 "🔹 `/clear` (или 🧹 Очистить чат) — Стереть сообщения в чате\n\n"
-                "🎙️ <b>Расшифровка голосовых:</b> перешлите или отправьте голосуху, и ИИ переведет её в текст!\n\n"
-                "💡 <b>Принцип работы:</b>\n"
-                "• Спам отсеивается ИИ и не беспокоит вас.\n"
-                "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
-                "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу без потери сообщений!"
+                "🎙️ <b>Расшифровка голосовых:</b> перешлите или отправьте голосовое сообщение, и оно автоматически переведется в текст!"
             )
             await self.show_or_edit_ui_panel(text=help_text, keyboard=kb_ui.get_help_keyboard(), force_new=False)
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
             """Transcribes voice or audio messages via Gemini Multimodal API."""
-            status_msg = await message.answer("🎙️ *Расшифровываю голосовое сообщение через Gemini AI...*", parse_mode="Markdown")
+            status_msg = await message.answer("🎙️ <i>Расшифровываю голосовое сообщение...</i>", parse_mode="HTML")
             try:
                 voice_or_audio = message.voice or message.audio
                 file_info = await self.bot.get_file(voice_or_audio.file_id)
@@ -414,7 +410,7 @@ class MasterBot:
                 text_response = (
                     f"🎙️ <b>РАСШИФРОВКА ГОЛОСОВОГО</b>\n\n"
                     f"🗣️ <b>Текст записи:</b>\n<i>{html.escape(res.transcription)}</i>\n\n"
-                    f"📝 <b>Выжимка ИИ:</b>\n{html.escape(res.summary)}"
+                    f"📝 <b>Краткое содержание:</b>\n{html.escape(res.summary)}"
                 )
 
                 await status_msg.edit_text(text_response, parse_mode="HTML")
