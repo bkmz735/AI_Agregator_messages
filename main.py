@@ -34,7 +34,7 @@ class MessageAggregatorApp:
             TGNewsAdapter(storage=self.storage)
         ]
 
-        # Raw message queue for batching requests to Gemini API (token saving)
+        # Raw message queue for batching requests to AI API (token saving)
         self.raw_message_queue: List[Dict[str, Any]] = []
         self._queue_lock = asyncio.Lock()
 
@@ -76,7 +76,7 @@ class MessageAggregatorApp:
             })
 
     async def _ai_batch_worker(self):
-        """Background worker that flushes raw messages to Gemini API in 1 batch call."""
+        """Background worker that flushes raw messages to AI API in 1 batch call."""
         while True:
             await asyncio.sleep(config.AI_BATCH_INTERVAL_SECONDS)
             try:
@@ -91,13 +91,13 @@ class MessageAggregatorApp:
             if self.bot and self.bot.is_night_time():
                 logger.info(
                     f"🌙 Night mode active ({self.bot.night_start_hour:02d}:00 - {self.bot.night_end_hour:02d}:00). "
-                    f"Holding {len(self.raw_message_queue)} messages in queue to save Gemini tokens until morning..."
+                    f"Holding {len(self.raw_message_queue)} messages in queue to save AI tokens until morning..."
                 )
                 return
             batch = list(self.raw_message_queue)
             self.raw_message_queue.clear()
 
-        logger.info(f"Processing BATCH of {len(batch)} messages via Gemini API...")
+        logger.info(f"Processing BATCH of {len(batch)} messages via AI API...")
 
         try:
             # Fetch custom news topics
@@ -114,7 +114,7 @@ class MessageAggregatorApp:
                     disliked_list = ", ".join([t["topic"] for t in disliked_topics])
                     custom_prompt_suffix += f"- ЗАПРЕТНЫЕ ТЕМЫ (игнорируй, относи к категории bullshit): {disliked_list}\n"
 
-            # Analyze entire batch in ONE Gemini API call
+            # Analyze entire batch in ONE AI API call
             analysis_results = await self.ai_engine.analyze_batch_messages(batch, custom_prompt_suffix)
             results_map = {res.msg_uid: res for res in analysis_results}
 

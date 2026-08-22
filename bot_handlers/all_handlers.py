@@ -50,13 +50,14 @@ def setup_all_handlers(master_bot):
             "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать сообщения из буфера прямо сейчас\n"
             "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику сообщений\n"
             "🔹 `/clear` (или 🧹 Очистить чат) — Стереть сообщения в чате\n\n"
+            "🏛️ <b>Умный помощник:</b> Бот автоматически находит и выделяет штрафы, налоги и уведомления от Госуслуг!\n\n"
             "🎙️ <b>Расшифровка голосовых:</b> перешлите или отправьте голосовое сообщение, и оно автоматически переведется в текст!"
         )
         await master_bot.show_or_edit_ui_panel(text=help_text, keyboard=kb_ui.get_help_keyboard(), force_new=False)
     
     @dp.message(F.voice | F.audio)
     async def handle_voice_message(message: types.Message):
-        """Transcribes voice or audio messages via Gemini Multimodal API."""
+        """Transcribes voice or audio messages via AI Multimodal API."""
         status_msg = await message.answer("🎙️ <i>Расшифровываю голосовое сообщение...</i>", parse_mode="HTML")
         try:
             voice_or_audio = message.voice or message.audio

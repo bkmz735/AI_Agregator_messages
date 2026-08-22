@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 CATEGORY_EMOJIS = {
     "urgent": "🚨 <b>СРОЧНО</b>",
     "important": "⭐ <b>ВАЖНОЕ</b>",
+    "gov_debt": "⚖️ <b>Задолженности:</b>",
+    "gov_service": "🏛️ <b>Госуслуги:</b>",
     "general": "💬 <b>ОБЫЧНОЕ</b>",
     "spam": "🚫 <b>СПАМ</b>"
 }
@@ -399,7 +401,7 @@ class MasterBot:
             return
 
         buf_count = await self.storage.get_buffer_count()
-        text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
+        text = "<b>Message Aggregator</b> — <i>Активен 🟢</i>"
         reply_kb = kb_ui.get_main_reply_keyboard(buf_count)
         await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
 
@@ -438,7 +440,7 @@ class MasterBot:
             f"{header}\n"
             f"📍 <b>Канал:</b> {html.escape(channel)}\n"
             f"👤 <b>От:</b> {html.escape(sender)}\n\n"
-            f"📝 <b>Выжимка AI:</b>\n{html.escape(summary)}{action_part}{reply_part}"
+            f"📝 <b>Выжимка:</b>\n{html.escape(summary)}{action_part}{reply_part}"
         )
 
         logger.info(f"Sending Instant Notification [{category}] from {sender}")

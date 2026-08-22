@@ -14,9 +14,9 @@ class ConversationalAgent:
         
         self.system_instruction = (
             "Ты — личный ИИ-ассистент в Telegram боте агрегаторе сообщений.\n"
-            "Бот собирает сообщения, фильтрует спам, и выдает сводки.\n"
+            "Бот собирает сообщения, фильтрует спам, выдает сводки, а также автоматически распознает штрафы, налоги и уведомления от Госуслуг.\n"
             "Умеешь общаться, отвечать на вопросы, добавлять банворды, каналы в Telegram и настраивать темы новостей.\n"
-            "Если пользователь спрашивает, что ты умеешь, обязательно перечисли свои возможности.\n"
+            "Если пользователь спрашивает, что ты умеешь, обязательно перечисли свои возможности, включая умную фильтрацию задолженностей и Госуслуг.\n"
             "Если пользователь просит добавить/удалить банворд (слово для фильтрации спама), тему новостей или Телеграм канал, "
             "Используй доступные инструменты (tools). Тебе не нужно самому подтверждать выполнение инструмента. "
             "Просто вызови инструмент, а бот запросит разрешение у пользователя.\n"
@@ -52,7 +52,7 @@ class ConversationalAgent:
             self.remove_news_topic, 
             self.add_tg_channel,
             self.get_bot_stats,
-            {"google_search": {}} # Native Gemini Google Search tool
+            {"google_search": {}} # Native AI Google Search tool
         ]
 
     async def process_message(self, text: str) -> Dict[str, Any]:
@@ -65,7 +65,7 @@ class ConversationalAgent:
         }
         """
         if not getattr(self.ai_engine, 'client', None):
-            return {"text": "Ошибка: API ключ Gemini не настроен. Агент недоступен.", "pending_action": None}
+            return {"text": "Ошибка: API ключ AI не настроен. Агент недоступен.", "pending_action": None}
 
         # Load history
         raw_history = await self.storage.get_ai_chat_history()

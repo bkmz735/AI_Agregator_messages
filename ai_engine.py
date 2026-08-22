@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Xbox DNS Servers configuration
 XBOX_DNS_SERVERS = ["111.88.96.50", "111.88.96.51"]
 
-# Enable Custom Xbox DNS Resolver for Google / Gemini domains
+# Enable Custom Xbox DNS Resolver for Google / AI domains
 try:
     import dns.resolver
     _original_getaddrinfo = socket.getaddrinfo
@@ -34,7 +34,7 @@ try:
         return _original_getaddrinfo(host, port, family, type, proto, flags)
 
     socket.getaddrinfo = _xbox_getaddrinfo
-    logger.info(f"Xbox DNS Resolver enabled for Gemini domains ({', '.join(XBOX_DNS_SERVERS)}).")
+    logger.info(f"Xbox DNS Resolver enabled for AI domains ({', '.join(XBOX_DNS_SERVERS)}).")
 except Exception as e:
     logger.warning(f"Could not initialize Xbox DNS Resolver: {e}")
 
@@ -56,12 +56,12 @@ class AudioAnalysisResult(BaseModel):
     suggested_reply: Optional[str] = None
 
 class AIEngine:
-    # Exact Gemini Free Tier Limits for your specific API key/project
+    # Exact AI Free Tier Limits for your specific API key/project
     MAX_RPM = 5      # Requests per minute limit
     MAX_RPD = 20     # Requests per day limit
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or config.GEMINI_API_KEY
+        self.api_key = api_key or config.AI_API_KEY
         self.client = None
         
         # Quota and Rate Limit trackers
@@ -89,11 +89,11 @@ class AIEngine:
             try:
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key)
-                logger.info("Gemini API client initialized successfully.")
+                logger.info("AI API client initialized successfully.")
             except Exception as e:
                 logger.warning(f"Could not initialize google.genai Client: {e}. Falling back to rule-based analysis.")
         else:
-            logger.info("No GEMINI_API_KEY set. Running in rule-based simulation mode.")
+            logger.info("No AI_API_KEY set. Running in rule-based simulation mode.")
 
     def _track_request(self):
         """Updates internal rate limit counters."""
@@ -113,7 +113,7 @@ class AIEngine:
         self.minute_request_timestamps = [t for t in self.minute_request_timestamps if now - t <= 60]
 
     def get_quota_stats(self) -> Dict[str, Any]:
-        """Returns current Gemini API rate limit and usage statistics."""
+        """Returns current AI API rate limit and usage statistics."""
         now = time.time()
         self.minute_request_timestamps = [t for t in self.minute_request_timestamps if now - t <= 60]
         
@@ -132,23 +132,23 @@ class AIEngine:
         }
 
     async def generate_content_with_retry(self, contents: Any, config: Any) -> Any:
-        """Executes a Gemini API request with the priority models fallback and rate limit protections."""
+        """Executes a AI API request with the priority models fallback and rate limit protections."""
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)
-            raise RuntimeError(f"Gemini API rate limit active. Resuming in {wait_time}s.")
+            raise RuntimeError(f"AI API rate limit active. Resuming in {wait_time}s.")
             
         rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
         if rpm_count >= self.MAX_RPM:
             self.rate_limit_until = time.time() + 60.0
-            raise RuntimeError(f"Gemini API RPM limit reached ({rpm_count}/{self.MAX_RPM}). Pausing API calls for 60s.")
+            raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{self.MAX_RPM}). Pausing API calls for 60s.")
             
         if not self.client:
-            raise RuntimeError("Gemini client not initialized.")
+            raise RuntimeError("AI client not initialized.")
             
         active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
         if not active_models:
-            raise RuntimeError("No active Gemini models available (all exhausted or unsupported for today).")
+            raise RuntimeError("No active AI models available (all exhausted or unsupported for today).")
             
         last_error = None
         for model_name in active_models:
@@ -169,31 +169,31 @@ class AIEngine:
                 last_error = e
                 # Handle 404
                 if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
-                    logger.warning(f"Gemini model {model_name} is unsupported (404).")
+                    logger.warning(f"AI model {model_name} is unsupported (404).")
                     self.unsupported_models.add(model_name)
                     continue
                 # Handle 429
                 if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                     if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
-                        logger.error(f"Gemini model {model_name} hit daily quota.")
+                        logger.error(f"AI model {model_name} hit daily quota.")
                         self.exhausted_models.add(model_name)
                         continue
                     else:
                         self.rate_limit_until = time.time() + 60.0
-                        raise RuntimeError(f"Gemini API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
+                        raise RuntimeError(f"AI API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
                 logger.warning(f"Model {model_name} failed: {e}")
                 continue
                 
         raise RuntimeError(f"All models failed. Last error: {last_error}")
 
     async def transcribe_and_analyze_audio(self, audio_bytes: bytes, mime_type: str = "audio/ogg") -> AudioAnalysisResult:
-        """Transcribes audio/voice message using Gemini multimodal capabilities and analyzes it."""
+        """Transcribes audio/voice message using AI multimodal capabilities and analyzes it."""
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)
-            logger.warning(f"Gemini API rate limited. Skipping audio API call for {wait_time}s.")
+            logger.warning(f"AI API rate limited. Skipping audio API call for {wait_time}s.")
             return AudioAnalysisResult(
-                transcription="[Обработка приостановлена: превышен лимит Gemini API (429)]",
+                transcription="[Обработка приостановлена: превышен лимит AI API (429)]",
                 category="important",
                 summary=f"Голосовое сообщение будет обработано через {wait_time} сек после возобновления лимита.",
                 action_required=True,
@@ -212,7 +212,7 @@ class AIEngine:
             )
             active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
             if not active_models:
-                logger.warning("No active Gemini models available (all exhausted or unsupported for today).")
+                logger.warning("No active AI models available (all exhausted or unsupported for today).")
             
             for model_name in active_models:
                 try:
@@ -228,7 +228,7 @@ class AIEngine:
                     )
                     if response and response.text:
                         parsed = json.loads(response.text)
-                        logger.info(f"Successfully transcribed audio ({len(audio_bytes)} bytes) using Gemini {model_name}.")
+                        logger.info(f"Successfully transcribed audio ({len(audio_bytes)} bytes) using AI {model_name}.")
                         return AudioAnalysisResult(
                             transcription=parsed.get("transcription", "Расшифровка недоступна"),
                             category=parsed.get("category", "important"),
@@ -240,21 +240,21 @@ class AIEngine:
                     err_str = str(e)
                     # Handle 404 (model deprecated / unsupported)
                     if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
-                        logger.warning(f"Gemini model {model_name} is unsupported (404). Adding to unsupported list permanently.")
+                        logger.warning(f"AI model {model_name} is unsupported (404). Adding to unsupported list permanently.")
                         self.unsupported_models.add(model_name)
                         continue
                     
                     # Handle 429 (quota exhausted)
                     if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                         if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
-                            logger.error(f"Gemini model {model_name} hit daily quota limit. Adding to exhausted list.")
+                            logger.error(f"AI model {model_name} hit daily quota limit. Adding to exhausted list.")
                             self.exhausted_models.add(model_name)
                             # Try next model in loop immediately
                             continue
                         else:
                             # RPM limit (minute block) - pause the engine briefly
                             self.rate_limit_until = time.time() + 60.0
-                            logger.error(f"Gemini API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
+                            logger.error(f"AI API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
                             break
                     logger.warning(f"Audio transcription model {model_name} failed: {e}")
                     continue
@@ -270,7 +270,7 @@ class AIEngine:
     async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]], custom_prompt_suffix: str = "") -> List[AnalysisResult]:
         """
         Analyzes a BATCH of raw incoming messages.
-        If batch size exceeds 5 messages, automatically splits into chunks of 5 for optimal Gemini accuracy.
+        If batch size exceeds 5 messages, automatically splits into chunks of 5 for optimal AI accuracy.
         """
         if not messages_batch:
             return []
@@ -309,20 +309,20 @@ class AIEngine:
                         raise e
 
     async def _analyze_single_batch_chunk(self, messages_batch: List[Dict[str, str]], custom_prompt_suffix: str = "") -> List[AnalysisResult]:
-        """Analyzes a single chunk (up to 5 messages) in ONE Gemini API call."""
+        """Analyzes a single chunk (up to 5 messages) in ONE AI API call."""
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)
-            raise RuntimeError(f"Gemini API minute rate limit active. Resuming in {wait_time}s.")
+            raise RuntimeError(f"AI API minute rate limit active. Resuming in {wait_time}s.")
 
         if self.client:
             # Pre-check: don't waste an API call if we already know we're over limit
             rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
             if rpm_count >= self.MAX_RPM:
                 self.rate_limit_until = time.time() + 60.0
-                raise RuntimeError(f"Gemini API RPM limit reached ({rpm_count}/{self.MAX_RPM}). Pausing API calls for 60s.")
+                raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{self.MAX_RPM}). Pausing API calls for 60s.")
             elif self.requests_today >= self.MAX_RPD:
-                logger.warning(f"Skipping Gemini API batch call: RPD limit reached ({self.requests_today}/{self.MAX_RPD}). Using fallback.")
+                logger.warning(f"Skipping AI API batch call: RPD limit reached ({self.requests_today}/{self.MAX_RPD}). Using fallback.")
             else:
                 batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
                 prompt = (
@@ -333,7 +333,7 @@ class AIEngine:
                 )
                 active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
                 if not active_models:
-                    logger.warning("No active Gemini models available (all exhausted or unsupported for today).")
+                    logger.warning("No active AI models available (all exhausted or unsupported for today).")
                 
                 for model_name in active_models:
                     try:
@@ -358,8 +358,8 @@ class AIEngine:
                             try:
                                 parsed = json.loads(text_resp)
                             except json.JSONDecodeError as je:
-                                logger.error(f"JSON decode error from Gemini: {je}. Response text: {text_resp[:200]}")
-                                raise Exception("Invalid JSON returned by Gemini API")
+                                logger.error(f"JSON decode error from AI: {je}. Response text: {text_resp[:200]}")
+                                raise Exception("Invalid JSON returned by AI API")
                                 
                             items = parsed.get("results", parsed) if isinstance(parsed, dict) else parsed
                             results = []
@@ -371,28 +371,28 @@ class AIEngine:
                                     elif "msg_uid" not in item:
                                         item["msg_uid"] = f"fallback_{time.time()}_{i}"
                                     results.append(AnalysisResult(**item))
-                                logger.info(f"Successfully analyzed CHUNK of {len(results)} messages via Gemini API ({model_name}).")
+                                logger.info(f"Successfully analyzed CHUNK of {len(results)} messages via AI API ({model_name}).")
                                 return results
                     except Exception as e:
                         err_str = str(e)
                         # Handle 404 (model deprecated / unsupported)
                         if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
-                            logger.warning(f"Gemini model {model_name} is unsupported (404). Adding to unsupported list permanently.")
+                            logger.warning(f"AI model {model_name} is unsupported (404). Adding to unsupported list permanently.")
                             self.unsupported_models.add(model_name)
                             continue
                         
                         # Handle 429 (quota exhausted)
                         if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                             if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
-                                logger.error(f"Gemini model {model_name} hit daily quota limit. Adding to exhausted list.")
+                                logger.error(f"AI model {model_name} hit daily quota limit. Adding to exhausted list.")
                                 self.exhausted_models.add(model_name)
                                 # Try next model in loop immediately
                                 continue
                             else:
                                 # RPM limit (minute block) - pause the engine briefly
                                 self.rate_limit_until = time.time() + 60.0
-                                logger.error(f"Gemini API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
-                                raise RuntimeError(f"Gemini API minute limit hit (429): {e}")
+                                logger.error(f"AI API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
+                                raise RuntimeError(f"AI API minute limit hit (429): {e}")
                         logger.warning(f"Batch analysis model {model_name} failed: {e}")
                         continue
 
