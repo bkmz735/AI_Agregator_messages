@@ -40,6 +40,11 @@ class AccessControlMiddleware(BaseMiddleware):
         logger.info(f"📩 Telegram Event [{event_name}] from user_id={user_id} (data='{text_preview}', expected master_id={master_id})")
 
         if master_id and user_id and str(user_id) != str(master_id):
+            # Always allow /start command so owner can (re-)claim control
+            if isinstance(event, Message) and event.text and event.text.startswith("/start"):
+                logger.info(f"Allowing /start to update master_chat_id for user_id: {user_id}")
+                return await handler(event, data)
+
             logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
             return None  # Ignore event completely
             
@@ -264,9 +269,25 @@ class MasterBot:
 
     async def update_status_banner(self, chat_id: Optional[int] = None, force_new: bool = False):
         """Creates or updates the single active status banner in-place."""
+        target_chat = chat_id or self.master_chat_id
+        if not target_chat or not self.bot:
+            return
+
         buf_count = await self.storage.get_buffer_count()
         text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
         reply_kb = kb_ui.get_main_reply_keyboard(buf_count)
+
+        if force_new and self._last_ui_msg_id:
+            old_id = self._last_ui_msg_id
+            self._last_ui_msg_id = None
+            async def _purge_startup_spam():
+                for msg_id in range(old_id + 10, max(1, old_id - 30), -1):
+                    try:
+                        await self.bot.delete_message(chat_id=target_chat, message_id=msg_id)
+                    except Exception:
+                        pass
+            asyncio.create_task(_purge_startup_spam())
+
         await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
 
     def _setup_handlers(self):
@@ -275,10 +296,10 @@ class MasterBot:
 
         @self.dp.message(Command("start"))
         async def cmd_start(message: types.Message):
-            if not self.master_chat_id and message.from_user:
+            if message.from_user:
                 self.master_chat_id = message.from_user.id
                 await self.storage.set_setting("master_chat_id", str(self.master_chat_id))
-                logger.info(f"Auto-captured master_chat_id: {self.master_chat_id}")
+                logger.info(f"Captured/Updated master_chat_id from /start: {self.master_chat_id}")
             try:
                 await message.delete()
             except Exception:
