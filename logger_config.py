@@ -48,6 +48,15 @@ def init_logging(log_file: str = "aggregator.log", level: str = "INFO"):
     try:
         file_handler = RotatingFileHandler("app.log", maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
         file_handler.setFormatter(log_formatter)
+        
+        class AppFilter(logging.Filter):
+            def filter(self, record):
+                return not (record.name.startswith("master_bot") or 
+                            record.name.startswith("aiogram") or 
+                            record.name.startswith("user_agent") or 
+                            record.name.startswith("bot_handlers"))
+                            
+        file_handler.addFilter(AppFilter())
         root_logger.addHandler(file_handler)
     except Exception as e:
         sys.stderr.write(f"Warning: Could not initialize file logging: {e}\n")
@@ -59,8 +68,10 @@ def init_logging(log_file: str = "aggregator.log", level: str = "INFO"):
         
         class BotFilter(logging.Filter):
             def filter(self, record):
-                # Include logs from master_bot or aiogram
-                return record.name.startswith("master_bot") or record.name.startswith("aiogram") or record.name.startswith("user_agent")
+                return (record.name.startswith("master_bot") or 
+                        record.name.startswith("aiogram") or 
+                        record.name.startswith("user_agent") or 
+                        record.name.startswith("bot_handlers"))
                 
         bot_file_handler.addFilter(BotFilter())
         root_logger.addHandler(bot_file_handler)
