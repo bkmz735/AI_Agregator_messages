@@ -16,7 +16,7 @@ def _get_int_env(key: str, default: int = 0) -> int:
         return default
 
 class Config:
-    AI_API_KEY: str = os.getenv("AI_API_KEY", "").strip()
+    AI_API_KEY: str = os.getenv("AI_API_KEY", os.getenv("GEMINI_API_KEY", "")).strip()
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     TELEGRAM_PROXY: str = os.getenv("TELEGRAM_PROXY", "").strip()
     MASTER_CHAT_ID: int = _get_int_env("MASTER_CHAT_ID", 0)
