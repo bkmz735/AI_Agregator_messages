@@ -50,12 +50,6 @@ class AccessControlMiddleware(BaseMiddleware):
         # Security check: If master_chat_id is active, enforce strict lockdown
         if master_id and str(master_id) not in ("0", "None", ""):
             if user_id and str(user_id) != str(master_id):
-                if isinstance(event, Message) and event.text and event.text.startswith("/start"):
-                    logger.info(f"🔑 Re-capturing master_chat_id via /start from user_id: {user_id}")
-                    self.master_bot.master_chat_id = user_id
-                    asyncio.create_task(self.master_bot.storage.set_setting("master_chat_id", str(user_id)))
-                    return await handler(event, data)
-
                 logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
                 return None  # Ignore unauthorized event completely
 
