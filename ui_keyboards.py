@@ -50,7 +50,7 @@ def get_content_filter_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура подменю «Фильтр контента»."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚫 Строгие Банворды", callback_data="settings_menu_blacklist")],
-        [InlineKeyboardButton(text="🧠 Категории ИИ", callback_data="ai_menu_filters")],
+        [InlineKeyboardButton(text="🧠 Категории ИИ", callback_data="settings_menu_ai_filters")],
         [InlineKeyboardButton(text="📰 Темы новостей", callback_data="settings_menu_topics")],
         [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
         [get_home_button()]
@@ -84,8 +84,8 @@ def get_ai_settings_keyboard(chat_enabled: bool, suggestions_enabled: bool) -> I
     chat_text = "Умный чат 🟢" if chat_enabled else "Умный чат 🔴"
     sugg_text = "Умные подсказки 🟢" if suggestions_enabled else "Умные подсказки 🔴"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=chat_text, callback_data="ai_toggle_chat")],
-        [InlineKeyboardButton(text=sugg_text, callback_data="ai_toggle_suggestions")],
+        [InlineKeyboardButton(text=chat_text, callback_data="settings_toggle_ai_chat")],
+        [InlineKeyboardButton(text=sugg_text, callback_data="settings_toggle_ai_suggestions")],
         [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
         [get_home_button()]
     ])
