@@ -476,22 +476,9 @@ class MasterBot:
             for m in messages:
                 copied = False
                 if m['msg_uid'].startswith("tg_news_"):
-                    try:
-                        # msg_uid is like tg_news_nexta_live_25000
-                        prefix = "tg_news_"
-                        rest = m['msg_uid'][len(prefix):]
-                        tg_channel, msg_id = rest.rsplit('_', 1)
-                        
-                        await self.bot.copy_message(
-                            chat_id=self.master_chat_id,
-                            from_chat_id=f"@{tg_channel}",
-                            message_id=int(msg_id)
-                        )
-                        copied = True
-                    except Exception as e:
-                        logger.warning(f"Failed to copy tg_news message {m['msg_uid']}: {e}. Fallback to text digest.")
-                
-                if not copied:
+                    # Web scraped news cannot be copied by bot API, fallback to text digest
+                    regular_messages.append(m)
+                else:
                     regular_messages.append(m)
         else:
             regular_messages = messages
@@ -502,9 +489,17 @@ class MasterBot:
         digest_parts.append(f"📬 <b>СВОДКА СООБЩЕНИЙ ({len(regular_messages)})</b>\n")
         for idx, m in enumerate(regular_messages, 1):
             emoji = CATEGORY_EMOJIS.get(m['category'], "💬")
+            
+            extra_link = ""
+            if m['msg_uid'].startswith("tg_news_"):
+                rest = m['msg_uid'][len("tg_news_"):]
+                if "_" in rest:
+                    tg_channel, msg_id = rest.rsplit('_', 1)
+                    extra_link = f"\n<a href=\"https://t.me/{tg_channel}/{msg_id}\">👉 Оригинал поста</a>"
+                    
             digest_parts.append(
                 f"<b>{idx}. [{html.escape(m['channel'])}]</b> {html.escape(m['sender'])} ({emoji})\n"
-                f"📝 {html.escape(m['summary'])}\n"
+                f"📝 {html.escape(m['summary'])}{extra_link}\n"
             )
 
         full_digest = "\n---\n".join(digest_parts)
