@@ -122,7 +122,6 @@ def get_blacklist_menu_keyboard(email_count: int, vk_count: int) -> InlineKeyboa
             InlineKeyboardButton(text=f"💬 ВКонтакте ({vk_count})", callback_data="bw_view_vk_1")
         ],
         [InlineKeyboardButton(text="➕ Добавить банворд", callback_data="add_bw_select_scope")],
-        [InlineKeyboardButton(text="🔄 Сбросить все к базовым", callback_data="reset_banwords_confirm")],
         [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
         [get_home_button()]
     ])

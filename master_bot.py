@@ -845,10 +845,7 @@ class MasterBot:
             except Exception:
                 pass
 
-        @self.dp.callback_query(F.data == "reset_banwords_confirm")
-        async def process_reset_banwords_confirm(callback_query: types.CallbackQuery):
-            await self.storage.reset_banwords_to_default()
-            await process_settings_menu_blacklist(callback_query)
+
 
         @self.dp.message(Command("block"))
         async def cmd_block(message: types.Message):
