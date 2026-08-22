@@ -559,7 +559,8 @@ class AIEngine:
         prompt = (
             "Ты — умный ИИ-помощник (AI Message Aggregator). "
             "Пользователь задает тебе вопрос или пишет сообщение напрямую в чат. "
-            "Отвечай кратко, полезно, вежливо и по делу.\n\n"
+            "Отвечай максимально подробно и полезно. "
+            "У тебя есть доступ к поиску в интернете (Google Search) — используй его для поиска актуальной информации и новостей.\n\n"
             f"Сообщение пользователя:\n{user_text}"
         )
         
@@ -567,6 +568,8 @@ class AIEngine:
         if not active_models:
             return "К сожалению, все доступные модели ИИ исчерпали дневной лимит."
             
+        from google.genai import types
+        
         for model_name in active_models:
             try:
                 self._track_request()
@@ -575,8 +578,11 @@ class AIEngine:
                         self.client.models.generate_content,
                         model=model_name,
                         contents=prompt,
+                        config=types.GenerateContentConfig(
+                            tools=[{"google_search": {}}]
+                        )
                     ),
-                    timeout=15.0
+                    timeout=30.0
                 )
                 if response and response.text:
                     return response.text.strip()

@@ -108,174 +108,6 @@ def setup_all_handlers(master_bot):
             logger.error(f"Error processing voice message: {e}")
             await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
     
-    @dp.message(F.text, ~F.text.startswith("/"))
-    async def handle_text_message(message: types.Message):
-        # If user tapped a ReplyButton while in input mode, cancel pending inputs
-        menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
-        if any(message.text.startswith(m) for m in menu_texts):
-            if message.text.startswith("🏠 Главное меню") or message.text.startswith("🧹 Очистить чат") or message.text.startswith("🚀 Отправить сводку"):
-                master_bot.current_menu_state = 'main'
-            elif message.text.startswith("⚙️ Настройки"):
-                master_bot.current_menu_state = 'settings'
-            elif message.text.startswith("📥 Буфер"):
-                master_bot.current_menu_state = 'buffer'
-            elif message.text.startswith("📊 Статистика"):
-                master_bot.current_menu_state = 'stats'
-            master_bot._waiting_for_banword_scope = None
-            master_bot._waiting_for_tg_channel = False
-            master_bot._waiting_for_liked_topic = False
-            master_bot._waiting_for_disliked_topic = False
-            return
-    
-        if master_bot._waiting_for_tg_channel:
-            master_bot._waiting_for_tg_channel = False
-            raw_input = message.text.strip()
-            try:
-                await message.delete()
-            except Exception:
-                pass
-    
-            added_id = await master_bot.storage.add_tg_channel(raw_input)
-            clean_user = raw_input.strip().lstrip("@").lower()
-            if "t.me/" in clean_user:
-                clean_user = clean_user.split("t.me/")[-1].split("/")[0].strip()
-    
-            if added_id:
-                sent_msg = await message.answer(f"✅ Канал <b>«@{html.escape(clean_user)}»</b> добавлен в отслеживание!", parse_mode="HTML")
-            else:
-                sent_msg = await message.answer(f"ℹ️ Канал <b>«@{html.escape(clean_user)}»</b> уже есть в отслеживании.", parse_mode="HTML")
-    
-            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
-            await master_bot._show_tg_channels_page(1)
-            return
-            
-        if master_bot._waiting_for_liked_topic or master_bot._waiting_for_disliked_topic:
-            preference = "liked" if master_bot._waiting_for_liked_topic else "disliked"
-            master_bot._waiting_for_liked_topic = False
-            master_bot._waiting_for_disliked_topic = False
-            
-            raw_input = message.text.strip()
-            try:
-                await message.delete()
-            except Exception:
-                pass
-                
-            added = await master_bot.storage.add_news_topic(raw_input, preference=preference)
-            pref_name = "Желаемые" if preference == "liked" else "Запретные"
-            
-            if added:
-                sent_msg = await message.answer(f"✅ Тема <b>«{html.escape(raw_input)}»</b> добавлена в {pref_name}!", parse_mode="HTML")
-            else:
-                sent_msg = await message.answer(f"ℹ️ Тема <b>«{html.escape(raw_input)}»</b> уже есть в {pref_name}.", parse_mode="HTML")
-                
-            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
-            await master_bot._show_topics_list_page(preference, 1)
-            return
-    
-        # Check if bot is waiting for interactive banword text input
-        if master_bot._waiting_for_banword_scope:
-            word_to_add = message.text.strip()
-            scope = master_bot._waiting_for_banword_scope
-            master_bot._waiting_for_banword_scope = None
-    
-            try:
-                await message.delete()
-            except Exception:
-                pass
-    
-            added = await master_bot.storage.add_banword(word_to_add, scope=scope)
-            scope_name = "Mail.ru" if scope == "email" else ("ВКонтакте" if scope == "vk" else "Общие")
-    
-            if added:
-                sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(word_to_add)}»</b> успешно добавлен в {scope_name}!", parse_mode="HTML")
-            else:
-                sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word_to_add)}»</b> уже есть в {scope_name}.", parse_mode="HTML")
-    
-            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
-            
-            # Refresh UI panel to show banword list cleanly (per_page = 9)
-            bws = await master_bot.storage.get_banwords(scope=scope)
-            per_page = 9
-            total_pages = max(1, (len(bws) + per_page - 1) // per_page)
-            page_bws = bws[:per_page]
-    
-            lines = [f"{'✉️' if scope == 'email' else '💬'} <b>Банворды {scope_name}</b>\n<i>(Стр. 1/{total_pages}, всего: {len(bws)})</i>\n"]
-            if not bws:
-                lines.append(f"<i>Список банвордов {scope_name} пуст.</i>")
-            else:
-                for idx_in_page, b in enumerate(page_bws, start=1):
-                    lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
-                lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
-    
-            kb = kb_ui.get_banwords_list_keyboard(page_bws, 1, total_pages, scope, 0)
-            await master_bot.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
-            return
-
-        # If not waiting for anything and not a menu button, it's a direct AI question!
-        chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
-        if master_bot.current_menu_state != 'main' or not chat_enabled:
-            sent_msg = await message.answer("⚠️ <b>Чат с ИИ недоступен</b>\nФункция отключена в настройках или вы находитесь не в Главном меню.", parse_mode="HTML")
-            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=5)
-            return
-
-        if master_bot.user_agent:
-            status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
-            try:
-                result = await master_bot.user_agent.process_message(message.text)
-                reply_text = result.get("text", "Ошибка ИИ.")
-                pending_action = result.get("pending_action")
-                
-                if pending_action:
-                    action_name = pending_action.get("action")
-                    args = pending_action.get("args", {})
-                    user_text = pending_action.get("user_text", "")
-                    
-                    if action_name in ["set_timezone", "set_digest_interval"]:
-                        if action_name == "set_timezone":
-                            offset = int(args.get("offset_hours", 0))
-                            await master_bot.settings.update_timezone_offset(offset)
-                            master_bot.timezone_offset = offset
-                            master_bot.start_digest_scheduler()
-                            result_msg = f"✅ Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}."
-                        elif action_name == "set_digest_interval":
-                            mins = int(args.get("minutes", 60))
-                            await master_bot.settings.update_digest_interval_minutes(mins)
-                            master_bot.start_digest_scheduler()
-                            result_msg = f"✅ Интервал сводок изменен на {mins} минут."
-                            
-                        await master_bot.storage.add_ai_chat_message("user", user_text)
-                        await master_bot.storage.add_ai_chat_message("model", result_msg)
-                        
-                        await status_msg.edit_text(result_msg, parse_mode="HTML")
-                        
-                        async def delayed_delete(msg):
-                            await asyncio.sleep(5)
-                            try:
-                                await msg.delete()
-                            except:
-                                pass
-                        asyncio.create_task(delayed_delete(status_msg))
-                    else:
-                        import uuid
-                        action_id = str(uuid.uuid4())[:8]
-                        master_bot.pending_ai_actions[action_id] = pending_action
-                        await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
-                else:
-                    await status_msg.edit_text(reply_text, parse_mode="HTML")
-            except Exception as e:
-                logger.error(f"AI Chat error: {e}")
-                await status_msg.edit_text(f"❌ Ошибка: {e}")
-        elif master_bot.ai_engine:
-            status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
-            try:
-                response = await master_bot.ai_engine.ask_ai_question(message.text)
-                await status_msg.edit_text(f"🤖 <b>Ответ ИИ:</b>\n\n{html.escape(response)}", parse_mode="HTML")
-            except Exception as e:
-                logger.error(f"Error asking AI question: {e}")
-                await status_msg.edit_text(f"❌ Ошибка обращения к ИИ: {e}")
-        else:
-            await message.answer("🤖 ИИ не настроен. Для работы этой функции требуется API-ключ.")
-    
     @dp.message(F.text.startswith("📥 Буфер"))
     async def cmd_buffer(message: types.Message):
         try:
@@ -1100,3 +932,158 @@ def setup_all_handlers(master_bot):
             await master_bot.storage.add_ai_chat_message("model", "Пользователь отменил действие.")
             
         await callback_query.message.edit_text(f"{callback_query.message.text}\n\n❌ Действие отменено.", parse_mode="HTML")
+
+
+    @dp.message(F.text, ~F.text.startswith("/"))
+    async def handle_text_message(message: types.Message):
+        # If user tapped a ReplyButton while in input mode, cancel pending inputs
+    
+        if master_bot._waiting_for_tg_channel:
+            master_bot._waiting_for_tg_channel = False
+            raw_input = message.text.strip()
+            try:
+                await message.delete()
+            except Exception:
+                pass
+    
+            added_id = await master_bot.storage.add_tg_channel(raw_input)
+            clean_user = raw_input.strip().lstrip("@").lower()
+            if "t.me/" in clean_user:
+                clean_user = clean_user.split("t.me/")[-1].split("/")[0].strip()
+    
+            if added_id:
+                sent_msg = await message.answer(f"✅ Канал <b>«@{html.escape(clean_user)}»</b> добавлен в отслеживание!", parse_mode="HTML")
+            else:
+                sent_msg = await message.answer(f"ℹ️ Канал <b>«@{html.escape(clean_user)}»</b> уже есть в отслеживании.", parse_mode="HTML")
+    
+            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
+            await master_bot._show_tg_channels_page(1)
+            return
+            
+        if master_bot._waiting_for_liked_topic or master_bot._waiting_for_disliked_topic:
+            preference = "liked" if master_bot._waiting_for_liked_topic else "disliked"
+            master_bot._waiting_for_liked_topic = False
+            master_bot._waiting_for_disliked_topic = False
+            
+            raw_input = message.text.strip()
+            try:
+                await message.delete()
+            except Exception:
+                pass
+                
+            added = await master_bot.storage.add_news_topic(raw_input, preference=preference)
+            pref_name = "Желаемые" if preference == "liked" else "Запретные"
+            
+            if added:
+                sent_msg = await message.answer(f"✅ Тема <b>«{html.escape(raw_input)}»</b> добавлена в {pref_name}!", parse_mode="HTML")
+            else:
+                sent_msg = await message.answer(f"ℹ️ Тема <b>«{html.escape(raw_input)}»</b> уже есть в {pref_name}.", parse_mode="HTML")
+                
+            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
+            await master_bot._show_topics_list_page(preference, 1)
+            return
+    
+        # Check if bot is waiting for interactive banword text input
+        if master_bot._waiting_for_banword_scope:
+            word_to_add = message.text.strip()
+            scope = master_bot._waiting_for_banword_scope
+            master_bot._waiting_for_banword_scope = None
+    
+            try:
+                await message.delete()
+            except Exception:
+                pass
+    
+            added = await master_bot.storage.add_banword(word_to_add, scope=scope)
+            scope_name = "Mail.ru" if scope == "email" else ("ВКонтакте" if scope == "vk" else "Общие")
+    
+            if added:
+                sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(word_to_add)}»</b> успешно добавлен в {scope_name}!", parse_mode="HTML")
+            else:
+                sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word_to_add)}»</b> уже есть в {scope_name}.", parse_mode="HTML")
+    
+            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
+            
+            # Refresh UI panel to show banword list cleanly (per_page = 9)
+            bws = await master_bot.storage.get_banwords(scope=scope)
+            per_page = 9
+            total_pages = max(1, (len(bws) + per_page - 1) // per_page)
+            page_bws = bws[:per_page]
+    
+            lines = [f"{'✉️' if scope == 'email' else '💬'} <b>Банворды {scope_name}</b>\n<i>(Стр. 1/{total_pages}, всего: {len(bws)})</i>\n"]
+            if not bws:
+                lines.append(f"<i>Список банвордов {scope_name} пуст.</i>")
+            else:
+                for idx_in_page, b in enumerate(page_bws, start=1):
+                    lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
+                lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
+    
+            kb = kb_ui.get_banwords_list_keyboard(page_bws, 1, total_pages, scope, 0)
+            await master_bot.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
+            return
+
+        # If not waiting for anything and not a menu button, it's a direct AI question!
+        chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
+        if master_bot.current_menu_state != 'main' or not chat_enabled:
+            sent_msg = await message.answer("⚠️ <b>Чат с ИИ недоступен</b>\nФункция отключена в настройках или вы находитесь не в Главном меню.", parse_mode="HTML")
+            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=5)
+            return
+
+        if master_bot.user_agent:
+            status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
+            try:
+                result = await master_bot.user_agent.process_message(message.text)
+                reply_text = result.get("text", "Ошибка ИИ.")
+                pending_action = result.get("pending_action")
+                
+                if pending_action:
+                    action_name = pending_action.get("action")
+                    args = pending_action.get("args", {})
+                    user_text = pending_action.get("user_text", "")
+                    
+                    if action_name in ["set_timezone", "set_digest_interval"]:
+                        if action_name == "set_timezone":
+                            offset = int(args.get("offset_hours", 0))
+                            await master_bot.settings.update_timezone_offset(offset)
+                            master_bot.timezone_offset = offset
+                            master_bot.start_digest_scheduler()
+                            result_msg = f"✅ Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}."
+                        elif action_name == "set_digest_interval":
+                            mins = int(args.get("minutes", 60))
+                            await master_bot.settings.update_digest_interval_minutes(mins)
+                            master_bot.start_digest_scheduler()
+                            result_msg = f"✅ Интервал сводок изменен на {mins} минут."
+                            
+                        await master_bot.storage.add_ai_chat_message("user", user_text)
+                        await master_bot.storage.add_ai_chat_message("model", result_msg)
+                        
+                        await status_msg.edit_text(result_msg, parse_mode="HTML")
+                        
+                        async def delayed_delete(msg):
+                            await asyncio.sleep(5)
+                            try:
+                                await msg.delete()
+                            except:
+                                pass
+                        asyncio.create_task(delayed_delete(status_msg))
+                    else:
+                        import uuid
+                        action_id = str(uuid.uuid4())[:8]
+                        master_bot.pending_ai_actions[action_id] = pending_action
+                        await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
+                else:
+                    await status_msg.edit_text(reply_text, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"AI Chat error: {e}")
+                await status_msg.edit_text(f"❌ Ошибка: {e}")
+        elif master_bot.ai_engine:
+            status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
+            try:
+                response = await master_bot.ai_engine.ask_ai_question(message.text)
+                await status_msg.edit_text(f"🤖 <b>Ответ ИИ:</b>\n\n{html.escape(response)}", parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Error asking AI question: {e}")
+                await status_msg.edit_text(f"❌ Ошибка обращения к ИИ: {e}")
+        else:
+            await message.answer("🤖 ИИ не настроен. Для работы этой функции требуется API-ключ.")
+    

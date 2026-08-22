@@ -243,6 +243,7 @@ class Storage:
             deleted_count = cursor.rowcount
             if deleted_count > 0:
                 logger.info(f"Auto-purged {deleted_count} delivered/spam messages older than {days} days from database.")
+            return deleted_count
 
     async def save_sent_notification(self, chat_id: int, message_id: int, delay_seconds: int):
         """Saves sent message ID and calculates deletion time."""
