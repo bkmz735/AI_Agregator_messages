@@ -154,14 +154,28 @@ class VKAdapter(BaseAdapter):
                                             user_id = msg.get("from_id")
                                             text = msg.get("text", "")
                                             
-                                            # Fix: generate a bulletproof unique ID
-                                            raw_id = msg.get("id") or msg.get("conversation_message_id")
-                                            if not raw_id or raw_id == 0:
-                                                raw_id = f"{user_id}_{msg.get('date', 0)}"
-                                            msg_id = f"vk_grp_{raw_id}"
+                                            atts = msg.get("attachments", [])
+                                            if not text and atts:
+                                                for att in atts:
+                                                    if att["type"] == "audio_message":
+                                                        am = att["audio_message"]
+                                                        if "transcript" in am and am["transcript"]:
+                                                            text = f"[Голосовое] {am['transcript']}"
+                                                        else:
+                                                            text = "[Голосовое сообщение]"
+                                                        break
+                                                    elif att["type"] == "photo":
+                                                        text = "[Фотография]"
+                                                        break
                                             
-                                            sender_name = await self._resolve_user_name(session, user_id)
-                                            await self.emit_message(sender=sender_name, text=text, msg_uid=msg_id)
+                                            if text:
+                                                raw_id = msg.get("id") or msg.get("conversation_message_id")
+                                                if not raw_id or raw_id == 0:
+                                                    raw_id = f"{user_id}_{msg.get('date', 0)}"
+                                                msg_id = f"vk_grp_{raw_id}"
+                                                
+                                                sender_name = await self._resolve_user_name(session, user_id)
+                                                await self.emit_message(sender=sender_name, text=text, msg_uid=msg_id)
                                     else:
                                         # User LongPoll format: [4, message_id, flags, peer_id, timestamp, text, ...]
                                         if isinstance(event, list) and len(event) > 5 and event[0] == 4:
@@ -171,10 +185,39 @@ class VKAdapter(BaseAdapter):
                                             text = event[5]
                                             
                                             is_outbox = bool(flags & 2)
-                                            if not is_outbox and text:
+                                            if not is_outbox:
                                                 uid = f"vk_user_msg_{msg_id}"
-                                                sender_name = await self._resolve_user_name(session, peer_id)
-                                                await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
+                                                attachments = event[6] if len(event) > 6 else {}
+                                                
+                                                if not text and attachments:
+                                                    await asyncio.sleep(2) # Даем ВК пару секунд на расшифровку
+                                                    full_msg_params = {
+                                                        "message_ids": msg_id,
+                                                        "access_token": self.token,
+                                                        "v": "5.131"
+                                                    }
+                                                    try:
+                                                        async with session.get("https://api.vk.com/method/messages.getById", params=full_msg_params) as fm_resp:
+                                                            fm_data = await fm_resp.json()
+                                                            if "response" in fm_data and fm_data["response"]["items"]:
+                                                                atts = fm_data["response"]["items"][0].get("attachments", [])
+                                                                for att in atts:
+                                                                    if att["type"] == "audio_message":
+                                                                        am = att["audio_message"]
+                                                                        if "transcript" in am and am["transcript"]:
+                                                                            text = f"[Голосовое] {am['transcript']}"
+                                                                        else:
+                                                                            text = "[Голосовое сообщение без текстовой расшифровки]"
+                                                                        break
+                                                                    elif att["type"] == "photo":
+                                                                        text = "[Фотография]"
+                                                                        break
+                                                    except Exception as e:
+                                                        logger.warning(f"Could not fetch full VK message {msg_id}: {e}")
+                                                
+                                                if text:
+                                                    sender_name = await self._resolve_user_name(session, peer_id)
+                                                    await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
                         except asyncio.CancelledError:
                             raise
                         except Exception as inner_e:
