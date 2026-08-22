@@ -61,6 +61,7 @@ class Storage:
                     topic TEXT UNIQUE NOT NULL,
                     preference TEXT NOT NULL
                 )
+            """)
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS ai_chat_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
