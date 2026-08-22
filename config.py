@@ -27,7 +27,10 @@ class Config:
     IMAP_SERVER: str = os.getenv("IMAP_SERVER", "imap.mail.ru").strip()
     IMAP_PORT: int = _get_int_env("IMAP_PORT", 993)
     IMAP_USER: str = os.getenv("IMAP_USER", "").strip()
-    IMAP_PASSWORD: str = os.getenv("IMAP_PASSWORD", "").strip()
+    TG_API_ID: int = _get_int_env("TG_API_ID", 0)
+    TG_API_HASH: str = os.getenv("TG_API_HASH", "").strip()
+    TG_NEWS_CHANNELS: str = os.getenv("TG_NEWS_CHANNELS", "").strip()
+    TG_NEWS_POLL_INTERVAL_SECONDS: int = _get_int_env("TG_NEWS_POLL_INTERVAL_SECONDS", 120)
     
     # ==========================================
     # ⏱️ TIME & INTERVAL CONFIGURATION

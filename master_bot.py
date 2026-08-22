@@ -230,6 +230,8 @@ class MasterBot:
                     icon = "🟡"
                 elif "insta" in ch_lower or "инста" in ch_lower:
                     icon = "📸"
+                elif "tg" in ch_lower or "telegram" in ch_lower:
+                    icon = "✈️"
                 elif "voice" in ch_lower or "голос" in ch_lower:
                     icon = "🎙️"
                 else:

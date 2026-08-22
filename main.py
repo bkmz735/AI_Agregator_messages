@@ -11,6 +11,7 @@ from master_bot import MasterBot
 
 from adapters.vk_adapter import VKAdapter
 from adapters.email_adapter import EmailAdapter
+from adapters.tg_news_adapter import TGNewsAdapter
 
 from logger_config import init_logging, RecentLogHandler
 
@@ -29,7 +30,8 @@ class MessageAggregatorApp:
         
         self.adapters = [
             VKAdapter(),
-            EmailAdapter(storage=self.storage)
+            EmailAdapter(storage=self.storage),
+            TGNewsAdapter(storage=self.storage)
         ]
 
         # Raw message queue for batching requests to Gemini API (token saving)
