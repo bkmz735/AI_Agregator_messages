@@ -1080,13 +1080,13 @@ def setup_all_handlers(master_bot):
 
         # If not waiting for anything and not a menu button, it's a direct AI question/dialogue!
         chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
-        if not chat_enabled:
+        if master_bot.current_menu_state != 'main' or not chat_enabled:
             sent_msg = await message.answer(
-                "⚠️ <b>Чат с ИИ отключен</b>\n"
-                "Вы можете включить функцию в меню: <b>Настройки ⚙️ -> Настройки ИИ 🧠 -> Умный чат 🟢</b>",
+                "⚠️ <b>Чат с ИИ недоступен</b>\n"
+                "Функция отключена в настройках или вы находитесь не в Главном меню (нажмите <b>🏠 Главное меню</b>).",
                 parse_mode="HTML"
             )
-            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=6)
+            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=5)
             return
 
         if master_bot.user_agent:
