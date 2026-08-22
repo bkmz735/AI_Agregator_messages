@@ -116,7 +116,7 @@ def get_ai_filters_list_keyboard(filters: Dict[str, bool]) -> InlineKeyboardMark
         name = display_names.get(cat, cat.capitalize())
         icon = "🟢" if passed else "🔴"
         btn_text = f"{name} {icon}"
-        current_row.append(InlineKeyboardButton(text=btn_text, callback_data=f"ai_filter_toggle_{cat}"))
+        current_row.append(InlineKeyboardButton(text=btn_text, callback_data=f"toggle_ai_filter_{cat}"))
         
         if len(current_row) == 2:
             rows.append(current_row)
