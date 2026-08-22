@@ -42,7 +42,7 @@ class Config:
     DB_PURGE_DAYS: int = _get_int_env("DB_PURGE_DAYS", 7)
     
     # 🤖 AI LIMITS
-    AI_MAX_RPM: int = _get_int_env("AI_MAX_RPM", 5)
+    AI_MAX_RPM: int = _get_int_env("AI_MAX_RPM", 3)
     
     # Night Mode (Quiet Hours - Pause AI & Notifications during sleep to save tokens)
     NIGHT_MODE_ENABLED: bool = os.getenv("NIGHT_MODE_ENABLED", "false").strip().lower() in ("true", "1", "yes")
@@ -78,7 +78,7 @@ class Config:
 {
   "msg_uid": "СТРОГО скопируй точный msg_uid из исходного входящего сообщения!",
   "category": "spam" | "urgent" | "important" | "gov_debt" | "gov_service" | "news" | "media" | "general" | "politics" | "interesting" | "bullshit",
-  "summary": "Краткая суть сообщения (1-2 предложения). Пиши законченные предложения, НИКОГДА не обрывай мысль многоточием (...). Для задолженностей - укажи сумму и срок.",
+  "summary": "Краткая суть сообщения (3-4 предложения). Пиши законченные предложения, НИКОГДА не обрывай мысль многоточием (...). Для задолженностей - укажи сумму и срок.",
   "action_required": true | false,
   "suggested_reply": "Предлагаемый вариант черновика ответа (или null, если не требуется)"
 }

@@ -109,7 +109,7 @@ class AIEngine:
         # Keep only timestamps within the last 60 seconds
         self.minute_request_timestamps = [t for t in self.minute_request_timestamps if now - t <= 60]
 
-    def get_quota_stats(self) -> Dict[str, Any]:
+    async def get_quota_stats(self) -> Dict[str, Any]:
         """Returns current AI API rate limit and usage statistics."""
         now = time.time()
         self.minute_request_timestamps = [t for t in self.minute_request_timestamps if now - t <= 60]
@@ -278,8 +278,8 @@ class AIEngine:
         if not messages_batch:
             return []
 
-        # Chunking: split large batches into sub-batches of max 5 items
-        CHUNK_SIZE = 5
+        # Chunking: split large batches into sub-batches of max 3 items
+        CHUNK_SIZE = 3
         if len(messages_batch) > CHUNK_SIZE:
             chunks = [messages_batch[i:i + CHUNK_SIZE] for i in range(0, len(messages_batch), CHUNK_SIZE)]
             logger.info(f"Splitting batch of {len(messages_batch)} messages into {len(chunks)} sub-chunks (max {CHUNK_SIZE} msgs each)...")
