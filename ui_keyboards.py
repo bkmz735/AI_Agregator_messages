@@ -214,7 +214,7 @@ def get_logs_keyboard() -> InlineKeyboardMarkup:
 def get_clear_chat_prompt_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура подтверждения очистки чата."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑️ Да, очистить чат", callback_data="do_clear_chat")],
+        [InlineKeyboardButton(text="🗑️ Да, очистить чат", callback_data="confirm_clear_chat")],
         [get_home_button()]
     ])
 
