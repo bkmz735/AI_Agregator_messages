@@ -383,13 +383,8 @@ class MasterBot:
                 logger.error(f"Error processing voice message: {e}")
                 await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
 
-        @self.dp.message(F.text & ~F.text.startswith("/"))
+        @self.dp.message(F.text & ~F.text.startswith("/") & (lambda msg: bool(self._waiting_for_banword_scope)))
         async def handle_text_message(message: types.Message):
-            # Check if user clicked a menu ReplyButton
-            menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
-            if any(message.text.startswith(m) for m in menu_texts):
-                return  # Let specific handlers process menu triggers
-
             # Check if bot is waiting for interactive banword text input
             if self._waiting_for_banword_scope:
                 word_to_add = message.text.strip()
