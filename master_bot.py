@@ -709,7 +709,7 @@ class MasterBot:
             page = int(callback_query.data.replace("bw_view_email_", ""))
             bws = await self.storage.get_banwords(scope="email")
             
-            per_page = 10
+            per_page = 9
             total_pages = max(1, (len(bws) + per_page - 1) // per_page)
             page = max(1, min(page, total_pages))
             
@@ -736,7 +736,7 @@ class MasterBot:
             page = int(callback_query.data.replace("bw_view_vk_", ""))
             bws = await self.storage.get_banwords(scope="vk")
             
-            per_page = 10
+            per_page = 9
             total_pages = max(1, (len(bws) + per_page - 1) // per_page)
             page = max(1, min(page, total_pages))
             
