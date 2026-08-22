@@ -41,6 +41,9 @@ class Config:
     AUTO_DELETE_DELAY_HOURS: int = _get_int_env("AUTO_DELETE_DELAY_HOURS", 1)
     DB_PURGE_DAYS: int = _get_int_env("DB_PURGE_DAYS", 7)
     
+    # 🤖 AI LIMITS
+    AI_MAX_RPM: int = _get_int_env("AI_MAX_RPM", 5)
+    
     # Night Mode (Quiet Hours - Pause AI & Notifications during sleep to save tokens)
     NIGHT_MODE_ENABLED: bool = os.getenv("NIGHT_MODE_ENABLED", "false").strip().lower() in ("true", "1", "yes")
     NIGHT_START_HOUR: int = _get_int_env("NIGHT_START_HOUR", 23)
