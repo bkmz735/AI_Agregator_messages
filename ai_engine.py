@@ -57,8 +57,7 @@ class AudioAnalysisResult(BaseModel):
 
 class AIEngine:
     # Exact AI Free Tier Limits for your specific API key/project
-    MAX_RPM = 5      # Requests per minute limit
-    MAX_RPD = 20     # Requests per day limit
+    MAX_RPM = 15      # Requests per minute limit (global for the key)
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or config.AI_API_KEY
@@ -122,8 +121,6 @@ class AIEngine:
 
         return {
             "requests_today": self.requests_today,
-            "max_rpd": self.MAX_RPD,
-            "remaining_today": max(0, self.MAX_RPD - self.requests_today),
             "requests_this_minute": len(self.minute_request_timestamps),
             "max_rpm": self.MAX_RPM,
             "is_paused": is_paused,
@@ -321,8 +318,6 @@ class AIEngine:
             if rpm_count >= self.MAX_RPM:
                 self.rate_limit_until = time.time() + 60.0
                 raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{self.MAX_RPM}). Pausing API calls for 60s.")
-            elif self.requests_today >= self.MAX_RPD:
-                logger.warning(f"Skipping AI API batch call: RPD limit reached ({self.requests_today}/{self.MAX_RPD}). Using fallback.")
             else:
                 batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
                 prompt = (
