@@ -121,16 +121,39 @@ class Storage:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
 
-    async def get_stats(self) -> Dict[str, int]:
-        """Returns message counts grouped by category."""
+    async def get_stats(self) -> Dict[str, Any]:
+        """Returns detailed category and channel statistics."""
         async with aiosqlite.connect(self.db_path) as db:
+            # Categories
             async with db.execute("SELECT category, COUNT(*) FROM messages GROUP BY category") as cursor:
                 rows = await cursor.fetchall()
-                stats = {"spam": 0, "urgent": 0, "important": 0, "general": 0}
+                stats = {
+                    "urgent": 0,
+                    "important": 0,
+                    "gov": 0,
+                    "news": 0,
+                    "media": 0,
+                    "general": 0,
+                    "spam": 0
+                }
                 for category, count in rows:
-                    if category in stats:
-                        stats[category] = count
-                return stats
+                    stats[category] = count
+
+            # Channels
+            async with db.execute("SELECT channel, COUNT(*) FROM messages GROUP BY channel") as cursor:
+                channel_rows = await cursor.fetchall()
+                channels = {c: count for c, count in channel_rows}
+
+            # Total all
+            async with db.execute("SELECT COUNT(*) FROM messages") as cursor:
+                row = await cursor.fetchone()
+                total_all = row[0] if row else 0
+
+            return {
+                "categories": stats,
+                "channels": channels,
+                "total_all": total_all
+            }
 
     async def reset_stats(self):
         """Clears all historical delivered and spam message records to reset statistics."""

@@ -348,6 +348,9 @@ class AIEngine:
             "noreply", "newsletter", "промокод"
         ]
         urgent_keywords = ["срочно", "купить", "цена", "где забрать", "оплата", "доставка", "когда отправите"]
+        gov_keywords = ["госуслуги", "налог", "штраф", "фнс", "гибдд", "пенсионный", "сфр", "извещение", "повестка", "суд", "госпошлина"]
+        news_keywords = ["новость", "дайджест", "статья", "выпуск", "анонс", "событие"]
+        media_keywords = ["youtube", "rutube", "vk.com/video", "видео", "посмотри роли", "подкаст", "запись эфира", "стрим"]
         
         if any(kw in text_lower for kw in spam_keywords):
             category = "spam"
@@ -359,6 +362,21 @@ class AIEngine:
             summary = f"Вопрос по сделке/заказу от {sender} в {channel}."
             action_required = True
             suggested_reply = f"Здравствуйте, {sender}! Сообщение получено, отвечу в ближайшее время."
+        elif any(kw in text_lower for kw in gov_keywords):
+            category = "gov"
+            summary = f"Государственное или официальное уведомление от {sender}."
+            action_required = True
+            suggested_reply = None
+        elif any(kw in text_lower for kw in news_keywords):
+            category = "news"
+            summary = f"Новостной материал или рассылка от {sender}."
+            action_required = False
+            suggested_reply = None
+        elif any(kw in text_lower for kw in media_keywords):
+            category = "media"
+            summary = f"Медиаконтент / видео от {sender}."
+            action_required = False
+            suggested_reply = None
         else:
             category = "important" if len(text) > 30 else "general"
             summary = f"Сообщение от {sender}: {text[:60]}..."

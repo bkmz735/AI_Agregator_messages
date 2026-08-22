@@ -201,6 +201,42 @@ class MasterBot:
         
         return text, kb_ui.get_logs_keyboard()
 
+    async def _get_formatted_stats_text(self, title_suffix: str = "") -> str:
+        stats_data = await self.storage.get_stats()
+        cats = stats_data.get("categories", {})
+        channels = stats_data.get("channels", {})
+        total_all = stats_data.get("total_all", 0)
+        buf_count = await self.storage.get_buffer_count()
+
+        lines = [
+            f"📊 <b>Расширенная статистика агрегатора{title_suffix}:</b>\n",
+            "<b>Категории ИИ:</b>",
+            f"🚨 <b>Срочные:</b> {cats.get('urgent', 0)}",
+            f"⭐ <b>Важные:</b> {cats.get('important', 0)}",
+            f"🏛️ <b>Госуслуги / Гос. уведомления:</b> {cats.get('gov', 0)}",
+            f"📰 <b>Новости и Статьи:</b> {cats.get('news', 0)}",
+            f"🎬 <b>Видео и Медиа:</b> {cats.get('media', 0)}",
+            f"💬 <b>Обычные сообщения:</b> {cats.get('general', 0)}",
+            f"🚫 <b>Заблокировано спама:</b> {cats.get('spam', 0)}\n",
+            "<b>Источники сообщений (Каналы):</b>"
+        ]
+
+        if channels:
+            for ch_name, count in channels.items():
+                ch_lower = ch_name.lower()
+                icon = "✉️" if "mail" in ch_lower or "email" in ch_lower else ("💬" if "vk" in ch_lower else "🎙️")
+                lines.append(f"{icon} <b>{ch_name}:</b> {count}")
+        else:
+            lines.append("<i>Источники пока не зарегистрированы</i>")
+
+        lines.extend([
+            "\n<b>Общие показатели:</b>",
+            f"📥 <b>Не доставлено в буфере:</b> {buf_count}",
+            f"🤖 <b>Всего обработано ИИ:</b> {total_all}"
+        ])
+
+        return "\n".join(lines)
+
     async def _get_settings_text_and_keyboard(self):
         mode_label = "⚡ СРАЗУ (Мгновенно)" if self.delivery_mode == "instant" else "📥 СВОДКА (По расписанию)"
         text = (
@@ -481,17 +517,7 @@ class MasterBot:
             except Exception:
                 pass
 
-            stats = await self.storage.get_stats()
-            buf_count = await self.storage.get_buffer_count()
-
-            stats_msg = (
-                "📊 <b>Статистика агрегатора:</b>\n\n"
-                f"🚨 <b>Срочные:</b> {stats.get('urgent', 0)}\n"
-                f"⭐ <b>Важные:</b> {stats.get('important', 0)}\n"
-                f"💬 <b>Обычные:</b> {stats.get('general', 0)}\n"
-                f"🚫 <b>Отфильтровано спама:</b> {stats.get('spam', 0)}\n\n"
-                f"📥 <b>Не доставлено в буфере:</b> {buf_count}"
-            )
+            stats_msg = await self._get_formatted_stats_text()
             await self.show_or_edit_ui_panel(text=stats_msg, keyboard=kb_ui.get_stats_keyboard(), force_new=False)
 
         @self.dp.message(Command("logs"))
@@ -951,17 +977,8 @@ class MasterBot:
         @self.dp.callback_query(F.data == "do_reset_stats")
         async def process_do_reset_stats(callback_query: types.CallbackQuery):
             await self.storage.reset_stats()
-            stats = await self.storage.get_stats()
-            buf_count = await self.storage.get_buffer_count()
-
-            stats_msg = (
-                "📊 <b>Статистика агрегатора (Сброшено ✅):</b>\n\n"
-                f"🚨 <b>Срочные:</b> {stats.get('urgent', 0)}\n"
-                f"⭐ <b>Важные:</b> {stats.get('important', 0)}\n"
-                f"💬 <b>Обычные:</b> {stats.get('general', 0)}\n"
-                f"🚫 <b>Отфильтровано спама:</b> {stats.get('spam', 0)}\n\n"
-                f"📥 <b>Не доставлено в буфере:</b> {buf_count}"
-            )
+            stats_msg = await self._get_formatted_stats_text(" (Сброшено ✅)")
+            
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
@@ -1002,17 +1019,7 @@ class MasterBot:
         @self.dp.callback_query(F.data == "cmd_stats_inline")
         async def process_cmd_stats_inline(callback_query: types.CallbackQuery):
             await callback_query.answer()
-            stats = await self.storage.get_stats()
-            buf_count = await self.storage.get_buffer_count()
-
-            stats_msg = (
-                "📊 <b>Статистика агрегатора:</b>\n\n"
-                f"🚨 <b>Срочные:</b> {stats.get('urgent', 0)}\n"
-                f"⭐ <b>Важные:</b> {stats.get('important', 0)}\n"
-                f"💬 <b>Обычные:</b> {stats.get('general', 0)}\n"
-                f"🚫 <b>Отфильтровано спама:</b> {stats.get('spam', 0)}\n\n"
-                f"📥 <b>Не доставлено в буфере:</b> {buf_count}"
-            )
+            stats_msg = await self._get_formatted_stats_text()
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
