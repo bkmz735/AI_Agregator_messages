@@ -52,4 +52,19 @@ def init_logging(log_file: str = "aggregator.log", level: str = "INFO"):
     except Exception as e:
         sys.stderr.write(f"Warning: Could not initialize file logging: {e}\n")
 
+    # 4. Dedicated Bot Log File (bot.log)
+    try:
+        bot_file_handler = RotatingFileHandler("bot.log", maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
+        bot_file_handler.setFormatter(log_formatter)
+        
+        class BotFilter(logging.Filter):
+            def filter(self, record):
+                # Include logs from master_bot or aiogram
+                return record.name.startswith("master_bot") or record.name.startswith("aiogram") or record.name.startswith("user_agent")
+                
+        bot_file_handler.addFilter(BotFilter())
+        root_logger.addHandler(bot_file_handler)
+    except Exception as e:
+        sys.stderr.write(f"Warning: Could not initialize bot file logging: {e}\n")
+
     return root_logger
