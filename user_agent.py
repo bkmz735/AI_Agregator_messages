@@ -1,8 +1,8 @@
 import logging
-import json
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any
 from google import genai
 from google.genai import types
+from settings_manager import SettingsManager
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,6 @@ class ConversationalAgent:
 
         # Inject current time context
         try:
-            from settings_manager import SettingsManager
             settings = SettingsManager(self.storage)
             tz_offset = await settings.get_timezone_offset()
             from datetime import datetime, timedelta
@@ -151,7 +150,6 @@ class ConversationalAgent:
                     channel = args.get("channel_username")
                     reply_text = f"Вы хотите добавить Telegram канал «{channel}»?"
                 elif action_name == "get_bot_stats":
-                    from settings_manager import SettingsManager
                     settings = SettingsManager(self.storage)
                     total = await settings.get_stats_total_processed()
                     spam = await settings.get_stats_spam_blocked()
