@@ -221,7 +221,7 @@ class VKAdapter(BaseAdapter):
         try:
             from ai_engine import AIEngine
             ai = AIEngine()
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}) as session:
                 async with session.get(audio_url) as resp:
                     if resp.status == 200:
                         audio_bytes = await resp.read()

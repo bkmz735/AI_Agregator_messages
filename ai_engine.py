@@ -207,9 +207,10 @@ class AIEngine:
             from google.genai import types
             part = types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
             prompt = (
-                "Расшифруй это голосовое сообщение дословно на русском языке. "
+                "Сделай ДОСЛОВНУЮ транскрипцию (слово в слово) этого голосового сообщения на русском языке и сохрани её в поле 'transcription'. "
+                "КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ пересказывать смысл в поле 'transcription', там должен быть только оригинальный текст аудиозаписи! "
                 "Затем определи его категорию (spam, urgent, important, general), "
-                "составь краткое резюме (summary), проверь требуется ли ответ (action_required), "
+                "составь краткое резюме (summary) о чем это сообщение, проверь требуется ли ответ (action_required), "
                 "и предложи готовый черновик ответа (suggested_reply).\n"
                 "Ответ верни строго в формате JSON с ключами: transcription, category, summary, action_required, suggested_reply."
             )
@@ -225,7 +226,7 @@ class AIEngine:
                             self.client.models.generate_content,
                             model=model_name,
                             contents=[part, prompt],
-                            config={'response_mime_type': 'application/json'}
+                            config=types.GenerateContentConfig(response_mime_type="application/json")
                         ),
                         timeout=15.0
                     )
@@ -368,7 +369,9 @@ class AIEngine:
                 self.rate_limit_until = time.time() + 60.0
                 raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{max_rpm}). Pausing API calls for 60s.")
             else:
-                batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
+                # Map to anonymized payload: just id and text
+                anonymized_batch = [{"id": i, "text": m["text"]} for i, m in enumerate(messages_batch)]
+                batch_json_input = json.dumps(anonymized_batch, ensure_ascii=False)
                 prompt = (
                     f"{config.AI_FILTER_PROMPT}\n"
                     f"{custom_prompt_suffix}\n\n"
@@ -409,15 +412,23 @@ class AIEngine:
                             results = []
                             if isinstance(items, list):
                                 for i, item in enumerate(items):
-                                    # Fallback if AI forgot to include msg_uid
-                                    if "msg_uid" not in item and i < len(messages_batch):
-                                        item["msg_uid"] = messages_batch[i]["msg_uid"]
-                                    elif "msg_uid" not in item:
-                                        item["msg_uid"] = f"fallback_{time.time()}_{i}"
+                                    # Fallback if AI forgot to include id
+                                    item_id = item.get("id")
+                                    if item_id is None and i < len(messages_batch):
+                                        item_id = i
+                                    elif item_id is None:
+                                        continue # skip invalid response item
+                                        
+                                    orig_msg = messages_batch[item_id] if 0 <= item_id < len(messages_batch) else None
+                                    if not orig_msg:
+                                        continue
+                                        
+                                    item["msg_uid"] = orig_msg["msg_uid"]
+                                    if "id" in item:
+                                        del item["id"]
                                         
                                     # ENFORCE: tg_news can NEVER be urgent/important
-                                    orig_msg = next((m for m in messages_batch if m.get("msg_uid") == item["msg_uid"]), None)
-                                    if orig_msg and orig_msg.get("channel") == "tg_news":
+                                    if orig_msg.get("channel") == "tg_news":
                                         cat = item.get("category", "")
                                         if cat in ["urgent", "important", "gov_debt", "gov_service"]:
                                             item["category"] = "news"

@@ -88,7 +88,8 @@ class TGNewsAdapter(BaseAdapter):
         posts = posts[-2:]
 
         for post_path, text_raw in posts:
-            msg_uid = f"tg_news_{post_path.replace('/', '_')}"
+            post_path_clean = post_path.split('?')[0].lower()
+            msg_uid = f"tg_news_{post_path_clean.replace('/', '_')}"
             
             if msg_uid in self._seen_uids:
                 continue

@@ -667,10 +667,17 @@ class MasterBot:
                     # Always delete from DB so we don't retry endlessly
                     await self.storage.delete_sent_notification(item['id'])
 
-                # 2. Database 7-day auto-purge for delivered/spam messages (runs once per hour)
+                # 2. Database auto-purge for delivered/spam messages (runs once per hour)
                 now_ts = asyncio.get_running_loop().time()
                 if now_ts - last_db_purge_time >= 3600:
-                    await self.storage.purge_old_messages(days=7)
+                    from settings_manager import SettingsManager
+                    settings = SettingsManager(self.storage)
+                    purge_days = await settings.get_db_purge_days()
+                    
+                    purged_count = await self.storage.purge_old_messages(days=purge_days)
+                    if purged_count > 0:
+                        logger.info(f"Auto-purged {purged_count} old messages older than {purge_days} days.")
+                        
                     last_db_purge_time = now_ts
 
             except Exception as e:

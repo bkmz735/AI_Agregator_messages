@@ -826,6 +826,8 @@ def setup_all_handlers(master_bot):
             await callback_query.message.delete()
         except Exception:
             pass
+        # Refresh the active banner so that the bottom reply buttons reappear at the bottom
+        await master_bot.update_status_banner(callback_query.message.chat.id, force_new=True)
         await callback_query.answer()
     
     # Handle inline confirmation of chat clearing
