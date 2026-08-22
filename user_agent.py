@@ -27,35 +27,35 @@ class ConversationalAgent:
     # Tool definitions
     def add_banword(self, word: str, scope: str = "global") -> str:
         """Adds a new banword to filter out unwanted messages."""
-        pass
+        return ''
 
     def add_news_topic(self, topic: str, preference: str) -> str:
         """Adds a news topic. Preference must be either 'liked' (interesting) or 'disliked' (ignore)."""
-        pass
+        return ''
 
     def remove_news_topic(self, topic: str, preference: str) -> str:
         """Removes a news topic. Preference must be either 'liked' or 'disliked'."""
-        pass
+        return ''
 
     def add_tg_channel(self, channel_username: str) -> str:
         """Adds a Telegram channel to the bot's watchlist. Make sure channel_username is a valid @username or t.me/ link."""
-        pass
+        return ''
 
     def get_bot_stats(self) -> str:
         """Returns the current message statistics."""
-        pass
+        return ''
 
     def set_timezone(self, offset_hours: int) -> str:
         """Sets the bot's timezone offset in hours from UTC (e.g., 3 for Moscow, 5 for Yekaterinburg)."""
-        pass
+        return ''
 
     def set_digest_interval(self, minutes: int) -> str:
         """Sets the interval in minutes for sending automatic news digests (e.g., 60 for 1 hour)."""
-        pass
+        return ''
 
     def clear_chat(self) -> str:
         """Clears the entire chat history and removes all stored messages from the bot's database. Requires confirmation."""
-        pass
+        return ''
 
     def _get_tools(self):
         return [

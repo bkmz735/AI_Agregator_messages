@@ -79,8 +79,8 @@ class AIEngine:
             'gemini-3.1-flash-lite',
             'gemini-3-flash'
         ]
-        self.exhausted_models = set()  # Daily exhausted models (reset daily)
-        self.unsupported_models = set()  # Deprecated/invalid models (permanent during session)
+        self.exhausted_models: set[str] = set()  # Daily exhausted models (reset daily)
+        self.unsupported_models: set[str] = set()  # Deprecated/invalid models (permanent during session)
 
         if self.api_key:
             try:

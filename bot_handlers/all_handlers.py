@@ -30,6 +30,7 @@ def setup_all_handlers(master_bot):
     
     @dp.message(F.text == "🏠 Главное меню")
     async def cmd_main_menu_button(message: types.Message):
+        master_bot.clear_input_states()
         master_bot.current_menu_state = 'main'
         try:
             await message.delete()
@@ -64,13 +65,13 @@ def setup_all_handlers(master_bot):
         status_msg = await message.answer("🎙️ <i>Расшифровываю голосовое сообщение...</i>", parse_mode="HTML")
         try:
             voice_or_audio = message.voice or message.audio
-            file_info = await master_bot.bot.get_file(voice_or_audio.file_id)
+            file_info = await master_bot.bot.get_file((voice_or_audio.file_id if voice_or_audio else ""))
             audio_stream = io.BytesIO()
             await master_bot.bot.download_file(file_info.file_path, destination=audio_stream)
             audio_bytes = audio_stream.getvalue()
             
             mime_type = getattr(voice_or_audio, 'mime_type', 'audio/ogg') or 'audio/ogg'
-            sender_name = message.from_user.full_name or message.from_user.username or "Пользователь"
+            sender_name = (message.from_user.full_name if message.from_user else "") or (message.from_user.username if message.from_user else "") or "Пользователь"
     
             if master_bot.ai_engine:
                 res = await master_bot.ai_engine.transcribe_and_analyze_audio(audio_bytes, mime_type=mime_type)
@@ -90,7 +91,7 @@ def setup_all_handlers(master_bot):
                 f"📝 <b>Краткое содержание:</b>\n{html.escape(res.summary)}"
             )
     
-            await status_msg.edit_text(text_response, parse_mode="HTML")
+            if isinstance(status_msg, types.Message): await status_msg.edit_text(text_response, parse_mode="HTML")
     
             # Also queue it in DB
             await master_bot.storage.save_message(
@@ -106,10 +107,11 @@ def setup_all_handlers(master_bot):
             )
         except Exception as e:
             logger.error(f"Error processing voice message: {e}")
-            await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
+            if isinstance(status_msg, types.Message): await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
     
     @dp.message(F.text.startswith("📥 Буфер"))
     async def cmd_buffer(message: types.Message):
+        master_bot.clear_input_states()
         try:
             await message.delete()
         except Exception:
@@ -140,6 +142,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "flush_now")
     async def process_flush_now_callback(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         sent_count = await master_bot.flush_buffer_now()
         if sent_count == 0:
             await callback_query.answer("📥 Буфер пуст!", show_alert=True)
@@ -165,6 +168,7 @@ def setup_all_handlers(master_bot):
     @dp.message(F.text.startswith("📊 Статистика"))
     @dp.message(Command("stats"))
     async def cmd_stats(message: types.Message):
+        master_bot.clear_input_states()
         try:
             await message.delete()
         except Exception:
@@ -176,6 +180,7 @@ def setup_all_handlers(master_bot):
     @dp.message(Command("logs"))
     @dp.message(Command("debug"))
     async def cmd_logs(message: types.Message):
+        master_bot.clear_input_states()
         try:
             await message.delete()
         except Exception:
@@ -185,6 +190,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "refresh_logs")
     async def process_refresh_logs(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text, kb = await master_bot._get_diagnostic_logs_text_and_keyboard()
         await master_bot.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
         await callback_query.answer("Логи обновлены!")
@@ -192,6 +198,7 @@ def setup_all_handlers(master_bot):
     @dp.message(F.text.startswith("⚙️ Настройки"))
     @dp.message(Command("settings"))
     async def cmd_settings(message: types.Message):
+        master_bot.clear_input_states()
         master_bot.current_menu_state = 'settings'
         try:
             await message.delete()
@@ -204,6 +211,7 @@ def setup_all_handlers(master_bot):
     # Handle inline settings menu navigation and callbacks
     @dp.callback_query(F.data == "settings_main_menu")
     async def process_settings_main_menu(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text, kb = await master_bot._get_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -213,6 +221,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_toggle_mode")
     async def process_settings_toggle_mode(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         master_bot.delivery_mode = "instant" if master_bot.delivery_mode == "digest" else "digest"
         await master_bot.settings.update_delivery_mode(master_bot.delivery_mode)
         
@@ -225,6 +234,7 @@ def setup_all_handlers(master_bot):
 
     @dp.callback_query(F.data == "settings_menu_content_filter")
     async def process_settings_menu_content_filter(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text = (
             "🎛️ <b>Фильтр контента</b>\n\n"
             "Здесь собраны все настройки модерации входящих сообщений:\n\n"
@@ -240,17 +250,20 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_tg_channels")
     async def process_settings_menu_tg_channels(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await master_bot._show_tg_channels_page(1)
         await callback_query.answer()
     
     @dp.callback_query(F.data == "settings_menu_topics")
     async def process_settings_menu_topics(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await master_bot._show_topics_main_page()
         await callback_query.answer()
     
     @dp.callback_query(F.data.startswith("topics_view_"))
     async def process_topics_view(callback_query: types.CallbackQuery):
-        parts = callback_query.data.split("_")
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        parts = (callback_query.data or "").split("_")
         preference = parts[2]
         page = int(parts[3])
         await master_bot._show_topics_list_page(preference, page)
@@ -258,7 +271,8 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("remove_topic_"))
     async def process_remove_topic(callback_query: types.CallbackQuery):
-        parts = callback_query.data.split("_")
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        parts = (callback_query.data or "").split("_")
         preference = parts[2]
         idx_in_page = parts[3]
         page_val = int(parts[4])
@@ -272,7 +286,8 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("add_topic_prompt_"))
     async def process_add_topic_prompt(callback_query: types.CallbackQuery):
-        preference = callback_query.data.split("_")[-1]
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        preference = (callback_query.data or "").split("_")[-1]
         if preference == "liked":
             master_bot._waiting_for_liked_topic = True
             icon = "💚"
@@ -299,13 +314,15 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("tg_chan_page_"))
     async def process_tg_chan_page(callback_query: types.CallbackQuery):
-        page_val = int(callback_query.data.split("_")[-1])
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        page_val = int((callback_query.data or "").split("_")[-1])
         await master_bot._show_tg_channels_page(page_val)
         await callback_query.answer()
     
     @dp.callback_query(F.data.startswith("tg_chan_del_"))
     async def process_tg_chan_del(callback_query: types.CallbackQuery):
-        parts = callback_query.data.split("_")
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        parts = (callback_query.data or "").split("_")
         chan_id = int(parts[3])
         page_val = int(parts[4]) if len(parts) > 4 else 1
     
@@ -318,6 +335,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "tg_chan_add_prompt")
     async def process_tg_chan_add_prompt(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         master_bot._waiting_for_tg_channel = True
         text = (
             "✏️ <b>Добавление ТГ-канала новостей</b>\n\n"
@@ -339,6 +357,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_time")
     async def process_settings_menu_time(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text, kb = await master_bot._get_time_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -348,6 +367,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_night")
     async def process_settings_menu_night(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text, kb = await master_bot._get_night_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -357,6 +377,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_interval")
     async def process_settings_menu_interval(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text = (
             "⏱️ <b>Настройка интервала выгрузки сводки:</b>\n\n"
             f"Текущий интервал: <b>{master_bot.digest_interval} мин</b>\n"
@@ -370,7 +391,8 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("set_interval_"))
     async def process_set_interval(callback_query: types.CallbackQuery):
-        interval_val = int(callback_query.data.split("_")[-1])
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        interval_val = int((callback_query.data or "").split("_")[-1])
         master_bot.digest_interval = interval_val
         await master_bot.settings.update_digest_interval_minutes(master_bot.digest_interval)
         
@@ -383,6 +405,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_autodelete")
     async def process_settings_menu_autodelete(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         autodelete_label = f"<b>{master_bot.auto_delete_delay_hours} ч</b>" if master_bot.auto_delete_delay_hours > 0 else "<b>Выключено</b>"
         text = (
             "🗑️ <b>Настройка времени автоудаления сообщений:</b>\n\n"
@@ -397,7 +420,8 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("set_autodelete_"))
     async def process_set_autodelete(callback_query: types.CallbackQuery):
-        delay_val = int(callback_query.data.split("_")[-1])
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        delay_val = int((callback_query.data or "").split("_")[-1])
         master_bot.auto_delete_delay_hours = delay_val
         await master_bot.settings.update_auto_delete_delay_hours(master_bot.auto_delete_delay_hours)
         
@@ -411,6 +435,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_timezone")
     async def process_settings_menu_timezone(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text, kb = await master_bot._get_timezone_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -420,6 +445,7 @@ def setup_all_handlers(master_bot):
 
     @dp.callback_query(F.data == "settings_menu_ai")
     async def process_settings_menu_ai(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text, kb = await master_bot._get_ai_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -429,6 +455,7 @@ def setup_all_handlers(master_bot):
 
     @dp.callback_query(F.data == "settings_toggle_ai_chat")
     async def process_settings_toggle_ai_chat(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         current = await master_bot.settings.get_ai_text_chat_enabled()
         await master_bot.settings.update_ai_text_chat_enabled(not current)
         text, kb = await master_bot._get_ai_settings_text_and_keyboard()
@@ -441,6 +468,7 @@ def setup_all_handlers(master_bot):
 
     @dp.callback_query(F.data == "settings_toggle_ai_suggestions")
     async def process_settings_toggle_ai_suggestions(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         current = await master_bot.settings.get_ai_suggestions_enabled()
         await master_bot.settings.update_ai_suggestions_enabled(not current)
         text, kb = await master_bot._get_ai_settings_text_and_keyboard()
@@ -453,6 +481,7 @@ def setup_all_handlers(master_bot):
 
     @dp.callback_query(F.data == "settings_menu_ai_filters")
     async def process_settings_menu_ai_filters(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text, kb = await master_bot._get_ai_filters_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -462,6 +491,7 @@ def setup_all_handlers(master_bot):
 
     @dp.callback_query(F.data.startswith("toggle_ai_filter_"))
     async def process_toggle_ai_filter(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         category = callback_query.data.replace("toggle_ai_filter_", "")
         new_state = await master_bot.settings.toggle_ai_category_filter(category)
         text, kb = await master_bot._get_ai_filters_text_and_keyboard()
@@ -474,6 +504,7 @@ def setup_all_handlers(master_bot):
 
     @dp.callback_query(F.data.startswith("set_tz_"))
     async def process_set_timezone(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         offset = int(callback_query.data.replace("set_tz_", ""))
         master_bot.timezone_offset = offset
         await master_bot.settings.update_timezone_offset(offset)
@@ -486,6 +517,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_toggle_night_mode")
     async def process_toggle_night_mode(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         master_bot.night_mode_enabled = not master_bot.night_mode_enabled
         await master_bot.settings.update_night_mode_enabled(master_bot.night_mode_enabled)
         
@@ -499,6 +531,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_night_hours")
     async def process_settings_menu_night_hours(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         text = (
             "🌙 <b>Настройка часов тишины ночного режима:</b>\n\n"
             f"Текущий интервал: <b>{master_bot.night_start_hour:02d}:00 - {master_bot.night_end_hour:02d}:00</b>\n"
@@ -512,7 +545,8 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("set_nighthours_"))
     async def process_set_nighthours(callback_query: types.CallbackQuery):
-        parts = callback_query.data.split("_")
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        parts = (callback_query.data or "").split("_")
         start_h, end_h = int(parts[2]), int(parts[3])
         master_bot.night_start_hour = start_h
         master_bot.night_end_hour = end_h
@@ -529,6 +563,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "settings_menu_blacklist")
     async def process_settings_menu_blacklist(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         bws_email = await master_bot.storage.get_banwords(scope="email")
         bws_vk = await master_bot.storage.get_banwords(scope="vk")
         
@@ -547,6 +582,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("bw_view_email_"))
     async def process_bw_view_email(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         page = int(callback_query.data.replace("bw_view_email_", ""))
         bws = await master_bot.storage.get_banwords(scope="email")
         
@@ -574,6 +610,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("bw_view_vk_"))
     async def process_bw_view_vk(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         page = int(callback_query.data.replace("bw_view_vk_", ""))
         bws = await master_bot.storage.get_banwords(scope="vk")
         
@@ -601,6 +638,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("remove_bw_email_"))
     async def process_remove_bw_email(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         parts = callback_query.data.replace("remove_bw_email_", "").split("_")
         idx = parts[0]
         page = parts[1] if len(parts) > 1 else "1"
@@ -610,6 +648,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("remove_bw_vk_"))
     async def process_remove_bw_vk(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         parts = callback_query.data.replace("remove_bw_vk_", "").split("_")
         idx = parts[0]
         page = parts[1] if len(parts) > 1 else "1"
@@ -619,6 +658,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "add_bw_select_scope")
     async def process_add_bw_select_scope(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
         try:
             await callback_query.message.edit_text(
@@ -631,6 +671,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "add_bw_prompt_email")
     async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
         master_bot._waiting_for_banword_scope = "email"
         try:
@@ -644,6 +685,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "add_bw_prompt_vk")
     async def process_add_bw_prompt_vk(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
         master_bot._waiting_for_banword_scope = "vk"
         try:
@@ -762,6 +804,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "confirm_reset_stats")
     async def process_confirm_reset_stats(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         inline_kb = kb_ui.get_confirm_reset_stats_keyboard()
         try:
             await callback_query.message.edit_text(
@@ -775,6 +818,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "do_reset_stats")
     async def process_do_reset_stats(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await master_bot.storage.reset_stats()
         stats_msg = await master_bot._get_formatted_stats_text(" (Сброшено ✅)")
         
@@ -787,6 +831,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "cmd_buf_inline")
     async def process_cmd_buf_inline(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
         master_bot.current_menu_state = 'buffer'
         buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False)
@@ -815,6 +860,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data == "cmd_stats_inline")
     async def process_cmd_stats_inline(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
         master_bot.current_menu_state = 'stats'
         stats_msg = await master_bot._get_formatted_stats_text()
@@ -841,11 +887,13 @@ def setup_all_handlers(master_bot):
     # Handle inline "Close / Cancel" button click — returns UI to active status banner with ReplyKeyboard refreshed
     @dp.callback_query(F.data == "delete_msg")
     async def process_delete_msg(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await master_bot.update_status_banner(callback_query.message.chat.id, force_new=True)
         await callback_query.answer()
     
     @dp.callback_query(F.data == "delete_this_message")
     async def process_delete_this_message(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         try:
             await callback_query.message.delete()
         except Exception:
@@ -857,6 +905,7 @@ def setup_all_handlers(master_bot):
     # Handle inline confirmation of chat clearing
     @dp.callback_query(F.data == "confirm_clear_chat")
     async def process_confirm_clear_chat(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer("Очистка чата...")
         
         # Reset UI msg id so fresh status banner is sent after purge
@@ -877,6 +926,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("ai_confirm_"))
     async def process_ai_action_confirm(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         action_id = callback_query.data.replace("ai_confirm_", "")
         action_data = master_bot.pending_ai_actions.pop(action_id, None)
         
@@ -923,6 +973,7 @@ def setup_all_handlers(master_bot):
     
     @dp.callback_query(F.data.startswith("ai_reject_"))
     async def process_ai_action_reject(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         action_id = callback_query.data.replace("ai_reject_", "")
         action_data = master_bot.pending_ai_actions.pop(action_id, None)
         
@@ -936,11 +987,16 @@ def setup_all_handlers(master_bot):
 
     @dp.message(F.text, ~F.text.startswith("/"))
     async def handle_text_message(message: types.Message):
+        # Protect against accidental menu button presses being treated as input
+        if message.text in ["🏠 Главное меню", "📥 Буфер", "⚙️ Настройки", "📊 Статистика", "🗑 Очистить чат"]:
+            master_bot.clear_input_states()
+            return
+
         # If user tapped a ReplyButton while in input mode, cancel pending inputs
     
         if master_bot._waiting_for_tg_channel:
             master_bot._waiting_for_tg_channel = False
-            raw_input = message.text.strip()
+            raw_input = message.text.strip() if message.text else ""
             try:
                 await message.delete()
             except Exception:
@@ -965,7 +1021,7 @@ def setup_all_handlers(master_bot):
             master_bot._waiting_for_liked_topic = False
             master_bot._waiting_for_disliked_topic = False
             
-            raw_input = message.text.strip()
+            raw_input = message.text.strip() if message.text else ""
             try:
                 await message.delete()
             except Exception:
@@ -985,7 +1041,7 @@ def setup_all_handlers(master_bot):
     
         # Check if bot is waiting for interactive banword text input
         if master_bot._waiting_for_banword_scope:
-            word_to_add = message.text.strip()
+            word_to_add = message.text.strip() if message.text else ""
             scope = master_bot._waiting_for_banword_scope
             master_bot._waiting_for_banword_scope = None
     
@@ -1057,7 +1113,7 @@ def setup_all_handlers(master_bot):
                         await master_bot.storage.add_ai_chat_message("user", user_text)
                         await master_bot.storage.add_ai_chat_message("model", result_msg)
                         
-                        await status_msg.edit_text(result_msg, parse_mode="HTML")
+                        if isinstance(status_msg, types.Message): await status_msg.edit_text(result_msg, parse_mode="HTML")
                         
                         async def delayed_delete(msg):
                             await asyncio.sleep(5)
@@ -1070,20 +1126,20 @@ def setup_all_handlers(master_bot):
                         import uuid
                         action_id = str(uuid.uuid4())[:8]
                         master_bot.pending_ai_actions[action_id] = pending_action
-                        await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
+                        if isinstance(status_msg, types.Message): await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
                 else:
-                    await status_msg.edit_text(reply_text, parse_mode="HTML")
+                    if isinstance(status_msg, types.Message): await status_msg.edit_text(reply_text, parse_mode="HTML")
             except Exception as e:
                 logger.error(f"AI Chat error: {e}")
-                await status_msg.edit_text(f"❌ Ошибка: {e}")
+                if isinstance(status_msg, types.Message): await status_msg.edit_text(f"❌ Ошибка: {e}")
         elif master_bot.ai_engine:
             status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
             try:
                 response = await master_bot.ai_engine.ask_ai_question(message.text)
-                await status_msg.edit_text(f"🤖 <b>Ответ ИИ:</b>\n\n{html.escape(response)}", parse_mode="HTML")
+                if isinstance(status_msg, types.Message): await status_msg.edit_text(f"🤖 <b>Ответ ИИ:</b>\n\n{html.escape(response)}", parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Error asking AI question: {e}")
-                await status_msg.edit_text(f"❌ Ошибка обращения к ИИ: {e}")
+                if isinstance(status_msg, types.Message): await status_msg.edit_text(f"❌ Ошибка обращения к ИИ: {e}")
         else:
             await message.answer("🤖 ИИ не настроен. Для работы этой функции требуется API-ключ.")
     

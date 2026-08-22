@@ -3,7 +3,7 @@ import logging
 import html
 import io
 from typing import Optional, Callable, Awaitable, Any, Dict
-from aiogram import BaseMiddleware
+from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.types import TelegramObject
 from config import config
 from storage import Storage
@@ -60,6 +60,10 @@ class AccessControlMiddleware(BaseMiddleware):
                 logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
                 return None  # Ignore unauthorized event completely
 
+        # Clear FSM input states for all callback query button presses
+        if isinstance(event, CallbackQuery):
+            self.master_bot.clear_input_states()
+
         return await handler(event, data)
 
 class ThrottlingMiddleware(BaseMiddleware):
@@ -112,18 +116,19 @@ class MasterBot:
         self.current_menu_state = 'main'
         self._last_ui_msg_id = None
         self._last_clear_prompt_msg_id = None
-        self._last_buffer_status_msg_id = None
+        self._last_buffer_status_msg_id: int | None = None
         self._waiting_for_banword_scope: Optional[str] = None
         self._waiting_for_tg_channel: bool = False
-        self.dp = None
-        self.bot = None
+        self._waiting_for_liked_topic: bool = False
+        self._waiting_for_disliked_topic: bool = False
+        self.dp: Optional[Dispatcher] = None
+        self.bot: Optional[Bot] = None
         
-        self.pending_ai_actions = {}
+        self.pending_ai_actions: Dict[str, Any] = {}
+        self.user_agent = None
         if self.ai_engine and hasattr(self.ai_engine, 'client'):
             from user_agent import ConversationalAgent
             self.user_agent = ConversationalAgent(self.ai_engine, self.storage)
-        else:
-            self.user_agent = None
 
         if self.bot_token:
             self._init_bot_instance(use_proxy=True if config.TELEGRAM_PROXY else False)
@@ -136,6 +141,13 @@ class MasterBot:
 
     def set_flush_raw_queue_callback(self, callback: Callable[[], Awaitable[None]]):
         self.on_flush_raw_queue = callback
+
+    def clear_input_states(self):
+        """Clears all interactive FSM states."""
+        self._waiting_for_banword_scope = None
+        self._waiting_for_tg_channel = False
+        self._waiting_for_liked_topic = False
+        self._waiting_for_disliked_topic = False
 
     def is_night_time(self) -> bool:
         """Returns True if Night Mode is enabled and current time falls in quiet hours."""
@@ -233,7 +245,6 @@ class MasterBot:
         stats_data = await self.storage.get_stats()
         cats = stats_data.get("categories", {})
         channels = stats_data.get("channels", {})
-        total_all = stats_data.get("total_all", 0)
         buf_count = await self.storage.get_buffer_count()
 
         lines = [
@@ -507,7 +518,7 @@ class MasterBot:
         if self.bot and self.master_chat_id:
             try:
                 inline_kb = kb_ui.get_read_notification_keyboard()
-                sent_msg = await self.bot.send_message(
+                await self.bot.send_message(
                     chat_id=self.master_chat_id,
                     text=message_text,
                     parse_mode="HTML",
@@ -535,12 +546,7 @@ class MasterBot:
 
         if self.bot and self.master_chat_id:
             for m in messages:
-                copied = False
-                if m['msg_uid'].startswith("tg_news_"):
-                    # Web scraped news cannot be copied by bot API, fallback to text digest
-                    regular_messages.append(m)
-                else:
-                    regular_messages.append(m)
+                regular_messages.append(m)
         else:
             regular_messages = messages
 
@@ -549,7 +555,7 @@ class MasterBot:
 
         digest_parts.append("📬 <b>СВОДКА СООБЩЕНИЙ</b>\n")
         
-        groups = {
+        groups: dict[str, list] = {
             "important": [],
             "news": [],
             "general": []
@@ -599,8 +605,6 @@ class MasterBot:
             for m in groups['news']:
                 digest_parts.append(format_msg(m))
 
-        full_digest = "\n".join(digest_parts)
-
         if self.bot and self.master_chat_id:
             try:
                 inline_kb = kb_ui.get_read_notification_keyboard()
@@ -642,7 +646,7 @@ class MasterBot:
                 await self.bot.delete_message(chat_id=self.master_chat_id, message_id=self._last_buffer_status_msg_id)
             except Exception:
                 pass
-            self._last_buffer_status_msg_id = None
+            self._last_buffer_status_msg_id: int | None = None
 
         return len(messages)
 

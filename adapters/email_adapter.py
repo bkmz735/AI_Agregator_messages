@@ -69,7 +69,7 @@ class EmailAdapter(BaseAdapter):
         best_len = 0
 
         for line in lines:
-            candidates = []
+            candidates: list[str] = []
             if isinstance(line, tuple):
                 candidates.extend(line)
             else:

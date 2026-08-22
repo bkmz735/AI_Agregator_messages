@@ -73,4 +73,3 @@ def is_text_spam(text: str, channel: str = "email", active_banwords: list = None
 
 
 # Alias for backward compatibility
-is_spam_text = is_text_spam
