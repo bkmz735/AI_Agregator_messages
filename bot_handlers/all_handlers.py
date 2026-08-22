@@ -942,22 +942,47 @@ def setup_all_handlers(master_bot):
         try:
             if action == "add_banword":
                 word = args.get("word")
-                await master_bot.storage.add_spam_keyword(word)
-                result_msg = f"✅ Банворд «{word}» добавлен ИИ."
+                scope = args.get("scope", "global")
+                await master_bot.storage.add_banword(word, scope=scope)
+                scope_title = f" ({scope})" if scope != "global" else ""
+                result_msg = f"✅ Банворд «{word}»{scope_title} добавлен ИИ."
+            elif action == "remove_banword":
+                word = args.get("word")
+                await master_bot.storage.remove_banword(word)
+                result_msg = f"✅ Банворд «{word}» удален ИИ."
             elif action == "add_news_topic":
                 topic = args.get("topic")
-                pref = args.get("preference")
+                pref = args.get("preference", "liked")
+                if pref not in ["liked", "disliked"]:
+                    pref = "liked"
                 await master_bot.storage.add_news_topic(topic, pref)
-                result_msg = f"✅ Тема «{topic}» добавлена ИИ ({pref})."
+                result_msg = f"✅ Тема «{topic}» добавлена ИИ ({'желаемая' if pref == 'liked' else 'запретная'})."
             elif action == "remove_news_topic":
                 topic = args.get("topic")
-                pref = args.get("preference")
+                pref = args.get("preference", "liked")
+                if pref not in ["liked", "disliked"]:
+                    pref = "liked"
                 await master_bot.storage.remove_news_topic(topic, pref)
-                result_msg = f"✅ Тема «{topic}» удалена ИИ ({pref})."
+                result_msg = f"✅ Тема «{topic}» удалена ИИ ({'желаемая' if pref == 'liked' else 'запретная'})."
             elif action == "add_tg_channel":
                 channel = args.get("channel_username")
                 await master_bot.storage.add_tg_channel(channel)
-                result_msg = f"✅ Telegram канал «{channel}» добавлен ИИ."
+                clean_ch = channel.strip().lstrip('@')
+                result_msg = f"✅ Telegram канал «@{clean_ch}» добавлен ИИ."
+            elif action == "remove_tg_channel":
+                channel = args.get("channel_username")
+                clean_ch = channel.strip().lstrip('@')
+                channels = await master_bot.storage.get_tg_channels()
+                target_id = None
+                for ch in channels:
+                    if ch["username"].lower() == clean_ch.lower():
+                        target_id = ch["id"]
+                        break
+                if target_id:
+                    await master_bot.storage.remove_tg_channel_by_id(target_id)
+                    result_msg = f"✅ Telegram канал «@{clean_ch}» удален ИИ."
+                else:
+                    result_msg = f"ℹ️ Telegram канал «@{clean_ch}» не найден в списке."
             elif action == "clear_chat":
                 await master_bot.storage.clear_all_messages()
                 result_msg = "✅ История сообщений полностью очищена."

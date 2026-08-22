@@ -7,7 +7,11 @@ logger = logging.getLogger(__name__)
 
 # Tool definitions for schema generation
 def add_banword(word: str, scope: str = "global") -> str:
-    """Adds a new banword to filter out unwanted messages."""
+    """Adds a new banword to filter out unwanted messages. Scope can be 'global', 'email' or 'vk'."""
+    return ''
+
+def remove_banword(word: str) -> str:
+    """Removes a banword from the blacklist."""
     return ''
 
 def add_news_topic(topic: str, preference: str) -> str:
@@ -20,6 +24,10 @@ def remove_news_topic(topic: str, preference: str) -> str:
 
 def add_tg_channel(channel_username: str) -> str:
     """Adds a Telegram channel to the bot's watchlist. Make sure channel_username is a valid @username or t.me/ link."""
+    return ''
+
+def remove_tg_channel(channel_username: str) -> str:
+    """Removes a Telegram channel from the bot's watchlist."""
     return ''
 
 def get_bot_stats() -> str:
@@ -42,12 +50,12 @@ class ConversationalAgent:
     def __init__(self, ai_engine: Any, storage):
         self.ai_engine = ai_engine
         self.storage = storage
-        self.model_name = "gemini-3.5-flash"
+        self.model_name = "gemini-3.5-flash-lite"
         
         self.system_instruction = (
             "Ты — личный ИИ-ассистент в Telegram боте агрегаторе сообщений.\n"
             "Бот собирает сообщения, фильтрует спам, выдает сводки, а также автоматически распознает штрафы, налоги и уведомления от Госуслуг.\n"
-            "Умеешь общаться, отвечать на вопросы, добавлять банворды, каналы в Telegram и настраивать темы новостей.\n"
+            "Умеешь общаться, отвечать на вопросы, добавлять и удалять банворды, каналы в Telegram и настраивать темы новостей.\n"
             "Если пользователь спрашивает, что ты умеешь, обязательно перечисли свои возможности, включая умную фильтрацию задолженностей и Госуслуг.\n"
             "Если пользователь просит добавить/удалить банворд (слово для фильтрации спама), тему новостей или Телеграм канал, "
             "Используй доступные инструменты (tools). Тебе не нужно самому подтверждать выполнение инструмента. "
@@ -59,10 +67,12 @@ class ConversationalAgent:
 
     def _get_tools(self):
         return [
-            add_banword, 
+            add_banword,
+            remove_banword,
             add_news_topic, 
             remove_news_topic, 
             add_tg_channel,
+            remove_tg_channel,
             get_bot_stats,
             set_timezone,
             set_digest_interval,
@@ -134,7 +144,12 @@ class ConversationalAgent:
                 # Format a user-friendly response
                 if action_name == "add_banword":
                     word = args.get("word")
-                    reply_text = f"Вы хотите добавить банворд «{word}»?"
+                    scope = args.get("scope", "global")
+                    scope_title = f" ({scope})" if scope != "global" else ""
+                    reply_text = f"Вы хотите добавить банворд «{word}»{scope_title}?"
+                elif action_name == "remove_banword":
+                    word = args.get("word")
+                    reply_text = f"Вы хотите удалить банворд «{word}»?"
                 elif action_name == "add_news_topic":
                     topic = args.get("topic")
                     pref = args.get("preference")
@@ -148,6 +163,9 @@ class ConversationalAgent:
                 elif action_name == "add_tg_channel":
                     channel = args.get("channel_username")
                     reply_text = f"Вы хотите добавить Telegram канал «{channel}»?"
+                elif action_name == "remove_tg_channel":
+                    channel = args.get("channel_username")
+                    reply_text = f"Вы хотите удалить Telegram канал «{channel}»?"
                 elif action_name == "get_bot_stats":
                     settings = SettingsManager(self.storage)
                     total = await settings.get_stats_total_processed()
