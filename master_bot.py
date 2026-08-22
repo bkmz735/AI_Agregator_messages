@@ -39,22 +39,25 @@ class AccessControlMiddleware(BaseMiddleware):
         master_id = self.master_bot.master_chat_id
         logger.info(f"📩 Telegram Event [{event_name}] from user_id={user_id} (data='{text_preview}', expected master_id={master_id})")
 
-        # Security check:
-        if master_id and str(master_id) != "0":
-            # Strict lockdown: ONLY the registered owner ID is allowed
+        # Auto-capture master_chat_id if currently missing or 0
+        if not master_id or str(master_id) in ("0", "None", ""):
+            if user_id:
+                logger.info(f"🔑 Auto-capturing master_chat_id={user_id} from Telegram Event [{event_name}]")
+                self.master_bot.master_chat_id = user_id
+                asyncio.create_task(self.master_bot.storage.set_setting("master_chat_id", str(user_id)))
+                master_id = user_id
+
+        # Security check: If master_chat_id is active, enforce strict lockdown
+        if master_id and str(master_id) not in ("0", "None", ""):
             if user_id and str(user_id) != str(master_id):
                 if isinstance(event, Message) and event.text and event.text.startswith("/start"):
-                    logger.info(f"Re-capturing master_chat_id via /start from user_id: {user_id}")
+                    logger.info(f"🔑 Re-capturing master_chat_id via /start from user_id: {user_id}")
+                    self.master_bot.master_chat_id = user_id
+                    asyncio.create_task(self.master_bot.storage.set_setting("master_chat_id", str(user_id)))
                     return await handler(event, data)
 
                 logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
                 return None  # Ignore unauthorized event completely
-        else:
-            # First initialization fallback if master_chat_id is empty
-            if user_id:
-                logger.info(f"Auto-capturing initial master_chat_id from user_id: {user_id}")
-                self.master_bot.master_chat_id = user_id
-                asyncio.create_task(self.master_bot.storage.set_setting("master_chat_id", str(user_id)))
 
         return await handler(event, data)
 
@@ -224,10 +227,11 @@ class MasterBot:
         
         return text, kb_ui.get_settings_keyboard(self.delivery_mode, self.night_mode_enabled)
 
-    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False):
+    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False, chat_id: Optional[int] = None):
         """Displays or smoothly edits the single active UI window in-place."""
-        target_chat = self.master_chat_id
-        if not target_chat or not self.bot:
+        target_chat = chat_id or self.master_chat_id
+        if not target_chat or str(target_chat) in ("0", "None", "") or not self.bot:
+            logger.warning(f"show_or_edit_ui_panel skipped: target_chat={target_chat}, bot={self.bot}")
             return
 
         from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
@@ -278,7 +282,7 @@ class MasterBot:
     async def update_status_banner(self, chat_id: Optional[int] = None, force_new: bool = False):
         """Creates or updates the single active status banner in-place."""
         target_chat = chat_id or self.master_chat_id
-        if not target_chat or not self.bot:
+        if not target_chat or str(target_chat) in ("0", "None", ""):
             return
 
         buf_count = await self.storage.get_buffer_count()
@@ -385,6 +389,12 @@ class MasterBot:
 
         @self.dp.message(F.text & ~F.text.startswith("/") & (lambda msg: bool(self._waiting_for_banword_scope)))
         async def handle_text_message(message: types.Message):
+            # If user tapped a ReplyButton while in banword mode, cancel banword input
+            menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
+            if any(message.text.startswith(m) for m in menu_texts):
+                self._waiting_for_banword_scope = None
+                return
+
             # Check if bot is waiting for interactive banword text input
             if self._waiting_for_banword_scope:
                 word_to_add = message.text.strip()
@@ -445,7 +455,7 @@ class MasterBot:
                 await callback_query.answer("🚀 Сводка отправлена!")
             await self.update_status_banner()
 
-        @self.dp.message(F.text == "🚀 Отправить сводку")
+        @self.dp.message(F.text.startswith("🚀 Отправить сводку"))
         @self.dp.message(Command("flush"))
         async def cmd_send_digest(message: types.Message):
             try:
@@ -460,7 +470,7 @@ class MasterBot:
             except Exception as e:
                 logger.error(f"Error in manual digest flush: {e}", exc_info=True)
 
-        @self.dp.message(F.text == "📊 Статистика")
+        @self.dp.message(F.text.startswith("📊 Статистика"))
         @self.dp.message(Command("stats"))
         async def cmd_stats(message: types.Message):
             try:
@@ -497,7 +507,7 @@ class MasterBot:
             await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
             await callback_query.answer("Логи обновлены!")
 
-        @self.dp.message(F.text == "⚙️ Настройки")
+        @self.dp.message(F.text.startswith("⚙️ Настройки"))
         @self.dp.message(Command("settings"))
         async def cmd_settings(message: types.Message):
             try:
@@ -991,7 +1001,7 @@ class MasterBot:
 
         @self.dp.callback_query(F.data == "prompt_clear_chat")
         @self.dp.message(Command("clear"))
-        @self.dp.message(F.text == "🧹 Очистить чат")
+        @self.dp.message(F.text.startswith("🧹 Очистить чат"))
         async def cmd_clear_chat(event: Any):
             if isinstance(event, types.Message):
                 try:
@@ -1199,9 +1209,12 @@ class MasterBot:
             try:
                 # Load settings asynchronously from DB
                 saved_master_id = await self.storage.get_setting("master_chat_id")
-                if saved_master_id and saved_master_id.isdigit() and saved_master_id != "0":
-                    self.master_chat_id = int(saved_master_id)
-                    logger.info(f"Loaded master_chat_id from DB: {self.master_chat_id}")
+                if saved_master_id and saved_master_id.strip() not in ("", "0", "None"):
+                    try:
+                        self.master_chat_id = int(saved_master_id.strip())
+                        logger.info(f"Loaded master_chat_id from DB: {self.master_chat_id}")
+                    except ValueError:
+                        pass
 
                 self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
                 self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
