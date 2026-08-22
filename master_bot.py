@@ -284,18 +284,6 @@ class MasterBot:
         buf_count = await self.storage.get_buffer_count()
         text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
         reply_kb = kb_ui.get_main_reply_keyboard(buf_count)
-
-        if force_new and self._last_ui_msg_id:
-            old_id = self._last_ui_msg_id
-            self._last_ui_msg_id = None
-            async def _purge_startup_spam():
-                for msg_id in range(old_id + 10, max(1, old_id - 30), -1):
-                    try:
-                        await self.bot.delete_message(chat_id=target_chat, message_id=msg_id)
-                    except Exception:
-                        pass
-            asyncio.create_task(_purge_startup_spam())
-
         await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
 
     def _setup_handlers(self):
