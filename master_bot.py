@@ -202,23 +202,12 @@ class MasterBot:
         return text, kb_ui.get_logs_keyboard()
 
     async def _get_settings_text_and_keyboard(self):
-        mode_label = "⚡ СРАЗУ (Мгновенно)" if self.delivery_mode == "instant" else "📥 СВОДКА (Раз в час)"
-        autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
-        night_label = f"🟢 Включен ({self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00)" if self.night_mode_enabled else "Выключен ❌"
-        
-        all_bws = await self.storage.get_banwords()
-        kw_count_label = f"{len(all_bws)} активных" if all_bws else "Пуст ⚪"
-
+        mode_label = "⚡ СРАЗУ (Мгновенно)" if self.delivery_mode == "instant" else "📥 СВОДКА (По расписанию)"
         text = (
-            "⚙️ <b>Панель настроек AI Message Aggregator</b>\n\n"
-            f"⚡ <b>Режим отправки:</b> {mode_label}\n"
-            f"⏱️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
-            f"🗑️ <b>Резервное автоудаление:</b> {autodelete_label}\n"
-            f"🌙 <b>Ночной режим (Экономия ИИ):</b> {night_label}\n"
-            f"🚫 <b>Банворды (Banwords):</b> {kw_count_label}\n\n"
+            "⚙️ <b>Панель настроек</b>\n\n"
+            f"Текущий режим доставки: <b>{mode_label}</b>\n\n"
             "Выберите нужный подраздел настроек ниже:"
         )
-        
         return text, kb_ui.get_settings_keyboard(self.delivery_mode)
 
     async def _get_time_settings_text_and_keyboard(self):
