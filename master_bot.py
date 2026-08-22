@@ -429,8 +429,16 @@ class MasterBot:
                 pass
                 
             buf_count = await self.storage.get_buffer_count()
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            
+            if buf_count > 0:
+                text = (
+                    f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
+                    "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
+                )
+            else:
+                text = (
+                    "📥 <b>Буфер пуст!</b> Новых сообщений для сводки пока нет.\n"
+                    "Бот собирает входящие письма и сообщения в фоновом режиме."
+                )
             await self.show_or_edit_ui_panel(text=text, keyboard=kb_ui.get_buffer_keyboard(buf_count), force_new=False)
 
         @self.dp.callback_query(F.data == "flush_now")
