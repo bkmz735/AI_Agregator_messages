@@ -557,10 +557,28 @@ class MasterBot:
         return len(messages)
 
     async def start_digest_scheduler(self):
-        """Background task for sending scheduled digests."""
+        """Background task for sending scheduled digests aligned to wall-clock time."""
+        from datetime import datetime
         logger.info(f"Digest scheduler running (interval: {self.digest_interval} min)...")
         while True:
-            await asyncio.sleep(self.digest_interval * 60)
+            now = datetime.now()
+            minutes_since_midnight = now.hour * 60 + now.minute
+            interval = max(1, self.digest_interval)
+            
+            # Находим следующий кратный интервал в минутах от начала суток
+            next_multiple = ((minutes_since_midnight // interval) + 1) * interval
+            
+            # Вычисляем сколько минут и секунд спать
+            minutes_to_sleep = next_multiple - minutes_since_midnight
+            seconds_to_sleep = (minutes_to_sleep * 60) - now.second
+            
+            # Если до срабатывания меньше 5 секунд, ждём следующий цикл, чтобы не было двойных срабатываний
+            if seconds_to_sleep < 5:
+                seconds_to_sleep += interval * 60
+                
+            logger.info(f"Digest scheduler: Next digest scheduled in {seconds_to_sleep} seconds (aligned to clock time).")
+            await asyncio.sleep(seconds_to_sleep)
+            
             if self.delivery_mode == "digest":
                 logger.info("Executing scheduled buffer digest flush...")
                 try:
