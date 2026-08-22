@@ -230,7 +230,7 @@ class MasterBot:
             lines.append("<i>Источники пока не зарегистрированы</i>")
 
         lines.extend([
-            f"\n📥 <b>Ожидает в буфере:</b> {buf_count}"
+            f"\n📥 <b>Ожидают:</b> {buf_count}"
         ])
 
         return "\n".join(lines)
