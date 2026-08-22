@@ -228,11 +228,30 @@ class AIEngine:
             all_results = []
             for idx, chunk in enumerate(chunks, 1):
                 logger.info(f"Processing chunk {idx}/{len(chunks)} ({len(chunk)} messages)...")
-                chunk_results = await self._analyze_single_batch_chunk(chunk)
-                all_results.extend(chunk_results)
+                while True:
+                    try:
+                        chunk_results = await self._analyze_single_batch_chunk(chunk)
+                        all_results.extend(chunk_results)
+                        break
+                    except RuntimeError as e:
+                        if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
+                            logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
+                            import asyncio
+                            await asyncio.sleep(60)
+                        else:
+                            raise e
             return all_results
         else:
-            return await self._analyze_single_batch_chunk(messages_batch)
+            while True:
+                try:
+                    return await self._analyze_single_batch_chunk(messages_batch)
+                except RuntimeError as e:
+                    if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
+                        logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
+                        import asyncio
+                        await asyncio.sleep(60)
+                    else:
+                        raise e
 
     async def _analyze_single_batch_chunk(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
         """Analyzes a single chunk (up to 5 messages) in ONE Gemini API call."""
