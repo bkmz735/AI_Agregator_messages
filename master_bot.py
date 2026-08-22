@@ -39,15 +39,23 @@ class AccessControlMiddleware(BaseMiddleware):
         master_id = self.master_bot.master_chat_id
         logger.info(f"📩 Telegram Event [{event_name}] from user_id={user_id} (data='{text_preview}', expected master_id={master_id})")
 
-        if master_id and user_id and str(user_id) != str(master_id):
-            # Always allow /start command so owner can (re-)claim control
-            if isinstance(event, Message) and event.text and event.text.startswith("/start"):
-                logger.info(f"Allowing /start to update master_chat_id for user_id: {user_id}")
-                return await handler(event, data)
+        # Security check:
+        if master_id and str(master_id) != "0":
+            # Strict lockdown: ONLY the registered owner ID is allowed
+            if user_id and str(user_id) != str(master_id):
+                if isinstance(event, Message) and event.text and event.text.startswith("/start"):
+                    logger.info(f"Re-capturing master_chat_id via /start from user_id: {user_id}")
+                    return await handler(event, data)
 
-            logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
-            return None  # Ignore event completely
-            
+                logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
+                return None  # Ignore unauthorized event completely
+        else:
+            # First initialization fallback if master_chat_id is empty
+            if user_id:
+                logger.info(f"Auto-capturing initial master_chat_id from user_id: {user_id}")
+                self.master_bot.master_chat_id = user_id
+                asyncio.create_task(self.master_bot.storage.set_setting("master_chat_id", str(user_id)))
+
         return await handler(event, data)
 
 class ThrottlingMiddleware(BaseMiddleware):
@@ -1199,6 +1207,11 @@ class MasterBot:
             
             try:
                 # Load settings asynchronously from DB
+                saved_master_id = await self.storage.get_setting("master_chat_id")
+                if saved_master_id and saved_master_id.isdigit() and saved_master_id != "0":
+                    self.master_chat_id = int(saved_master_id)
+                    logger.info(f"Loaded master_chat_id from DB: {self.master_chat_id}")
+
                 self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
                 self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
                 self.auto_delete_delay_hours = int(await self.storage.get_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours)))
