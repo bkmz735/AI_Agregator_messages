@@ -26,21 +26,39 @@ def get_main_reply_keyboard(buffer_count: int = 0) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
 
 
-def get_settings_keyboard(delivery_mode: str, night_mode_enabled: bool) -> InlineKeyboardMarkup:
+def get_settings_keyboard(delivery_mode: str) -> InlineKeyboardMarkup:
     """Инлайн-клавиатура основного экрана Настроек."""
     mode_btn_text = f"⚡ Режим: {'Сводка' if delivery_mode == 'instant' else 'Сразу'}"
-    night_btn_text = f"🌙 Ночной режим: {'Вкл 🟢' if not night_mode_enabled else 'Выкл ❌'}"
     
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist")],
-        [InlineKeyboardButton(text="⏱️ Изменить интервал сводки", callback_data="settings_menu_interval")],
-        [InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")],
-        [InlineKeyboardButton(text=night_btn_text, callback_data="settings_toggle_night_mode")],
-        [InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")],
+        [InlineKeyboardButton(text="⏱️ Время и Таймеры", callback_data="settings_menu_time")],
+        [InlineKeyboardButton(text="🌙 Ночной режим", callback_data="settings_menu_night")],
         [
             InlineKeyboardButton(text=mode_btn_text, callback_data="settings_toggle_mode"),
             InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
         ],
+        [get_home_button()]
+    ])
+
+
+def get_time_settings_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура подменю «Время и Таймеры»."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏱️ Изменить интервал сводки", callback_data="settings_menu_interval")],
+        [InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")],
+        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
+        [get_home_button()]
+    ])
+
+
+def get_night_settings_keyboard(night_mode_enabled: bool) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура подменю «Ночной режим»."""
+    toggle_text = "🌙 Включить ночной режим 🟢" if not night_mode_enabled else "🌙 Выключить ночной режим ❌"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle_text, callback_data="settings_toggle_night_mode")],
+        [InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")],
+        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
         [get_home_button()]
     ])
 
@@ -57,7 +75,7 @@ def get_interval_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="2 часа (120м)", callback_data="set_interval_120"),
             InlineKeyboardButton(text="4 часа (240м)", callback_data="set_interval_240")
         ],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_menu_time")],
         [get_home_button()]
     ])
 
@@ -75,7 +93,7 @@ def get_autodelete_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="8 часов", callback_data="set_autodelete_8"),
             InlineKeyboardButton(text="24 часа", callback_data="set_autodelete_24")
         ],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_menu_time")],
         [get_home_button()]
     ])
 
@@ -91,7 +109,7 @@ def get_nighthours_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="22:00 - 06:00", callback_data="set_nighthours_22_6"),
             InlineKeyboardButton(text="01:00 - 09:00", callback_data="set_nighthours_1_9")
         ],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_menu_night")],
         [get_home_button()]
     ])
 

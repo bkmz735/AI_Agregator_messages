@@ -202,7 +202,6 @@ class MasterBot:
         return text, kb_ui.get_logs_keyboard()
 
     async def _get_settings_text_and_keyboard(self):
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         mode_label = "⚡ СРАЗУ (Мгновенно)" if self.delivery_mode == "instant" else "📥 СВОДКА (Раз в час)"
         autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
         night_label = f"🟢 Включен ({self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00)" if self.night_mode_enabled else "Выключен ❌"
@@ -217,10 +216,30 @@ class MasterBot:
             f"🗑️ <b>Резервное автоудаление:</b> {autodelete_label}\n"
             f"🌙 <b>Ночной режим (Экономия ИИ):</b> {night_label}\n"
             f"🚫 <b>Банворды (Banwords):</b> {kw_count_label}\n\n"
-            "Вы можете изменить параметры, нажав на соответствующие кнопки ниже:"
+            "Выберите нужный подраздел настроек ниже:"
         )
         
-        return text, kb_ui.get_settings_keyboard(self.delivery_mode, self.night_mode_enabled)
+        return text, kb_ui.get_settings_keyboard(self.delivery_mode)
+
+    async def _get_time_settings_text_and_keyboard(self):
+        autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
+        text = (
+            "⏱️ <b>Настройка времени и таймеров</b>\n\n"
+            f"⏱️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
+            f"🗑️ <b>Время автоудаления:</b> {autodelete_label}\n\n"
+            "Выберите параметр для изменения:"
+        )
+        return text, kb_ui.get_time_settings_keyboard()
+
+    async def _get_night_settings_text_and_keyboard(self):
+        night_status = "🟢 Включен" if self.night_mode_enabled else "❌ Выключен"
+        text = (
+            "🌙 <b>Настройки ночного режима (Экономия ИИ)</b>\n\n"
+            f"Статус: <b>{night_status}</b>\n"
+            f"Часы тишины: <b>{self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00</b>\n\n"
+            "В ночное время ИИ отключается, а сообщения накапливаются без отправки уведомлений."
+        )
+        return text, kb_ui.get_night_settings_keyboard(self.night_mode_enabled)
 
     async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False, chat_id: Optional[int] = None):
         """Displays or smoothly edits the single active UI window in-place."""
@@ -535,6 +554,24 @@ class MasterBot:
                 pass
             await callback_query.answer("Режим отправки изменен!")
 
+        @self.dp.callback_query(F.data == "settings_menu_time")
+        async def process_settings_menu_time(callback_query: types.CallbackQuery):
+            text, kb = await self._get_time_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data == "settings_menu_night")
+        async def process_settings_menu_night(callback_query: types.CallbackQuery):
+            text, kb = await self._get_night_settings_text_and_keyboard()
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+            await callback_query.answer()
+
         @self.dp.callback_query(F.data == "settings_menu_interval")
         async def process_settings_menu_interval(callback_query: types.CallbackQuery):
             text = (
@@ -554,7 +591,7 @@ class MasterBot:
             self.digest_interval = interval_val
             await self.storage.set_setting("digest_interval_minutes", str(self.digest_interval))
             
-            text, kb = await self._get_settings_text_and_keyboard()
+            text, kb = await self._get_time_settings_text_and_keyboard()
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
@@ -581,7 +618,7 @@ class MasterBot:
             self.auto_delete_delay_hours = delay_val
             await self.storage.set_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours))
             
-            text, kb = await self._get_settings_text_and_keyboard()
+            text, kb = await self._get_time_settings_text_and_keyboard()
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
@@ -594,7 +631,7 @@ class MasterBot:
             self.night_mode_enabled = not self.night_mode_enabled
             await self.storage.set_setting("night_mode_enabled", "true" if self.night_mode_enabled else "false")
             
-            text, kb = await self._get_settings_text_and_keyboard()
+            text, kb = await self._get_night_settings_text_and_keyboard()
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
@@ -624,7 +661,7 @@ class MasterBot:
             await self.storage.set_setting("night_start_hour", str(start_h))
             await self.storage.set_setting("night_end_hour", str(end_h))
             
-            text, kb = await self._get_settings_text_and_keyboard()
+            text, kb = await self._get_night_settings_text_and_keyboard()
             try:
                 await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
             except Exception:
