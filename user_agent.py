@@ -127,7 +127,8 @@ class ConversationalAgent:
             config = types.GenerateContentConfig(
                 system_instruction=self.system_instruction,
                 tools=self._get_tools(),
-                temperature=0.7
+                temperature=0.7,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
             )
             
             response = await self.ai_engine.generate_content_with_retry(

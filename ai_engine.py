@@ -74,10 +74,7 @@ class AIEngine:
             'gemini-3.1-flash-lite',
             'gemini-3.7-flash', 
             'gemini-3.6-flash', 
-            'gemini-3.5-flash', 
-            'gemini-2.5-flash-lite',
-            'gemini-2.5-flash',
-            'gemini-3-flash'
+            'gemini-3.5-flash'
         ]
         self.exhausted_models: set[str] = set()       # Daily exhausted models (reset daily)
         self.unsupported_models: set[str] = set()     # Deprecated/invalid models (permanent during session)
@@ -213,6 +210,11 @@ class AIEngine:
                 logger.warning(f"Model {model_name} failed: {e}")
                 continue
                 
+        if not self._get_active_models():
+            wait_time = self._get_cooldown_wait_time()
+            self.rate_limit_until = time.time() + wait_time
+            raise RuntimeError(f"Все модели ИИ временно на паузе (минутный лимит). Возобновление через {wait_time}с.")
+
         raise RuntimeError(f"All models failed. Last error: {last_error}")
 
     async def transcribe_and_analyze_audio(self, audio_bytes: bytes, mime_type: str = "audio/ogg") -> AudioAnalysisResult:
