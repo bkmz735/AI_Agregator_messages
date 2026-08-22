@@ -101,8 +101,8 @@ class TGNewsAdapter(BaseAdapter):
                 self._seen_uids.add(msg_uid)
                 continue
 
-            channel_override = f"Telegram (@{channel})"
-            sender = f"Канал @{channel}"
+            channel_override = "Telegram"
+            sender = f"@{channel}"
             
             logger.info(f"Emitting news post from @{channel} (UID: {msg_uid}): {text_clean[:60]}...")
             await self.emit_message(
