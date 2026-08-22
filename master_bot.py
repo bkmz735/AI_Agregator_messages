@@ -729,7 +729,7 @@ class MasterBot:
                 for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
                     lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
 
-            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления или отправьте <code>/unblock номер email</code></i>")
+            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
 
             kb = kb_ui.get_banwords_list_keyboard(page_bws, page, total_pages, "email", start_idx)
             try:
@@ -758,7 +758,7 @@ class MasterBot:
                 for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
                     lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
 
-            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления или отправьте <code>/unblock номер vk</code></i>")
+            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
 
             rows = []
             row_buttons = []
@@ -948,13 +948,7 @@ class MasterBot:
                     lines.append(f"{b['id']}. <code>{html.escape(b['word'])}</code>")
                 lines.append("")
 
-            lines.append(
-                "📌 <b>Управление:</b>\n"
-                "• <code>/block слово</code> — добавить общий банворд\n"
-                "• <code>/block слово email</code> — банворд для Mail.ru\n"
-                "• <code>/block слово vk</code> — банворд для VK\n"
-                "• <code>/unblock номер</code> — удалить по номеру (напр: <code>/unblock 1</code>)"
-            )
+
             
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
