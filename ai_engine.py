@@ -248,7 +248,6 @@ class AIEngine:
             
             for model_name in active_models:
                 try:
-                    self._track_request()
                     response = await asyncio.wait_for(
                         self.client.aio.models.generate_content(
                             model=model_name,
@@ -257,6 +256,7 @@ class AIEngine:
                         ),
                         timeout=20.0
                     )
+                    self._track_request()
                     if response and response.text:
                         parsed = json.loads(response.text)
                         logger.info(f"Successfully transcribed audio ({len(audio_bytes)} bytes) using AI {model_name}.")
@@ -278,11 +278,11 @@ class AIEngine:
                     # Handle 429 (quota exhausted)
                     if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                         if "day" in err_str.lower() or "daily" in err_str.lower():
-                            logger.error(f"AI model {model_name} hit daily quota limit.")
+                            logger.error(f"AI model {model_name} hit daily quota limit: {e}")
                             self.exhausted_models.add(model_name)
                             continue
                         else:
-                            logger.warning(f"AI model {model_name} hit minute limit during audio. Cooling down.")
+                            logger.warning(f"AI model {model_name} hit minute limit (429) during audio: {e}. Cooling down.")
                             self.model_cooldowns[model_name] = time.time() + 60.0
                             continue
                     logger.warning(f"Audio transcription model {model_name} failed: {e}")
@@ -410,7 +410,6 @@ class AIEngine:
                 from google.genai import types
                 for model_name in active_models:
                     try:
-                        self._track_request()
                         response = await asyncio.wait_for(
                             self.client.aio.models.generate_content(
                                 model=model_name,
@@ -419,6 +418,7 @@ class AIEngine:
                             ),
                             timeout=20.0
                         )
+                        self._track_request()
                         if response and response.text:
                             text_resp = response.text
                             # Fallback strip markdown backticks just in case
@@ -474,11 +474,11 @@ class AIEngine:
                         # Handle 429 (quota exhausted)
                         if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                             if "day" in err_str.lower() or "daily" in err_str.lower():
-                                logger.error(f"AI model {model_name} hit daily quota limit.")
+                                logger.error(f"AI model {model_name} hit daily quota limit: {e}")
                                 self.exhausted_models.add(model_name)
                                 continue
                             else:
-                                logger.warning(f"AI model {model_name} hit minute limit during batch. Cooling down.")
+                                logger.warning(f"AI model {model_name} hit minute limit (429) during batch: {e}. Cooling down.")
                                 self.model_cooldowns[model_name] = time.time() + 60.0
                                 continue
                         logger.warning(f"Batch analysis model {model_name} failed: {e}")
