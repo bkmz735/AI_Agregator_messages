@@ -48,6 +48,7 @@ def get_time_settings_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура подменю «Время и Таймеры»."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⏱️ Изменить интервал сводки", callback_data="settings_menu_interval")],
+        [InlineKeyboardButton(text="🌍 Часовой пояс (UTC)", callback_data="settings_menu_timezone")],
         [InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")],
         [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
         [get_home_button()]
@@ -77,6 +78,23 @@ def get_interval_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="2 часа (120м)", callback_data="set_interval_120"),
             InlineKeyboardButton(text="4 часа (240м)", callback_data="set_interval_240")
         ],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_menu_time")],
+        [get_home_button()]
+    ])
+
+
+def get_timezone_keyboard(current_offset: int) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура настройки часового пояса."""
+    def btn(text: str, offset: int) -> InlineKeyboardButton:
+        marker = "✅ " if offset == current_offset else ""
+        return InlineKeyboardButton(text=f"{marker}{text}", callback_data=f"set_tz_{offset}")
+        
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [btn("UTC -8 (LA)", -8), btn("UTC -5 (NY)", -5)],
+        [btn("UTC 0 (Лондон)", 0), btn("UTC +1 (Берлин)", 1)],
+        [btn("UTC +2 (Киев)", 2), btn("UTC +3 (МСК)", 3)],
+        [btn("UTC +4 (Самара)", 4), btn("UTC +5 (ЕКБ)", 5)],
+        [btn("UTC +7 (Новосиб)", 7), btn("UTC +9 (Якутск)", 9)],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_menu_time")],
         [get_home_button()]
     ])

@@ -99,6 +99,7 @@ class MasterBot:
         self.digest_interval = config.DIGEST_INTERVAL_MINUTES
         self.auto_delete_delay_hours = config.AUTO_DELETE_DELAY_HOURS
         self.night_mode_enabled = config.NIGHT_MODE_ENABLED
+        self.timezone_offset = 3  # Default UTC+3
         self.night_start_hour = config.NIGHT_START_HOUR
         self.night_end_hour = config.NIGHT_END_HOUR
         self._last_ui_msg_id = None
@@ -209,6 +210,7 @@ class MasterBot:
             f"🌐 <b>Подключение Telegram:</b> {proxy_info}\n"
             f"👤 <b>Master Chat ID:</b> <code>{self.master_chat_id}</code>\n"
             f"⚡ <b>Режим:</b> {self.delivery_mode.upper()} ({self.digest_interval}м)\n"
+            f"🌍 <b>Часовой пояс:</b> UTC{'+' if self.timezone_offset >= 0 else ''}{self.timezone_offset}\n"
             f"🌙 <b>Ночной режим:</b> {'Вкл 🟢' if self.night_mode_enabled else 'Выкл ❌'}\n\n"
             "📜 <b>Последние 10 системных событий:</b>\n"
             + "\n".join(log_lines)
@@ -332,12 +334,21 @@ class MasterBot:
     async def _get_time_settings_text_and_keyboard(self):
         autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
         text = (
-            "⏱️ <b>Время и Таймеры</b>\n\n"
+            "⚙️ <b>Настройки Времени и Таймеров</b>\n\n"
             f"▪️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
-            f"▪️ <b>Автоудаление:</b> {autodelete_label}\n\n"
-            "Выберите параметр для изменения:"
+            f"▪️ <b>Часовой пояс:</b> UTC{'+' if self.timezone_offset >= 0 else ''}{self.timezone_offset}\n"
+            f"▪️ <b>Автоудаление логов:</b> {autodelete_label}\n\n"
+            "<i>Выберите параметр для изменения:</i>"
         )
         return text, kb_ui.get_time_settings_keyboard()
+
+    async def _get_timezone_settings_text_and_keyboard(self):
+        text = (
+            "🌍 <b>Настройка часового пояса</b>\n\n"
+            f"Текущий пояс: <b>UTC{'+' if self.timezone_offset >= 0 else ''}{self.timezone_offset}</b>\n\n"
+            "<i>Это нужно для правильной работы расписания сводки и ночного режима.</i>"
+        )
+        return text, kb_ui.get_timezone_keyboard(self.timezone_offset)
 
     async def _get_night_settings_text_and_keyboard(self):
         night_status = "🟢 Включен" if self.night_mode_enabled else "❌ Выключен"
@@ -558,11 +569,12 @@ class MasterBot:
 
     async def start_digest_scheduler(self):
         """Background task for sending scheduled digests aligned to wall-clock time."""
-        from datetime import datetime
-        logger.info(f"Digest scheduler running (interval: {self.digest_interval} min)...")
+        from datetime import datetime, timedelta
+        logger.info(f"Digest scheduler running (interval: {self.digest_interval} min, TZ: UTC{'+' if self.timezone_offset >= 0 else ''}{self.timezone_offset})...")
         while True:
-            now = datetime.now()
-            minutes_since_midnight = now.hour * 60 + now.minute
+            now_utc = datetime.utcnow()
+            now_local = now_utc + timedelta(hours=self.timezone_offset)
+            minutes_since_midnight = now_local.hour * 60 + now_local.minute
             interval = max(1, self.digest_interval)
             
             # Находим следующий кратный интервал в минутах от начала суток
@@ -570,7 +582,7 @@ class MasterBot:
             
             # Вычисляем сколько минут и секунд спать
             minutes_to_sleep = next_multiple - minutes_since_midnight
-            seconds_to_sleep = (minutes_to_sleep * 60) - now.second
+            seconds_to_sleep = (minutes_to_sleep * 60) - now_local.second
             
             # Если до срабатывания меньше 5 секунд, ждём следующий цикл, чтобы не было двойных срабатываний
             if seconds_to_sleep < 5:
@@ -630,6 +642,8 @@ class MasterBot:
                 self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
                 self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
                 self.auto_delete_delay_hours = int(await self.storage.get_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours)))
+                self.timezone_offset = int(await self.storage.get_setting("timezone_offset", "3"))
+                logger.info(f"Loaded config from DB: Delivery={self.delivery_mode}, Interval={self.digest_interval}m, TZ=UTC+{self.timezone_offset}, AutoDelete={self.auto_delete_delay_hours}h")
                 self.night_mode_enabled = (await self.storage.get_setting("night_mode_enabled", "false")).lower() in ("true", "1", "yes")
                 self.night_start_hour = int(await self.storage.get_setting("night_start_hour", str(self.night_start_hour)))
                 self.night_end_hour = int(await self.storage.get_setting("night_end_hour", str(self.night_end_hour)))

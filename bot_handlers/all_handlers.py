@@ -451,6 +451,27 @@ def setup_all_handlers(master_bot):
         msg = f"Автоудаление изменено на {delay_val} ч!" if delay_val > 0 else "Автоудаление выключено!"
         await callback_query.answer(msg)
     
+    @dp.callback_query(F.data == "settings_menu_timezone")
+    async def process_settings_menu_timezone(callback_query: types.CallbackQuery):
+        text, kb = await master_bot._get_timezone_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer()
+
+    @dp.callback_query(F.data.startswith("set_tz_"))
+    async def process_set_timezone(callback_query: types.CallbackQuery):
+        offset = int(callback_query.data.replace("set_tz_", ""))
+        master_bot.timezone_offset = offset
+        await master_bot.storage.set_setting("timezone_offset", str(offset))
+        text, kb = await master_bot._get_timezone_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer(f"Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}!")
+    
     @dp.callback_query(F.data == "settings_toggle_night_mode")
     async def process_settings_toggle_night_mode(callback_query: types.CallbackQuery):
         master_bot.night_mode_enabled = not master_bot.night_mode_enabled
