@@ -130,52 +130,57 @@ class VKAdapter(BaseAdapter):
                         if not server.startswith("http"):
                             server = f"https://{server}"
 
-                    # Periodic 60-second Poll Loop
+                    # Continuous Long Poll Loop
                     while self._running:
-                        if self.group_id > 0:
-                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=1"
-                        else:
-                            lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=1&mode=2&version=3"
+                        try:
+                            if self.group_id > 0:
+                                lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=25"
+                            else:
+                                lp_url = f"{server}?act=a_check&key={key}&ts={ts}&wait=25&mode=2&version=3"
 
-                        async with session.get(lp_url) as lp_resp:
-                            lp_data = await lp_resp.json()
-                            if "failed" in lp_data:
-                                logger.warning(f"VK LongPoll failed code {lp_data.get('failed')}, reconnecting...")
-                                break
-                            
-                            ts = lp_data.get("ts", ts)
-                            updates = lp_data.get("updates", [])
-                            for event in updates:
-                                if self.group_id > 0:
-                                    if event.get("type") == "message_new":
-                                        msg = event["object"]["message"]
-                                        user_id = msg.get("from_id")
-                                        text = msg.get("text", "")
-                                        
-                                        # Fix: generate a bulletproof unique ID
-                                        raw_id = msg.get("id") or msg.get("conversation_message_id")
-                                        if not raw_id or raw_id == 0:
-                                            raw_id = f"{user_id}_{msg.get('date', 0)}"
-                                        msg_id = f"vk_grp_{raw_id}"
-                                        
-                                        sender_name = await self._resolve_user_name(session, user_id)
-                                        await self.emit_message(sender=sender_name, text=text, msg_uid=msg_id)
-                                else:
-                                    # User LongPoll format: [4, message_id, flags, peer_id, timestamp, text, ...]
-                                    if isinstance(event, list) and len(event) > 5 and event[0] == 4:
-                                        msg_id = event[1]
-                                        flags = event[2]
-                                        peer_id = event[3]
-                                        text = event[5]
-                                        
-                                        is_outbox = bool(flags & 2)
-                                        if not is_outbox and text:
-                                            uid = f"vk_user_msg_{msg_id}"
-                                            sender_name = await self._resolve_user_name(session, peer_id)
-                                            await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
-
-                        # Sleep for configured interval before next check to save RAM & CPU
-                        await asyncio.sleep(config.VK_POLL_INTERVAL_SECONDS)
+                            timeout = aiohttp.ClientTimeout(total=35)
+                            async with session.get(lp_url, timeout=timeout) as lp_resp:
+                                lp_data = await lp_resp.json()
+                                if "failed" in lp_data:
+                                    logger.warning(f"VK LongPoll failed code {lp_data.get('failed')}, reconnecting...")
+                                    break
+                                
+                                ts = lp_data.get("ts", ts)
+                                updates = lp_data.get("updates", [])
+                                for event in updates:
+                                    if self.group_id > 0:
+                                        if event.get("type") == "message_new":
+                                            msg = event["object"]["message"]
+                                            user_id = msg.get("from_id")
+                                            text = msg.get("text", "")
+                                            
+                                            # Fix: generate a bulletproof unique ID
+                                            raw_id = msg.get("id") or msg.get("conversation_message_id")
+                                            if not raw_id or raw_id == 0:
+                                                raw_id = f"{user_id}_{msg.get('date', 0)}"
+                                            msg_id = f"vk_grp_{raw_id}"
+                                            
+                                            sender_name = await self._resolve_user_name(session, user_id)
+                                            await self.emit_message(sender=sender_name, text=text, msg_uid=msg_id)
+                                    else:
+                                        # User LongPoll format: [4, message_id, flags, peer_id, timestamp, text, ...]
+                                        if isinstance(event, list) and len(event) > 5 and event[0] == 4:
+                                            msg_id = event[1]
+                                            flags = event[2]
+                                            peer_id = event[3]
+                                            text = event[5]
+                                            
+                                            is_outbox = bool(flags & 2)
+                                            if not is_outbox and text:
+                                                uid = f"vk_user_msg_{msg_id}"
+                                                sender_name = await self._resolve_user_name(session, peer_id)
+                                                await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as inner_e:
+                            logger.error(f"Network or parsing error in VK LongPoll inner loop: {inner_e}")
+                            await asyncio.sleep(5)
+                            # Do not break to outer loop unless necessary, to preserve 'ts'
 
                 except asyncio.CancelledError:
                     break
