@@ -8,7 +8,7 @@ from config import config
 from storage import Storage
 from ai_engine import AIEngine
 from master_bot import MasterBot
-
+from settings_manager import SettingsManager
 from adapters.vk_adapter import VKAdapter
 from adapters.email_adapter import EmailAdapter
 from adapters.tg_news_adapter import TGNewsAdapter
@@ -24,6 +24,7 @@ class MessageAggregatorApp:
             logger.info(f"Using configured TELEGRAM_PROXY: {config.TELEGRAM_PROXY}")
 
         self.storage = Storage()
+        self.settings = SettingsManager(self.storage)
         self.ai_engine = AIEngine(storage=self.storage)
         self.bot = MasterBot(storage=self.storage, simulate_callback=self.process_incoming_message, ai_engine=self.ai_engine)
         self.bot.set_flush_raw_queue_callback(self._flush_raw_queue)
@@ -78,7 +79,7 @@ class MessageAggregatorApp:
     async def _ai_batch_worker(self):
         """Background worker that flushes raw messages to AI API in 1 batch call."""
         while True:
-            ai_batch_interval = await settings.get_ai_batch_interval_seconds()
+            ai_batch_interval = await self.settings.get_ai_batch_interval_seconds()
             await asyncio.sleep(ai_batch_interval)
             try:
                 await self._flush_raw_queue()
@@ -172,7 +173,7 @@ class MessageAggregatorApp:
 
         logger.info("==================================================")
         logger.info("🚀 AI Message Aggregator & Buffer Service Started!")
-        ai_batch_interval = await settings.get_ai_batch_interval_seconds()
+        ai_batch_interval = await self.settings.get_ai_batch_interval_seconds()
         logger.info(f"AI Batching: Processing raw messages every {ai_batch_interval}s")
         
         # Log current DB state

@@ -35,6 +35,8 @@ def init_logging(log_file: str = "aggregator.log", level: str = "INFO"):
     )
 
     # 1. Console Stream Handler (stdout)
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(log_formatter)
     root_logger.addHandler(stream_handler)
