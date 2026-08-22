@@ -515,30 +515,66 @@ class MasterBot:
             return len(messages)
 
         digest_parts.append(f"📬 <b>СВОДКА СООБЩЕНИЙ ({len(regular_messages)})</b>\n")
-        for idx, m in enumerate(regular_messages, 1):
+        
+        groups = {
+            "important": [],
+            "news": [],
+            "general": []
+        }
+        
+        for m in regular_messages:
+            cat = m['category']
+            if cat in ['urgent', 'important', 'gov', 'gov_debt', 'gov_service']:
+                groups['important'].append(m)
+            elif cat in ['news', 'politics', 'interesting', 'bullshit', 'media']:
+                groups['news'].append(m)
+            else:
+                groups['general'].append(m)
+                
+        def format_msg(m):
             emoji = CATEGORY_EMOJIS.get(m['category'], "💬")
+            sender = html.escape(m['sender'])
             
-            extra_link = ""
+            # Create inline link for TG news to save space
             if m['msg_uid'].startswith("tg_news_"):
                 rest = m['msg_uid'][len("tg_news_"):]
                 if "_" in rest:
                     tg_channel, msg_id = rest.rsplit('_', 1)
-                    extra_link = f"\n<a href=\"https://t.me/{tg_channel}/{msg_id}\">👉 Оригинал поста</a>"
-                    
-            digest_parts.append(
-                f"<b>{idx}. [{html.escape(m['channel'])}]</b> {html.escape(m['sender'])} ({emoji})\n"
-                f"📝 {html.escape(m['summary'])}{extra_link}\n"
-            )
+                    # For news, the "sender" is often already an @handle. Just link it.
+                    sender_display = f"<a href=\"https://t.me/{tg_channel}/{msg_id}\">{sender}</a>"
+                else:
+                    sender_display = f"<b>{sender}</b>"
+            else:
+                sender_display = f"<b>{sender}</b> [{html.escape(m['channel'])}]"
+                
+            return f"▫️ {emoji} {sender_display}: {html.escape(m['summary'])}"
+            
+        if groups['important']:
+            digest_parts.append("\n🔴 <b>ВАЖНОЕ</b>")
+            for m in groups['important']:
+                digest_parts.append(format_msg(m))
+                
+        if groups['general']:
+            digest_parts.append("\n✉️ <b>ЛИЧНЫЕ СООБЩЕНИЯ И УВЕДОМЛЕНИЯ</b>")
+            for m in groups['general']:
+                digest_parts.append(format_msg(m))
+                
+        if groups['news']:
+            digest_parts.append("\n📰 <b>НОВОСТИ И ПОДПИСКИ</b>")
+            for m in groups['news']:
+                digest_parts.append(format_msg(m))
 
-        full_digest = "\n---\n".join(digest_parts)
+        full_digest = "\n".join(digest_parts)
 
         if self.bot and self.master_chat_id:
             try:
                 inline_kb = kb_ui.get_read_notification_keyboard()
                 # Отправляем сводку, разбивая по сообщениям, чтобы не разорвать HTML-теги
                 current_chunk = ""
+                # Since we joined everything into full_digest, we need to split it by newlines or keep track.
+                # Actually, digest_parts already has the blocks, we can just build chunks from digest_parts!
+                
                 for part in digest_parts:
-                    # Если добавление части превысит лимит Telegram (4096), отправляем накопленное
                     if len(current_chunk) + len(part) + 5 > 4000:
                         if current_chunk:
                             await self.bot.send_message(
@@ -550,7 +586,7 @@ class MasterBot:
                         current_chunk = part
                     else:
                         if current_chunk:
-                            current_chunk += "\n---\n" + part
+                            current_chunk += "\n" + part
                         else:
                             current_chunk = part
                 
