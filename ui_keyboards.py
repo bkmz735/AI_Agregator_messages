@@ -103,12 +103,21 @@ def get_blacklist_menu_keyboard(email_count: int, vk_count: int) -> InlineKeyboa
             InlineKeyboardButton(text=f"✉️ Mail.ru ({email_count})", callback_data="bw_view_email_1"),
             InlineKeyboardButton(text=f"💬 ВКонтакте ({vk_count})", callback_data="bw_view_vk_1")
         ],
-        [
-            InlineKeyboardButton(text="❇️ ➕ Добавить в Mail.ru", callback_data="add_bw_prompt_email"),
-            InlineKeyboardButton(text="❇️ ➕ Добавить в VK", callback_data="add_bw_prompt_vk")
-        ],
+        [InlineKeyboardButton(text="➕ Добавить банворд", callback_data="add_bw_select_scope")],
         [InlineKeyboardButton(text="🔄 Сбросить все к базовым", callback_data="reset_banwords_confirm")],
         [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
+        [get_home_button()]
+    ])
+
+
+def get_add_bw_select_scope_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура выбора категории при добавлении нового банворда."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✉️ Mail.ru", callback_data="add_bw_prompt_email"),
+            InlineKeyboardButton(text="💬 ВКонтакте", callback_data="add_bw_prompt_vk")
+        ],
+        [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")],
         [get_home_button()]
     ])
 
@@ -129,7 +138,7 @@ def get_banwords_list_keyboard(page_bws: List[Dict[str, Any]], page: int, total_
     nav_row = []
     if page > 1:
         nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bw_view_{scope}_{page - 1}"))
-    nav_row.append(InlineKeyboardButton(text="❇️ ➕ Добавить банворд", callback_data=f"add_bw_prompt_{scope}"))
+    nav_row.append(InlineKeyboardButton(text="➕ Добавить банворд", callback_data=f"add_bw_prompt_{scope}"))
     if page < total_pages:
         nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"bw_view_{scope}_{page + 1}"))
     rows.append(nav_row)

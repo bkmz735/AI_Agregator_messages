@@ -687,6 +687,18 @@ class MasterBot:
             callback_query.data = f"bw_view_vk_{page}"
             await process_bw_view_vk(callback_query)
 
+        @self.dp.callback_query(F.data == "add_bw_select_scope")
+        async def process_add_bw_select_scope(callback_query: types.CallbackQuery):
+            await callback_query.answer()
+            try:
+                await callback_query.message.edit_text(
+                    "➕ <b>Выберите категорию для добавления банворда:</b>",
+                    reply_markup=kb_ui.get_add_bw_select_scope_keyboard(),
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+
         @self.dp.callback_query(F.data == "add_bw_prompt_email")
         async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
             await callback_query.answer()
