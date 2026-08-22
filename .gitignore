@@ -13,7 +13,11 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Downloaded Xray binaries & temporary files
+# Downloaded binaries, logs & temporary scratch files
 bin/
+scratch/
 *.zip
 *.log
+cb_data.txt
+out.txt
+fix.py
