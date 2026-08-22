@@ -743,8 +743,7 @@ class MasterBot:
             self._waiting_for_banword_scope = "email"
             try:
                 await callback_query.message.edit_text(
-                    "✏️ <b>Отправьте слово или фразу для добавления в Mail.ru:</b>\n\n"
-                    "<i>Просто напишите текст следующим сообщением в этот чат (например: <code>скидка 50%</code>).</i>",
+                    "✏️ <b>Отправьте слово или фразу для добавления (Mail.ru):</b>",
                     reply_markup=kb_ui.get_add_banword_prompt_keyboard(),
                     parse_mode="HTML"
                 )
@@ -757,8 +756,7 @@ class MasterBot:
             self._waiting_for_banword_scope = "vk"
             try:
                 await callback_query.message.edit_text(
-                    "✏️ <b>Отправьте слово или фразу для добавления в VK:</b>\n\n"
-                    "<i>Просто напишите текст следующим сообщением в этот чат (например: <code>подпишись на канал</code>).</i>",
+                    "✏️ <b>Отправьте слово или фразу для добавления (VK):</b>",
                     reply_markup=kb_ui.get_add_banword_prompt_keyboard(),
                     parse_mode="HTML"
                 )
