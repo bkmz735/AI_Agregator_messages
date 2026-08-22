@@ -348,7 +348,19 @@ class AIEngine:
                             timeout=10.0
                         )
                         if response and response.text:
-                            parsed = json.loads(response.text)
+                            text_resp = response.text
+                            # Fallback strip markdown backticks just in case
+                            if text_resp.strip().startswith("```json"):
+                                text_resp = text_resp.strip()[7:-3].strip()
+                            elif text_resp.strip().startswith("```"):
+                                text_resp = text_resp.strip()[3:-3].strip()
+                                
+                            try:
+                                parsed = json.loads(text_resp)
+                            except json.JSONDecodeError as je:
+                                logger.error(f"JSON decode error from Gemini: {je}. Response text: {text_resp[:200]}")
+                                raise Exception("Invalid JSON returned by Gemini API")
+                                
                             items = parsed.get("results", parsed) if isinstance(parsed, dict) else parsed
                             results = []
                             if isinstance(items, list):
@@ -427,6 +439,9 @@ class AIEngine:
         news_keywords = ["новость", "дайджест", "статья", "выпуск", "анонс", "событие"]
         media_keywords = ["youtube", "rutube", "vk.com/video", "видео", "посмотри роли", "подкаст", "запись эфира", "стрим"]
         
+        clean_text = text.strip()[:60].replace('\n', ' ')
+        snippet = f": {clean_text}..." if clean_text else ""
+        
         if any(kw in text_lower for kw in spam_keywords):
             category = "spam"
             summary = "Обнаружены признаки рекламы или мошенничества."
@@ -434,27 +449,27 @@ class AIEngine:
             suggested_reply = None
         elif any(kw in text_lower for kw in urgent_keywords):
             category = "urgent"
-            summary = f"Вопрос по сделке/заказу от {sender} в {channel}."
+            summary = f"Вопрос по сделке/заказу от {sender}{snippet}"
             action_required = True
             suggested_reply = f"Здравствуйте, {sender}! Сообщение получено, отвечу в ближайшее время."
         elif any(kw in text_lower for kw in gov_keywords):
             category = "gov"
-            summary = f"Государственное или официальное уведомление от {sender}."
+            summary = f"Официальное уведомление от {sender}{snippet}"
             action_required = True
             suggested_reply = None
         elif any(kw in text_lower for kw in news_keywords):
             category = "news"
-            summary = f"Новостной материал или рассылка от {sender}."
+            summary = f"Новость от {sender}{snippet}"
             action_required = False
             suggested_reply = None
         elif any(kw in text_lower for kw in media_keywords):
             category = "media"
-            summary = f"Медиаконтент / видео от {sender}."
+            summary = f"Медиа/видео от {sender}{snippet}"
             action_required = False
             suggested_reply = None
         else:
             category = "important" if len(text) > 30 else "general"
-            summary = f"Сообщение от {sender}: {text[:60]}..."
+            summary = f"Сообщение от {sender}{snippet}"
             action_required = False
             suggested_reply = None
             
