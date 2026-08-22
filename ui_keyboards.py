@@ -150,9 +150,9 @@ def get_banwords_list_keyboard(page_bws: List[Dict[str, Any]], page: int, total_
 
 
 def get_add_banword_prompt_keyboard() -> InlineKeyboardMarkup:
-    """Инлайн-клавиатура на экране с инструкцией добавления банворда."""
+    """Инлайн-клавиатура на экране отельного ввода банворда."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_menu_blacklist")],
         [get_home_button()]
     ])
 

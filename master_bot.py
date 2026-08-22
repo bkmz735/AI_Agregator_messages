@@ -366,6 +366,44 @@ class MasterBot:
                 logger.error(f"Error processing voice message: {e}")
                 await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
 
+        @self.dp.message(F.text & ~F.text.startswith("/"))
+        async def handle_text_message(message: types.Message):
+            # Check if user clicked a menu ReplyButton
+            menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
+            if any(message.text.startswith(m) for m in menu_texts):
+                return  # Let specific handlers process menu triggers
+
+            # Check if bot is waiting for interactive banword text input
+            if self._waiting_for_banword_scope:
+                word_to_add = message.text.strip()
+                scope = self._waiting_for_banword_scope
+                self._waiting_for_banword_scope = None
+
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+
+                added = await self.storage.add_banword(word_to_add, scope=scope)
+                scope_name = "Mail.ru" if scope == "email" else ("ВКонтакте" if scope == "vk" else "Общие")
+
+                if added:
+                    sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(word_to_add)}»</b> успешно добавлен в {scope_name}!", parse_mode="HTML")
+                else:
+                    sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word_to_add)}»</b> уже есть в {scope_name}.", parse_mode="HTML")
+
+                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+                
+                # Refresh UI panel to show banword list
+                bws = await self.storage.get_banwords(scope=scope)
+                lines = [f"{'✉️' if scope == 'email' else '💬'} <b>Банворды {scope_name}</b> (Всего: {len(bws)})\n"]
+                for idx, b in enumerate(bws, 1):
+                    lines.append(f"{idx}. <code>{html.escape(b['word'])}</code>")
+                lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления</i>")
+                
+                kb = kb_ui.get_banwords_list_keyboard(bws[:10], 1, max(1, (len(bws)+9)//10), scope, 0)
+                await self.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
+
         @self.dp.message(F.text.startswith("📥 Буфер"))
         async def cmd_buffer(message: types.Message):
             try:
@@ -702,12 +740,11 @@ class MasterBot:
         @self.dp.callback_query(F.data == "add_bw_prompt_email")
         async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
             await callback_query.answer()
+            self._waiting_for_banword_scope = "email"
             try:
                 await callback_query.message.edit_text(
-                    "❇️ <b>Добавление банворда в Mail.ru:</b>\n\n"
-                    "Отправьте команду:\n"
-                    "<code>/block слово email</code>\n\n"
-                    "<i>Пример:</i> <code>/block тинькофф email</code>",
+                    "✏️ <b>Отправьте слово или фразу для добавления в Mail.ru:</b>\n\n"
+                    "<i>Просто напишите текст следующим сообщением в этот чат (например: <code>скидка 50%</code>).</i>",
                     reply_markup=kb_ui.get_add_banword_prompt_keyboard(),
                     parse_mode="HTML"
                 )
@@ -717,12 +754,11 @@ class MasterBot:
         @self.dp.callback_query(F.data == "add_bw_prompt_vk")
         async def process_add_bw_prompt_vk(callback_query: types.CallbackQuery):
             await callback_query.answer()
+            self._waiting_for_banword_scope = "vk"
             try:
                 await callback_query.message.edit_text(
-                    "❇️ <b>Добавление банворда в VK:</b>\n\n"
-                    "Отправьте команду:\n"
-                    "<code>/block слово vk</code>\n\n"
-                    "<i>Пример:</i> <code>/block подпишись vk</code>",
+                    "✏️ <b>Отправьте слово или фразу для добавления в VK:</b>\n\n"
+                    "<i>Просто напишите текст следующим сообщением в этот чат (например: <code>подпишись на канал</code>).</i>",
                     reply_markup=kb_ui.get_add_banword_prompt_keyboard(),
                     parse_mode="HTML"
                 )
