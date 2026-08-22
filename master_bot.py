@@ -161,14 +161,12 @@ class MasterBot:
         from aiogram.types import BotCommand
         commands = [
             BotCommand(command="start", description="Главное меню и статус"),
-            BotCommand(command="help", description="Справка по командам и работе бота"),
+            BotCommand(command="help", description="Справка по командам и работе"),
             BotCommand(command="settings", description="Настройки (интервал сводки, режим, автоудаление)"),
             BotCommand(command="flush", description="Выгрузить накопившийся буфер прямо сейчас"),
             BotCommand(command="stats", description="Посмотреть статистику сообщений"),
-            BotCommand(command="block", description="Добавить слово в Чёрный список спама"),
-            BotCommand(command="unblock", description="Удалить слово из Чёрного списка спама"),
-            BotCommand(command="blacklist", description="Посмотреть весь Чёрный список спама"),
-            BotCommand(command="clear", description="Очистить последние сообщения чата"),
+            BotCommand(command="blacklist", description="Управление Чёрным списком спама"),
+            BotCommand(command="clear", description="Очистить сообщения в чате"),
             BotCommand(command="logs", description="Живой лог событий и диагностика системы")
         ]
         try:
@@ -694,14 +692,10 @@ class MasterBot:
             bws_vk = await self.storage.get_banwords(scope="vk")
             
             text = (
-                "🚫 <b>Управление Банвордами (Banwords)</b>\n\n"
-                "Выберите категорию для просмотра полного списка и удаления слов:\n\n"
+                "🚫 <b>Управление банвордами</b>\n\n"
+                "Выберите категорию для просмотра списка и управления банвордами:\n\n"
                 f"✉️ <b>Mail.ru:</b> {len(bws_email)} банвордов\n"
-                f"💬 <b>ВКонтакте (VK):</b> {len(bws_vk)} банвордов\n\n"
-                "📌 <b>Команды в чате:</b>\n"
-                "• <code>/block слово email</code> — добавить в Mail.ru\n"
-                "• <code>/block слово vk</code> — добавить в VK\n"
-                "• <code>/unblock номер email</code> или <code>/unblock номер vk</code> — удалить"
+                f"💬 <b>ВКонтакте (VK):</b> {len(bws_vk)} банвордов"
             )
 
             try:
