@@ -153,8 +153,9 @@ class AIEngine:
             "status_text": f"🔴 Пауза лимита ({pause_seconds_left}с)" if is_paused else "🟢 API Активен"
         }
 
-    async def generate_content_with_retry(self, contents: Any, genai_config: Any) -> Any:
+    async def generate_content_with_retry(self, contents: Any, genai_config: Any = None, config: Any = None) -> Any:
         """Executes a AI API request with priority models fallback and rate limit protections."""
+        actual_config = genai_config if genai_config is not None else config
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)
@@ -186,7 +187,7 @@ class AIEngine:
                     self.client.aio.models.generate_content(
                         model=model_name,
                         contents=contents,
-                        config=genai_config
+                        config=actual_config
                     ),
                     timeout=25.0
                 )
