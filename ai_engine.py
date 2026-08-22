@@ -72,12 +72,10 @@ class AIEngine:
         # we skip it and try the next one.
         # Added high-limit Lite models (500 RPD each) as excellent fallbacks.
         self.priority_models = [
-            'gemini-3.5-flash-lite', 
-            'gemini-3.7-flash', 
-            'gemini-3.6-flash', 
-            'gemini-3.5-flash', 
-            'gemini-3.1-flash-lite',
-            'gemini-3-flash'
+            'gemini-2.5-flash', 
+            'gemini-2.0-flash', 
+            'gemini-1.5-flash', 
+            'gemini-1.5-pro'
         ]
         self.exhausted_models: set[str] = set()  # Daily exhausted models (reset daily)
         self.unsupported_models: set[str] = set()  # Deprecated/invalid models (permanent during session)
@@ -176,7 +174,7 @@ class AIEngine:
                     continue
                 # Handle 429
                 if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                    if "day" in err_str.lower() or "daily" in err_str.lower():
                         logger.error(f"AI model {model_name} hit daily quota.")
                         self.exhausted_models.add(model_name)
                         continue
@@ -248,7 +246,7 @@ class AIEngine:
                     
                     # Handle 429 (quota exhausted)
                     if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                        if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                        if "day" in err_str.lower() or "daily" in err_str.lower():
                             logger.error(f"AI model {model_name} hit daily quota limit. Adding to exhausted list.")
                             self.exhausted_models.add(model_name)
                             # Try next model in loop immediately
@@ -445,7 +443,7 @@ class AIEngine:
                         
                         # Handle 429 (quota exhausted)
                         if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                            if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                            if "day" in err_str.lower() or "daily" in err_str.lower():
                                 logger.error(f"AI model {model_name} hit daily quota limit. Adding to exhausted list.")
                                 self.exhausted_models.add(model_name)
                                 # Try next model in loop immediately
@@ -588,7 +586,7 @@ class AIEngine:
                     self.unsupported_models.add(model_name)
                     continue
                 if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                    if "day" in err_str.lower() or "daily" in err_str.lower():
                         self.exhausted_models.add(model_name)
                         continue
                     else:
