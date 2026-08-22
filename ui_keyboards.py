@@ -11,18 +11,12 @@ def get_home_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")
 
 
-def get_main_reply_keyboard(buffer_count: int = 0) -> ReplyKeyboardMarkup:
-    """Нижняя постоянная Reply-клавиатура Telegram для быстрого перехода по разделам."""
-    if buffer_count > 0:
-        kb = [
-            [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
-        ]
-    else:
-        kb = [
-            [KeyboardButton(text="📥 Буфер")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
-        ]
+def get_main_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Нижняя постоянная монолитная Reply-клавиатура Telegram — не перерисовывается и не прыгает."""
+    kb = [
+        [KeyboardButton(text="📥 Буфер"), KeyboardButton(text="🚀 Отправить сводку")],
+        [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
+    ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
 
 

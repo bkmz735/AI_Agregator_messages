@@ -331,9 +331,8 @@ class MasterBot:
         if not target_chat or str(target_chat) in ("0", "None", ""):
             return
 
-        buf_count = await self.storage.get_buffer_count()
         text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
-        reply_kb = kb_ui.get_main_reply_keyboard(buf_count)
+        reply_kb = kb_ui.get_main_reply_keyboard()
         await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
 
     def _setup_handlers(self):
