@@ -32,13 +32,13 @@ def get_settings_keyboard(delivery_mode: str, night_mode_enabled: bool) -> Inlin
     night_btn_text = f"🌙 Ночной режим: {'Вкл 🟢' if not night_mode_enabled else 'Выкл ❌'}"
     
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=mode_btn_text, callback_data="settings_toggle_mode")],
+        [InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist")],
         [InlineKeyboardButton(text="⏱️ Изменить интервал сводки", callback_data="settings_menu_interval")],
         [InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")],
         [InlineKeyboardButton(text=night_btn_text, callback_data="settings_toggle_night_mode")],
         [InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")],
         [
-            InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist"),
+            InlineKeyboardButton(text=mode_btn_text, callback_data="settings_toggle_mode"),
             InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
         ],
         [get_home_button()]
