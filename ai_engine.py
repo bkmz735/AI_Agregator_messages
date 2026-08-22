@@ -375,6 +375,16 @@ class AIEngine:
                                         item["msg_uid"] = messages_batch[i]["msg_uid"]
                                     elif "msg_uid" not in item:
                                         item["msg_uid"] = f"fallback_{time.time()}_{i}"
+                                        
+                                    # ENFORCE: tg_news can NEVER be urgent/important
+                                    orig_msg = next((m for m in messages_batch if m.get("msg_uid") == item["msg_uid"]), None)
+                                    if orig_msg and orig_msg.get("channel") == "tg_news":
+                                        cat = item.get("category", "")
+                                        if cat in ["urgent", "important", "gov_debt", "gov_service"]:
+                                            item["category"] = "news"
+                                        if item.get("action_required"):
+                                            item["action_required"] = False
+                                            
                                     results.append(AnalysisResult(**item))
                                 logger.info(f"Successfully analyzed CHUNK of {len(results)} messages via AI API ({model_name}).")
                                 return results
