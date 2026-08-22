@@ -162,7 +162,15 @@ class VKAdapter(BaseAdapter):
                                                         if "transcript" in am and am["transcript"]:
                                                             text = f"[Голосовое] {am['transcript']}"
                                                         else:
-                                                            text = "[Голосовое сообщение]"
+                                                            audio_url = am.get("link_ogg")
+                                                            if audio_url:
+                                                                transcript = await self._transcribe_vk_audio(audio_url)
+                                                                if transcript:
+                                                                    text = f"[Голосовое] {transcript}"
+                                                                else:
+                                                                    text = "[Голосовое сообщение]"
+                                                            else:
+                                                                text = "[Голосовое сообщение]"
                                                         break
                                                     elif att["type"] == "photo":
                                                         text = "[Фотография]"
@@ -208,6 +216,24 @@ class VKAdapter(BaseAdapter):
                     logger.error(f"Error in VK listener: {e}")
                     await asyncio.sleep(5)
 
+    async def _transcribe_vk_audio(self, audio_url: str) -> str:
+        """Downloads audio and sends it to Gemini for transcription."""
+        try:
+            from ai_engine import AIEngine
+            ai = AIEngine()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(audio_url) as resp:
+                    if resp.status == 200:
+                        audio_bytes = await resp.read()
+                        res = await ai.transcribe_and_analyze_audio(audio_bytes, mime_type="audio/ogg")
+                        # Return just the transcription text, stripped of brackets if any
+                        t = res.transcription.strip()
+                        if t and not t.startswith("[Обработка"):
+                            return t
+        except Exception as e:
+            logger.error(f"Error downloading/transcribing VK audio: {e}")
+        return ""
+
     async def _process_vk_attachment_async(self, session, msg_id, uid, peer_id):
         full_msg_params = {
             "message_ids": msg_id,
@@ -215,32 +241,30 @@ class VKAdapter(BaseAdapter):
             "v": "5.131"
         }
         text = ""
-        for attempt in range(15):  # Up to 15 attempts, total ~45 seconds
-            await asyncio.sleep(3)
-            try:
-                async with session.get("https://api.vk.com/method/messages.getById", params=full_msg_params) as fm_resp:
-                    fm_data = await fm_resp.json()
-                    if "response" in fm_data and fm_data["response"]["items"]:
-                        atts = fm_data["response"]["items"][0].get("attachments", [])
-                        for att in atts:
-                            if att["type"] == "audio_message":
-                                am = att["audio_message"]
-                                if "transcript" in am and am["transcript"]:
-                                    text = f"[Голосовое] {am['transcript']}"
-                                    break
-                                elif am.get("transcript_state") in ["in_progress", "pending"] or "transcript" not in am:
-                                    text = "" # Keep waiting
+        try:
+            async with session.get("https://api.vk.com/method/messages.getById", params=full_msg_params) as fm_resp:
+                fm_data = await fm_resp.json()
+                if "response" in fm_data and fm_data["response"]["items"]:
+                    atts = fm_data["response"]["items"][0].get("attachments", [])
+                    for att in atts:
+                        if att["type"] == "audio_message":
+                            am = att["audio_message"]
+                            if "transcript" in am and am["transcript"]:
+                                text = f"[Голосовое] {am['transcript']}"
+                            else:
+                                audio_url = am.get("link_ogg")
+                                if audio_url:
+                                    transcript = await self._transcribe_vk_audio(audio_url)
+                                    text = f"[Голосовое] {transcript}" if transcript else "[Голосовое сообщение без текстовой расшифровки]"
                                 else:
                                     text = "[Голосовое сообщение без текстовой расшифровки]"
-                            elif att["type"] == "photo":
-                                text = "[Фотография]"
-                                break
-            except Exception as e:
-                logger.warning(f"Could not fetch full VK message {msg_id}: {e}")
-                
-            if text:
-                break
-                
+                            break
+                        elif att["type"] == "photo":
+                            text = "[Фотография]"
+                            break
+        except Exception as e:
+            logger.warning(f"Could not fetch full VK message {msg_id}: {e}")
+            
         if not text:
             text = "[Голосовое сообщение без текстовой расшифровки]"
             
