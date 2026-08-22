@@ -163,11 +163,15 @@ class EmailAdapter(BaseAdapter):
                                     self._seen_nums.add(num_str)
                                     continue
 
-                                channel_name = "Email (Mail.ru)"
-                                if "avito" in from_addr.lower() or "авито" in subject.lower():
-                                    channel_name = "Avito (Email)"
-                                elif "instagram" in from_addr.lower():
-                                    channel_name = "Instagram (Email)"
+                                combined_lower = f"{from_addr} {subject} {body[:300]}".lower()
+                                if "avito" in combined_lower or "авито" in combined_lower:
+                                    channel_name = "Авито"
+                                elif "instagram" in combined_lower or "инстаграм" in combined_lower or "facebookmail" in combined_lower:
+                                    channel_name = "Instagram"
+                                elif "gosuslugi" in combined_lower or "госуслуги" in combined_lower or "nalog.ru" in combined_lower:
+                                    channel_name = "Госуслуги"
+                                else:
+                                    channel_name = "Mail.ru"
 
                                 msg_id_val = msg.get('Message-ID')
                                 if msg_id_val:
