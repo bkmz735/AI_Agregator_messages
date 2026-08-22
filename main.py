@@ -172,6 +172,17 @@ class MessageAggregatorApp:
         logger.info("==================================================")
         logger.info("🚀 AI Message Aggregator & Buffer Service Started!")
         logger.info(f"AI Batching: Processing raw messages every {config.AI_BATCH_INTERVAL_SECONDS}s")
+        
+        # Log current DB state
+        try:
+            bws = await self.storage.get_banwords()
+            tg_chans = await self.storage.get_tg_channels()
+            topics_liked = await self.storage.get_news_topics(preference="liked")
+            topics_disliked = await self.storage.get_news_topics(preference="disliked")
+            logger.info(f"Loaded from DB: {len(bws)} banwords, {len(tg_chans)} TG channels, {len(topics_liked)} liked topics, {len(topics_disliked)} disliked topics.")
+        except Exception as e:
+            logger.warning(f"Failed to load DB stats at startup: {e}")
+            
         logger.info("==================================================")
 
         # Start Bot polling task if enabled
