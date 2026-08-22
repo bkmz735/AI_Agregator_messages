@@ -224,7 +224,18 @@ class MasterBot:
         if channels:
             for ch_name, count in channels.items():
                 ch_lower = ch_name.lower()
-                icon = "✉️" if "mail" in ch_lower or "email" in ch_lower else ("💬" if "vk" in ch_lower else "🎙️")
+                if "mail" in ch_lower or "email" in ch_lower:
+                    icon = "✉️"
+                elif "vk" in ch_lower or "контакт" in ch_lower:
+                    icon = "💬"
+                elif "авито" in ch_lower or "avito" in ch_lower:
+                    icon = "🟡"
+                elif "insta" in ch_lower or "инста" in ch_lower:
+                    icon = "📸"
+                elif "voice" in ch_lower or "голос" in ch_lower:
+                    icon = "🎙️"
+                else:
+                    icon = "📲"
                 lines.append(f"{icon} <b>{ch_name}:</b> {count}")
         else:
             lines.append("<i>Источники пока не зарегистрированы</i>")
