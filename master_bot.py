@@ -208,15 +208,15 @@ class MasterBot:
 
         lines = [
             f"📊 <b>Статистика{title_suffix}:</b>\n",
-            "<b>Категории ИИ:</b>",
+            "<b>Категории:</b>",
             f"🚨 <b>Срочные:</b> {cats.get('urgent', 0)}",
             f"⭐ <b>Важные:</b> {cats.get('important', 0)}",
-            f"🏛️ <b>Госуслуги / Гос. уведомления:</b> {cats.get('gov', 0)}",
-            f"📰 <b>Новости и Статьи:</b> {cats.get('news', 0)}",
-            f"🎬 <b>Видео и Медиа:</b> {cats.get('media', 0)}",
-            f"💬 <b>Обычные сообщения:</b> {cats.get('general', 0)}",
-            f"🚫 <b>Заблокировано спама:</b> {cats.get('spam', 0)}\n",
-            "<b>Источники сообщений (Каналы):</b>"
+            f"🏛️ <b>Госуслуги:</b> {cats.get('gov', 0)}",
+            f"📰 <b>Новости:</b> {cats.get('news', 0)}",
+            f"🎬 <b>Медиа:</b> {cats.get('media', 0)}",
+            f"💬 <b>Обычные:</b> {cats.get('general', 0)}",
+            f"🚫 <b>Спам:</b> {cats.get('spam', 0)}\n",
+            "<b>Источники:</b>"
         ]
 
         if channels:
@@ -245,20 +245,20 @@ class MasterBot:
         return "\n".join(lines)
 
     async def _get_settings_text_and_keyboard(self):
-        mode_label = "⚡ СРАЗУ (Мгновенно)" if self.delivery_mode == "instant" else "📥 СВОДКА (По расписанию)"
+        mode_label = "⚡ Сразу" if self.delivery_mode == "instant" else "📥 Сводка"
         text = (
-            "⚙️ <b>Панель настроек</b>\n\n"
-            f"Текущий режим доставки: <b>{mode_label}</b>\n\n"
-            "Выберите нужный подраздел настроек ниже:"
+            "⚙️ <b>Настройки</b>\n\n"
+            f"Режим доставки: <b>{mode_label}</b>\n\n"
+            "Выберите подраздел настроек ниже:"
         )
         return text, kb_ui.get_settings_keyboard(self.delivery_mode)
 
     async def _get_time_settings_text_and_keyboard(self):
         autodelete_label = f"{self.auto_delete_delay_hours} ч" if self.auto_delete_delay_hours > 0 else "Выключено ❌"
         text = (
-            "⏱️ <b>Настройка времени и таймеров</b>\n\n"
-            f"⏱️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
-            f"🗑️ <b>Время автоудаления:</b> {autodelete_label}\n\n"
+            "⏱️ <b>Время и Таймеры</b>\n\n"
+            f"▪️ <b>Интервал сводки:</b> {self.digest_interval} мин\n"
+            f"▪️ <b>Автоудаление:</b> {autodelete_label}\n\n"
             "Выберите параметр для изменения:"
         )
         return text, kb_ui.get_time_settings_keyboard()
@@ -266,10 +266,10 @@ class MasterBot:
     async def _get_night_settings_text_and_keyboard(self):
         night_status = "🟢 Включен" if self.night_mode_enabled else "❌ Выключен"
         text = (
-            "🌙 <b>Настройки ночного режима</b>\n\n"
-            f"Статус: <b>{night_status}</b>\n"
-            f"Часы тишины: <b>{self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00</b>\n\n"
-            "В ночное время уведомления отключаются, а новые сообщения накапливаются в буфере."
+            "🌙 <b>Ночной режим</b>\n\n"
+            f"▪️ Статус: <b>{night_status}</b>\n"
+            f"▪️ Часы тишины: <b>{self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00</b>\n\n"
+            "В ночные часы уведомления отключаются, новые сообщения накапливаются в буфере."
         )
         return text, kb_ui.get_night_settings_keyboard(self.night_mode_enabled)
 
@@ -963,8 +963,8 @@ class MasterBot:
             
             if buf_count > 0:
                 text = (
-                    f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
-                    "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
+                    f"📥 <b>В буфере ожидают:</b> {buf_count} сообщ.\n\n"
+                    "Нажмите «🚀 Отправить сводку» для немедленного получения."
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
