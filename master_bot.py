@@ -135,9 +135,9 @@ class MasterBot:
         
         # Register security & rate-limiting middlewares
         self.dp.message.outer_middleware(AccessControlMiddleware(self))
-        self.dp.message.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.7))
+        self.dp.message.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.2))
         self.dp.callback_query.outer_middleware(AccessControlMiddleware(self))
-        self.dp.callback_query.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.7))
+        self.dp.callback_query.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.2))
             
         self._setup_handlers()
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
