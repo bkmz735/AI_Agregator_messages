@@ -95,7 +95,7 @@ class Storage:
                 row = await cursor.fetchone()
                 if row and row[0] == 0:
                     defaults = ["nexta_live", "batyanews", "maddysontg", "supernova_plus"]
-                    if config.TG_NEWS_CHANNELS:
+                    if getattr(config, "TG_NEWS_CHANNELS", None):
                         defaults = [c.strip().lstrip("@") for c in config.TG_NEWS_CHANNELS.split(",") if c.strip()]
                     for ch in defaults:
                         await db.execute(

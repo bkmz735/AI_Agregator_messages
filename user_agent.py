@@ -21,6 +21,7 @@ class ConversationalAgent:
             "Используй доступные инструменты (tools). Тебе не нужно самому подтверждать выполнение инструмента. "
             "Просто вызови инструмент, а бот запросит разрешение у пользователя.\n"
             "Если пользователь просит добавить Телеграм канал (например 'добавь канал Nexta'), обязательно ИСПОЛЬЗУЙ встроенный инструмент google_search, чтобы найти правильный юзернейм (@username) или ссылку на этот канал, а затем вызови инструмент add_tg_channel.\n"
+            "Также ты можешь управлять настройками бота (часовой пояс, интервал сводок) и очищать чат, вызывая соответствующие инструменты.\n"
             "Отвечай кратко и дружелюбно."
         )
 
@@ -45,6 +46,18 @@ class ConversationalAgent:
         """Returns the current message statistics."""
         pass 
 
+    def set_timezone(self, offset_hours: int) -> str:
+        """Sets the bot's timezone offset in hours from UTC (e.g., 3 for Moscow, 5 for Yekaterinburg)."""
+        pass
+
+    def set_digest_interval(self, minutes: int) -> str:
+        """Sets the interval in minutes for sending automatic news digests (e.g., 60 for 1 hour)."""
+        pass
+
+    def clear_chat(self) -> str:
+        """Clears the entire chat history and removes all stored messages from the bot's database. Requires confirmation."""
+        pass
+
     def _get_tools(self):
         return [
             self.add_banword, 
@@ -52,6 +65,9 @@ class ConversationalAgent:
             self.remove_news_topic, 
             self.add_tg_channel,
             self.get_bot_stats,
+            self.set_timezone,
+            self.set_digest_interval,
+            self.clear_chat,
             {"google_search": {}} # Native AI Google Search tool
         ]
 
@@ -78,11 +94,24 @@ class ConversationalAgent:
                 )
             )
 
+        # Inject current time context
+        try:
+            from settings_manager import SettingsManager
+            settings = SettingsManager(self.storage)
+            tz_offset = await settings.get_timezone_offset()
+            from datetime import datetime, timedelta
+            current_time = datetime.utcnow() + timedelta(hours=tz_offset)
+            time_context = f"[Системное время (с учетом часового пояса пользователя): {current_time.strftime('%Y-%m-%d %H:%M:%S')}]\n"
+            text_with_context = time_context + text
+        except Exception as e:
+            logger.error(f"Failed to inject time context: {e}")
+            text_with_context = text
+
         # Add user's new message
         contents.append(
             types.Content(
                 role="user",
-                parts=[types.Part.from_text(text=text)]
+                parts=[types.Part.from_text(text=text_with_context)]
             )
         )
 
@@ -122,12 +151,22 @@ class ConversationalAgent:
                     channel = args.get("channel_username")
                     reply_text = f"Вы хотите добавить Telegram канал «{channel}»?"
                 elif action_name == "get_bot_stats":
-                    total = await self.storage.get_setting("stats_total_processed", "0")
-                    spam = await self.storage.get_setting("stats_spam_blocked", "0")
+                    from settings_manager import SettingsManager
+                    settings = SettingsManager(self.storage)
+                    total = await settings.get_stats_total_processed()
+                    spam = await settings.get_stats_spam_blocked()
                     reply_text = f"📊 Обработано сообщений: {total}\n🛑 Заблокировано спама: {spam}"
                     await self.storage.add_ai_chat_message("user", text)
                     await self.storage.add_ai_chat_message("model", reply_text)
                     return {"text": reply_text, "pending_action": None}
+                elif action_name == "set_timezone":
+                    offset = args.get("offset_hours", 0)
+                    reply_text = f"⚙️ Меняю часовой пояс на UTC{'+' if int(offset) >= 0 else ''}{offset}..."
+                elif action_name == "set_digest_interval":
+                    mins = args.get("minutes", 60)
+                    reply_text = f"⚙️ Меняю интервал сводок на {mins} мин..."
+                elif action_name == "clear_chat":
+                    reply_text = "Вы уверены, что хотите полностью очистить историю сообщений?"
                 else:
                     reply_text = "Я хочу выполнить действие, но не понимаю какое."
 

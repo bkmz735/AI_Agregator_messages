@@ -30,3 +30,25 @@ bot-update
 ```bash
 bot-logs
 ```
+
+## 📂 Структура проекта
+```text
+📦 ai-message-aggregator
+ ┣ 📂 adapters/          # Адаптеры для получения сообщений
+ ┃ ┣ 📜 base_adapter.py    # Базовый класс адаптера
+ ┃ ┣ 📜 email_adapter.py   # IMAP (Mail.ru, Авито и др.)
+ ┃ ┣ 📜 tg_news_adapter.py # Парсер открытых TG-каналов
+ ┃ ┗ 📜 vk_adapter.py      # VK LongPoll (ЛС и группы)
+ ┣ 📂 bot_handlers/      # Обработчики Telegram бота (aiogram)
+ ┃ ┗ 📜 all_handlers.py    # Клавиатуры, кнопки, команды, ИИ-диалог
+ ┣ 📜 main.py            # Точка входа (запуск бота и адаптеров)
+ ┣ 📜 master_bot.py      # Главный класс управления ботом (MasterBot)
+ ┣ 📜 user_agent.py      # ConversationalAgent (Gemini API и вызовы функций)
+ ┣ 📜 ai_engine.py       # Провайдер нейросетей (Gemini)
+ ┣ 📜 storage.py         # Работа с базой данных (SQLite)
+ ┣ 📜 settings_manager.py# Централизованное управление динамическими настройками
+ ┣ 📜 config.py          # Статические настройки и ключи (загрузка из .env)
+ ┣ 📜 logger_config.py   # Настройка логирования
+ ┣ 📜 ui_keyboards.py    # Генерация UI клавиатур бота
+ ┗ 📜 .env               # Файл с секретными токенами (не коммитится)
+```

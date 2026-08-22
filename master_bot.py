@@ -46,7 +46,7 @@ class AccessControlMiddleware(BaseMiddleware):
             if user_id:
                 logger.info(f"🔑 Auto-capturing master_chat_id={user_id} from Telegram Event [{event_name}]")
                 self.master_bot.master_chat_id = user_id
-                asyncio.create_task(self.master_bot.storage.set_setting("master_chat_id", str(user_id)))
+                asyncio.create_task(self.master_bot.settings.update_master_chat_id(user_id))
                 master_id = user_id
 
         # Security check: If master_chat_id is active, enforce strict lockdown
@@ -92,6 +92,8 @@ class MasterBot:
         self.bot_token = config.TELEGRAM_BOT_TOKEN
         self.master_chat_id = config.MASTER_CHAT_ID
         self.storage = storage
+        from settings_manager import SettingsManager
+        self.settings = SettingsManager(self.storage)
         self.ai_engine = ai_engine
         self.simulate_callback = simulate_callback
         self.on_flush_raw_queue: Optional[Callable[[], Awaitable[None]]] = None
@@ -414,7 +416,7 @@ class MasterBot:
                 parse_mode=parse_mode
             )
             self._last_ui_msg_id = sent_msg.message_id
-            await self.storage.set_setting("last_ui_msg_id", str(sent_msg.message_id))
+            await self.settings.update_last_ui_msg_id(sent_msg.message_id)
         except Exception as e:
             logger.error(f"Error updating single UI panel: {e}")
 
@@ -637,26 +639,18 @@ class MasterBot:
             
             try:
                 # Load settings asynchronously from DB
-                saved_master_id = await self.storage.get_setting("master_chat_id")
-                if saved_master_id and saved_master_id.strip() not in ("", "0", "None"):
-                    try:
-                        self.master_chat_id = int(saved_master_id.strip())
-                        logger.info(f"Loaded master_chat_id from DB: {self.master_chat_id}")
-                    except ValueError:
-                        pass
-
-                self.delivery_mode = await self.storage.get_setting("delivery_mode", self.delivery_mode)
-                self.digest_interval = int(await self.storage.get_setting("digest_interval_minutes", str(self.digest_interval)))
-                self.auto_delete_delay_hours = int(await self.storage.get_setting("auto_delete_delay_hours", str(self.auto_delete_delay_hours)))
-                self.timezone_offset = int(await self.storage.get_setting("timezone_offset", "3"))
+                self.master_chat_id = await self.settings.get_master_chat_id()
+                self.delivery_mode = await self.settings.get_delivery_mode()
+                self.digest_interval = await self.settings.get_digest_interval_minutes()
+                self.auto_delete_delay_hours = await self.settings.get_auto_delete_delay_hours()
+                self.timezone_offset = await self.settings.get_timezone_offset()
                 logger.info(f"Loaded config from DB: Delivery={self.delivery_mode}, Interval={self.digest_interval}m, TZ=UTC+{self.timezone_offset}, AutoDelete={self.auto_delete_delay_hours}h")
-                self.night_mode_enabled = (await self.storage.get_setting("night_mode_enabled", "false")).lower() in ("true", "1", "yes")
-                self.night_start_hour = int(await self.storage.get_setting("night_start_hour", str(self.night_start_hour)))
-                self.night_end_hour = int(await self.storage.get_setting("night_end_hour", str(self.night_end_hour)))
                 
-                saved_ui_id = await self.storage.get_setting("last_ui_msg_id") or await self.storage.get_setting("last_status_msg_id")
-                if saved_ui_id and saved_ui_id.isdigit():
-                    self._last_ui_msg_id = int(saved_ui_id)
+                self.night_mode_enabled = await self.settings.get_night_mode_enabled()
+                self.night_start_hour = await self.settings.get_night_start_hour()
+                self.night_end_hour = await self.settings.get_night_end_hour()
+                
+                self._last_ui_msg_id = await self.settings.get_last_ui_msg_id()
             except Exception as se:
                 logger.error(f"Error loading settings from DB: {se}", exc_info=True)
 

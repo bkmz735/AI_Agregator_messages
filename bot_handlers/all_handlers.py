@@ -17,10 +17,10 @@ def setup_all_handlers(master_bot):
     
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
-        if message.from_user:
-            master_bot.master_chat_id = message.from_user.id
-            await master_bot.storage.set_setting("master_chat_id", str(master_bot.master_chat_id))
-            logger.info(f"Captured/Updated master_chat_id from /start: {master_bot.master_chat_id}")
+        if master_bot.master_chat_id != message.chat.id:
+            master_bot.master_chat_id = message.chat.id
+            await master_bot.settings.update_master_chat_id(master_bot.master_chat_id)
+            logger.info(f"New Master Chat ID set: {master_bot.master_chat_id}")
         try:
             await message.delete()
         except Exception:
@@ -271,7 +271,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "settings_toggle_mode")
     async def process_settings_toggle_mode(callback_query: types.CallbackQuery):
         master_bot.delivery_mode = "instant" if master_bot.delivery_mode == "digest" else "digest"
-        await master_bot.storage.set_setting("delivery_mode", master_bot.delivery_mode)
+        await master_bot.settings.update_delivery_mode(master_bot.delivery_mode)
         
         text, kb = await master_bot._get_settings_text_and_keyboard()
         try:
@@ -414,7 +414,7 @@ def setup_all_handlers(master_bot):
     async def process_set_interval(callback_query: types.CallbackQuery):
         interval_val = int(callback_query.data.split("_")[-1])
         master_bot.digest_interval = interval_val
-        await master_bot.storage.set_setting("digest_interval_minutes", str(master_bot.digest_interval))
+        await master_bot.settings.update_digest_interval_minutes(master_bot.digest_interval)
         
         text, kb = await master_bot._get_time_settings_text_and_keyboard()
         try:
@@ -441,7 +441,7 @@ def setup_all_handlers(master_bot):
     async def process_set_autodelete(callback_query: types.CallbackQuery):
         delay_val = int(callback_query.data.split("_")[-1])
         master_bot.auto_delete_delay_hours = delay_val
-        await master_bot.storage.set_setting("auto_delete_delay_hours", str(master_bot.auto_delete_delay_hours))
+        await master_bot.settings.update_auto_delete_delay_hours(master_bot.auto_delete_delay_hours)
         
         text, kb = await master_bot._get_time_settings_text_and_keyboard()
         try:
@@ -464,7 +464,7 @@ def setup_all_handlers(master_bot):
     async def process_set_timezone(callback_query: types.CallbackQuery):
         offset = int(callback_query.data.replace("set_tz_", ""))
         master_bot.timezone_offset = offset
-        await master_bot.storage.set_setting("timezone_offset", str(offset))
+        await master_bot.settings.update_timezone_offset(offset)
         text, kb = await master_bot._get_timezone_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -473,9 +473,9 @@ def setup_all_handlers(master_bot):
         await callback_query.answer(f"Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}!")
     
     @dp.callback_query(F.data == "settings_toggle_night_mode")
-    async def process_settings_toggle_night_mode(callback_query: types.CallbackQuery):
+    async def process_toggle_night_mode(callback_query: types.CallbackQuery):
         master_bot.night_mode_enabled = not master_bot.night_mode_enabled
-        await master_bot.storage.set_setting("night_mode_enabled", "true" if master_bot.night_mode_enabled else "false")
+        await master_bot.settings.update_night_mode_enabled(master_bot.night_mode_enabled)
         
         text, kb = await master_bot._get_night_settings_text_and_keyboard()
         try:
@@ -504,8 +504,9 @@ def setup_all_handlers(master_bot):
         start_h, end_h = int(parts[2]), int(parts[3])
         master_bot.night_start_hour = start_h
         master_bot.night_end_hour = end_h
-        await master_bot.storage.set_setting("night_start_hour", str(start_h))
-        await master_bot.storage.set_setting("night_end_hour", str(end_h))
+        
+        await master_bot.settings.update_night_start_hour(start_h)
+        await master_bot.settings.update_night_end_hour(end_h)
         
         text, kb = await master_bot._get_night_settings_text_and_keyboard()
         try:
@@ -852,10 +853,10 @@ def setup_all_handlers(master_bot):
     @dp.message(F.text, ~F.text.startswith("/"))
     async def handle_ai_chat_message(message: types.Message):
         # If we are waiting for a specific setting input, let the previous handler take it
-        if any([getattr(self, "_waiting_for_banword_scope", None), 
-                getattr(self, "_waiting_for_tg_channel", False),
-                getattr(self, "_waiting_for_liked_topic", False),
-                getattr(self, "_waiting_for_disliked_topic", False)]):
+        if any([getattr(master_bot, "_waiting_for_banword_scope", None), 
+                getattr(master_bot, "_waiting_for_tg_channel", False),
+                getattr(master_bot, "_waiting_for_liked_topic", False),
+                getattr(master_bot, "_waiting_for_disliked_topic", False)]):
             return
         
         if not master_bot.user_agent:
@@ -869,10 +870,45 @@ def setup_all_handlers(master_bot):
             pending_action = result.get("pending_action")
             
             if pending_action:
-                import uuid
-                action_id = str(uuid.uuid4())[:8]
-                master_bot.pending_ai_actions[action_id] = pending_action
-                await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
+                action_name = pending_action.get("action")
+                args = pending_action.get("args", {})
+                user_text = pending_action.get("user_text", "")
+                
+                # Auto-execute minor actions
+                if action_name in ["set_timezone", "set_digest_interval"]:
+                    if action_name == "set_timezone":
+                        offset = int(args.get("offset_hours", 0))
+                        await master_bot.settings.update_timezone_offset(offset)
+                        master_bot.timezone_offset = offset
+                        master_bot.start_digest_scheduler()
+                        result_msg = f"✅ Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}."
+                    elif action_name == "set_digest_interval":
+                        mins = int(args.get("minutes", 60))
+                        await master_bot.settings.update_digest_interval_minutes(mins)
+                        master_bot.start_digest_scheduler()
+                        result_msg = f"✅ Интервал сводок изменен на {mins} минут."
+                        
+                    await master_bot.storage.add_ai_chat_message("user", user_text)
+                    await master_bot.storage.add_ai_chat_message("model", result_msg)
+                    
+                    await status_msg.edit_text(result_msg, parse_mode="HTML")
+                    
+                    # Delete the success message after 5 seconds
+                    import asyncio
+                    async def delayed_delete(msg):
+                        await asyncio.sleep(5)
+                        try:
+                            await msg.delete()
+                        except:
+                            pass
+                    asyncio.create_task(delayed_delete(status_msg))
+                    
+                else:
+                    # Require confirmation for major actions
+                    import uuid
+                    action_id = str(uuid.uuid4())[:8]
+                    master_bot.pending_ai_actions[action_id] = pending_action
+                    await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
             else:
                 await status_msg.edit_text(reply_text, parse_mode="HTML")
         except Exception as e:
@@ -912,6 +948,9 @@ def setup_all_handlers(master_bot):
                 channel = args.get("channel_username")
                 await master_bot.storage.add_tg_channel(channel)
                 result_msg = f"✅ Telegram канал «{channel}» добавлен ИИ."
+            elif action == "clear_chat":
+                await master_bot.storage.clear_all_messages()
+                result_msg = "✅ История сообщений полностью очищена."
             else:
                 result_msg = "❌ Неизвестное действие."
                 
