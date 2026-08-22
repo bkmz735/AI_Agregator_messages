@@ -158,8 +158,7 @@ class AIEngine:
             try:
                 self._track_request()
                 response = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        self.client.models.generate_content,
+                    self.client.aio.models.generate_content(
                         model=model_name,
                         contents=contents,
                         config=config
@@ -222,8 +221,7 @@ class AIEngine:
                 try:
                     self._track_request()
                     response = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            self.client.models.generate_content,
+                        self.client.aio.models.generate_content(
                             model=model_name,
                             contents=[part, prompt],
                             config=types.GenerateContentConfig(response_mime_type="application/json")
@@ -386,8 +384,7 @@ class AIEngine:
                     try:
                         self._track_request()
                         response = await asyncio.wait_for(
-                            asyncio.to_thread(
-                                self.client.models.generate_content,
+                            self.client.aio.models.generate_content(
                                 model=model_name,
                                 contents=prompt,
                                 config={'response_mime_type': 'application/json'}
@@ -574,8 +571,7 @@ class AIEngine:
             try:
                 self._track_request()
                 response = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        self.client.models.generate_content,
+                    self.client.aio.models.generate_content(
                         model=model_name,
                         contents=prompt,
                         config=types.GenerateContentConfig(
