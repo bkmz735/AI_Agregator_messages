@@ -1,10 +1,10 @@
 # 🤖 AI Message Aggregator & Buffer System
 
-Единый умный фильтр и агрегатор входящих сообщений (VK, Mail.ru / Авито / Instagram) с классификацией спама и выжимками через **Gemini AI**.
+Единый умный фильтр и агрегатор входящих сообщений (VK, Mail.ru / Авито / Instagram, Telegram News) с классификацией спама и выжимками через **AI (LLM)**.
 
 ## 🚀 Особенности
-- **Интеграция каналов**: VK LongPoll (личные сообщения и группы), Mail.ru IMAP (email-уведомления от Авито/Insta).
-- **AI-фильтрация (Gemini 3.5/3.7/3.1/3.6 Flash)**: Определение категории (`spam`, `urgent`, `important`, `general`), подготовка выжимок и черновиков ответов.
+- **Интеграция каналов**: VK LongPoll (личные сообщения и группы), Mail.ru IMAP (email-уведомления от Авито/Insta), Парсинг Telegram Каналов (прямое чтение t.me без авторизации).
+- **AI-фильтрация (LLM API)**: Определение категории (`spam`, `urgent`, `important`, `general`, `gov_debt`, `gov_service`), подготовка выжимок и черновиков ответов. Поддержка любого современного AI через подмену ключа.
 - **Интерактивное автоудаление**: Кнопка "Прочитано" под сообщениями в Telegram мгновенно стирает уведомление, поддерживая чат в полной чистоте. Резервный таймер удаляет старые оповещения через 1 час.
 - **Буферизация & Дайджесты (Сводки)**: Режим работы можно переключать одной кнопкой в меню:
   * `⚡ СРАЗУ`: Уведомления приходят мгновенно по одному.
@@ -13,7 +13,7 @@
 
 ## 🛠️ Запуск на Linux VPS
 ```bash
-git clone https://github.com/your-username/AI_Agregator_messages.git /opt/ai-message-aggregator
+git clone https://github.com/bkmz735/AI_Agregator_messages.git /opt/ai-message-aggregator
 cd /opt/ai-message-aggregator
 cp .env.example .env
 # заполните ключи в .env
@@ -30,4 +30,3 @@ bot-update
 ```bash
 bot-logs
 ```
-
