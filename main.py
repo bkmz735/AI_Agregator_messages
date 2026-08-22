@@ -51,7 +51,7 @@ class MessageAggregatorApp:
         # 2. Pre-check system & custom banwords (channel-aware)
         active_bws = await self.storage.get_banwords()
         combined_str = f"{sender} {text}"
-        if is_spam_text(combined_str, channel=channel, active_banwords=active_bws):
+        if is_text_spam(combined_str, channel=channel, active_banwords=active_bws):
             logger.warning(f"🚫 [SPAM FILTER] Message from [{channel}] '{sender}' matched banword. Auto-banned.")
             await self.storage.save_message(
                 msg_uid=msg_uid,

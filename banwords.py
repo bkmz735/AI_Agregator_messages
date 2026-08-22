@@ -51,7 +51,13 @@ def is_text_spam(text: str, channel: str = "email", active_banwords: list = None
     lower_text = text.lower()
     words_to_check = active_banwords if active_banwords is not None else DEFAULT_SYSTEM_BANWORDS
 
-    chan_clean = "vk" if "vk" in channel.lower() else "email"
+    chan_lower = channel.lower()
+    if "vk" in chan_lower:
+        chan_clean = "vk"
+    elif "mail" in chan_lower or "email" in chan_lower:
+        chan_clean = "email"
+    else:
+        chan_clean = "other"
 
     for item in words_to_check:
         word = item.get("word", "").lower()
