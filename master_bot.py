@@ -381,7 +381,7 @@ class MasterBot:
                 logger.error(f"Error processing voice message: {e}")
                 await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
 
-        @self.dp.message(F.text & ~F.text.startswith("/") & (lambda msg: bool(self._waiting_for_banword_scope)))
+        @self.dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(self._waiting_for_banword_scope))
         async def handle_text_message(message: types.Message):
             # If user tapped a ReplyButton while in banword mode, cancel banword input
             menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
