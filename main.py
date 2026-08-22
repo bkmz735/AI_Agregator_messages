@@ -238,6 +238,9 @@ class MessageAggregatorApp:
         if bot_task:
             bot_task.cancel()
 
+        # Close database connection
+        await self.storage.close()
+
         logger.info("AI Message Aggregator stopped cleanly. ✅")
 
 if __name__ == "__main__":

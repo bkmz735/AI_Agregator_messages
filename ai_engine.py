@@ -40,7 +40,7 @@ except Exception as e:
 
 class AnalysisResult(BaseModel):
     msg_uid: str
-    category: str  # "spam", "urgent", "important", "general"
+    category: str  # "spam", "urgent", "important", "gov_debt", "gov_service", "news", "media", "general", "politics", "interesting", "bullshit"
     summary: str
     action_required: bool
     suggested_reply: Optional[str] = None
@@ -209,7 +209,7 @@ class AIEngine:
             prompt = (
                 "Сделай ДОСЛОВНУЮ транскрипцию (слово в слово) этого голосового сообщения на русском языке и сохрани её в поле 'transcription'. "
                 "КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ пересказывать смысл в поле 'transcription', там должен быть только оригинальный текст аудиозаписи! "
-                "Затем определи его категорию (spam, urgent, important, general), "
+                "Затем определи его категорию (spam, urgent, important, gov_debt, gov_service, news, media, general, politics, interesting, bullshit), "
                 "составь краткое резюме (summary) о чем это сообщение, проверь требуется ли ответ (action_required), "
                 "и предложи готовый черновик ответа (suggested_reply).\n"
                 "Ответ верни строго в формате JSON с ключами: transcription, category, summary, action_required, suggested_reply."
@@ -274,7 +274,7 @@ class AIEngine:
     async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]], custom_prompt_suffix: str = "") -> List[AnalysisResult]:
         """
         Analyzes a BATCH of raw incoming messages.
-        If batch size exceeds 5 messages, automatically splits into chunks of 5 for optimal AI accuracy.
+        If batch size exceeds AI_BATCH_CHUNK_SIZE (default 3), automatically splits into chunks for optimal AI accuracy.
         """
         if not messages_batch:
             return []
@@ -352,7 +352,7 @@ class AIEngine:
         return [results_map[i] for i in range(len(messages_batch))]
 
     async def _analyze_single_batch_chunk(self, messages_batch: List[Dict[str, str]], custom_prompt_suffix: str = "") -> List[AnalysisResult]:
-        """Analyzes a single chunk (up to 5 messages) in ONE AI API call."""
+        """Analyzes a single chunk (up to AI_BATCH_CHUNK_SIZE messages) in ONE AI API call."""
         now = time.time()
         if now < self.rate_limit_until:
             wait_time = int(self.rate_limit_until - now)

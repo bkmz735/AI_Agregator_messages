@@ -55,7 +55,8 @@ class EmailAdapter(BaseAdapter):
                 else:
                     res.append(str(decoded))
             return "".join(res)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to decode email header '{header_val}': {e}")
             return str(header_val)
 
     def _extract_raw_email(self, lines) -> bytes | None:

@@ -238,13 +238,17 @@ class MasterBot:
         lines = [
             f"📊 <b>Статистика{title_suffix}:</b>\n",
             "<b>Категории:</b>",
-            f"🚨 <b>Срочные:</b> {cats.get('urgent', 0)}",
-            f"⭐ <b>Важные:</b> {cats.get('important', 0)}",
-            f"🏛️ <b>Госуслуги:</b> {cats.get('gov', 0)}",
+            f"🔥 <b>Срочные:</b> {cats.get('urgent', 0)}",
+            f"❗️ <b>Важные:</b> {cats.get('important', 0)}",
+            f"⚖️ <b>Задолженности/Штрафы:</b> {cats.get('gov_debt', 0)}",
+            f"🏛️ <b>Госуслуги:</b> {cats.get('gov_service', 0)}",
             f"📰 <b>Новости:</b> {cats.get('news', 0)}",
+            f"🗣️ <b>Политика:</b> {cats.get('politics', 0)}",
+            f"💡 <b>Интересное:</b> {cats.get('interesting', 0)}",
             f"🎬 <b>Медиа:</b> {cats.get('media', 0)}",
             f"💬 <b>Обычные:</b> {cats.get('general', 0)}",
-            f"🚫 <b>Спам:</b> {cats.get('spam', 0)}\n",
+            f"🗑 <b>Мусорные (bullshit):</b> {cats.get('bullshit', 0)}",
+            f"🛑 <b>Спам:</b> {cats.get('spam', 0)}\n",
             "<b>Источники:</b>"
         ]
 

@@ -1,5 +1,6 @@
 import aiosqlite
 import logging
+import contextlib
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from config import config
@@ -9,10 +10,29 @@ logger = logging.getLogger(__name__)
 class Storage:
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or config.DB_PATH
+        self._db = None
+
+    async def connect(self):
+        if not self._db:
+            self._db = await aiosqlite.connect(self.db_path)
+            # Enable WAL mode for concurrency and performance
+            await self._db.execute("PRAGMA journal_mode=WAL")
+            await self._db.execute("PRAGMA synchronous=NORMAL")
+            await self._db.commit()
+
+    async def close(self):
+        if self._db:
+            await self._db.close()
+            self._db = None
+
+    @contextlib.asynccontextmanager
+    async def get_db(self):
+        await self.connect()
+        yield self._db
 
     async def init_db(self):
         """Initializes SQLite schema."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +95,10 @@ class Storage:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_uid ON messages(msg_uid)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_ai_history_timestamp ON ai_chat_history(timestamp)")
+            
+            # New optimized indexes
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_msg_delivered_cat ON messages(is_delivered, category)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_sent_notif_delete_at ON sent_notifications(delete_at)")
 
             await db.commit()
 
@@ -107,7 +131,7 @@ class Storage:
 
     async def is_duplicate(self, msg_uid: str) -> bool:
         """Checks if message UID has already been processed."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             async with db.execute("SELECT 1 FROM messages WHERE msg_uid = ?", (msg_uid,)) as cursor:
                 row = await cursor.fetchone()
                 return row is not None
@@ -125,7 +149,7 @@ class Storage:
         is_delivered: bool = False
     ) -> int:
         """Saves message and analysis result to SQLite."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             cursor = await db.execute("""
                 INSERT OR IGNORE INTO messages 
                 (msg_uid, channel, sender, text, category, summary, action_required, suggested_reply, is_delivered)
@@ -139,7 +163,7 @@ class Storage:
 
     async def get_buffered_messages(self, mark_as_delivered: bool = True) -> List[Dict[str, Any]]:
         """Fetches all non-spam undelivered messages from buffer."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT * FROM messages WHERE is_delivered = 0 AND category != 'spam' ORDER BY id ASC"
@@ -157,24 +181,28 @@ class Storage:
 
     async def get_buffer_count(self) -> int:
         """Returns the number of non-spam pending messages in buffer."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             async with db.execute("SELECT COUNT(*) FROM messages WHERE is_delivered = 0 AND category != 'spam'") as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
 
     async def get_stats(self) -> Dict[str, Any]:
         """Returns detailed category and channel statistics."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             # Categories
             async with db.execute("SELECT category, COUNT(*) FROM messages GROUP BY category") as cursor:
                 rows = await cursor.fetchall()
                 stats = {
                     "urgent": 0,
                     "important": 0,
-                    "gov": 0,
+                    "gov_debt": 0,
+                    "gov_service": 0,
                     "news": 0,
                     "media": 0,
                     "general": 0,
+                    "politics": 0,
+                    "interesting": 0,
+                    "bullshit": 0,
                     "spam": 0
                 }
                 for category, count in rows:
@@ -198,14 +226,14 @@ class Storage:
 
     async def reset_stats(self):
         """Clears all historical delivered and spam message records to reset statistics."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             await db.execute("DELETE FROM messages WHERE is_delivered = 1 OR category = 'spam'")
             await db.commit()
             logger.info("Message statistics reset successfully.")
 
     async def purge_old_messages(self, days: int = 7) -> int:
         """Purges delivered messages and spam older than N days to prevent database bloat."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             cursor = await db.execute("""
                 DELETE FROM messages 
                 WHERE (is_delivered = 1 OR category = 'spam')
@@ -220,7 +248,7 @@ class Storage:
         """Saves sent message ID and calculates deletion time."""
         import datetime
         delete_at = (datetime.datetime.now() + datetime.timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             await db.execute(
                 "INSERT INTO sent_notifications (chat_id, message_id, delete_at) VALUES (?, ?, ?)",
                 (chat_id, message_id, delete_at)
@@ -231,7 +259,7 @@ class Storage:
         """Gets all notifications that should be deleted."""
         import datetime
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT * FROM sent_notifications WHERE delete_at <= ?", (now_str,)
@@ -241,13 +269,13 @@ class Storage:
 
     async def delete_sent_notification(self, notification_id: int):
         """Deletes a notification record from DB."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             await db.execute("DELETE FROM sent_notifications WHERE id = ?", (notification_id,))
             await db.commit()
 
     async def get_banwords(self, scope: Optional[str] = None) -> List[Dict[str, Any]]:
         """Fetches active banwords from SQLite."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             if scope:
                 async with db.execute(
@@ -265,7 +293,7 @@ class Storage:
         clean_scope = "vk" if "vk" in scope.strip().lower() else "email"
         if not clean_word:
             return None
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             try:
                 cursor = await db.execute(
                     "INSERT INTO banwords (word, scope) VALUES (?, ?)",
@@ -273,7 +301,8 @@ class Storage:
                 )
                 await db.commit()
                 return {"id": cursor.lastrowid, "word": clean_word, "scope": clean_scope}
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to add banword: {e}")
                 return None
 
     async def remove_banword(self, identifier: str, scope: Optional[str] = None) -> Optional[str]:
@@ -281,7 +310,7 @@ class Storage:
         clean_val = identifier.strip().lower()
         clean_scope = scope.strip().lower() if scope else None
         
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             deleted_word = None
             if clean_val.isdigit():
                 idx = int(clean_val)
@@ -314,7 +343,7 @@ class Storage:
     async def reset_banwords_to_default(self):
         """Resets the banwords table to default system seed entries."""
         from banwords import DEFAULT_SYSTEM_BANWORDS
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             await db.execute("DELETE FROM banwords")
             for bw in DEFAULT_SYSTEM_BANWORDS:
                 await db.execute(
@@ -325,14 +354,14 @@ class Storage:
 
     async def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Fetches a setting value from SQLite settings table."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else default
 
     async def set_setting(self, key: str, value: str):
         """Saves or updates a setting key-value pair in SQLite settings table."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             await db.execute(
                 "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                 (key, str(value))
@@ -342,7 +371,7 @@ class Storage:
     # Telegram News Channels Management
     async def get_tg_channels(self) -> List[Dict[str, Any]]:
         """Returns a list of tracked public Telegram news channels."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("SELECT id, username FROM tg_channels ORDER BY id ASC") as cursor:
                 rows = await cursor.fetchall()
@@ -352,17 +381,18 @@ class Storage:
         clean_user = username.replace("https://t.me/", "").replace("@", "").strip().lower()
         if not clean_user:
             return None
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             try:
                 cursor = await db.execute("INSERT INTO tg_channels (username) VALUES (?)", (clean_user,))
                 await db.commit()
                 return {"id": cursor.lastrowid, "username": clean_user}
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to add tg channel: {e}")
                 return None
 
     async def remove_tg_channel(self, identifier: str) -> Optional[str]:
         clean_val = identifier.strip().lower()
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             deleted_username = None
             if clean_val.isdigit():
                 idx = int(clean_val)
@@ -387,7 +417,7 @@ class Storage:
 
     async def get_news_topics(self, preference: Optional[str] = None) -> List[Dict[str, Any]]:
         """Returns a list of news topics. If preference is provided (liked/disliked), filters by it."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             if preference:
                 async with db.execute("SELECT id, topic, preference FROM news_topics WHERE preference = ? ORDER BY id ASC", (preference,)) as cursor:
@@ -401,7 +431,7 @@ class Storage:
         clean_topic = topic.strip()
         if not clean_topic or preference not in ("liked", "disliked"):
             return None
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             try:
                 cursor = await db.execute(
                     "INSERT INTO news_topics (topic, preference) VALUES (?, ?)", 
@@ -409,12 +439,13 @@ class Storage:
                 )
                 await db.commit()
                 return {"id": cursor.lastrowid, "topic": clean_topic, "preference": preference}
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to add news topic: {e}")
                 return None
 
     async def remove_news_topic(self, identifier: str, preference: str) -> Optional[str]:
         clean_val = identifier.strip()
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             deleted_topic = None
             if clean_val.isdigit():
                 idx = int(clean_val)
@@ -436,7 +467,7 @@ class Storage:
 
     async def remove_tg_channel_by_id(self, channel_id: int) -> bool:
         """Removes a Telegram channel by its DB ID."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             cursor = await db.execute("DELETE FROM tg_channels WHERE id = ?", (channel_id,))
             await db.commit()
             return cursor.rowcount > 0
@@ -444,7 +475,7 @@ class Storage:
     async def remove_tg_channel(self, username: str) -> bool:
         """Removes a Telegram channel by username."""
         clean_user = username.strip().lstrip("@").lower()
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             cursor = await db.execute("DELETE FROM tg_channels WHERE username = ?", (clean_user,))
             await db.commit()
             return cursor.rowcount > 0
@@ -456,13 +487,13 @@ class Storage:
     # --- AI Chat History Methods ---
     async def add_ai_chat_message(self, role: str, content: str):
         """Adds a message to the AI chat history."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             await db.execute("INSERT INTO ai_chat_history (role, content) VALUES (?, ?)", (role, content))
             await db.commit()
 
     async def get_ai_chat_history(self) -> List[Dict[str, str]]:
         """Retrieves history from the last 6 hours and deletes older messages."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             # Delete messages older than 6 hours
             await db.execute("DELETE FROM ai_chat_history WHERE timestamp <= datetime('now', '-6 hours')")

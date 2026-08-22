@@ -64,8 +64,8 @@ class VKAdapter(BaseAdapter):
                         name = res["response"][0].get("name", f"Группа_{group_id}")
                         self._group_cache[group_id] = name
                         return name
-            except Exception:
-                pass
+                except Exception as e:
+                    logger.debug(f"Error resolving VK group name: {e}")
             return f"Группа_{group_id}"
 
         # Regular User
