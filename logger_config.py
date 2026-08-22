@@ -44,9 +44,9 @@ def init_logging(log_file: str = "aggregator.log", level: str = "INFO"):
     recent_handler.setFormatter(log_formatter)
     root_logger.addHandler(recent_handler)
 
-    # 3. Rotating File Handler (aggregator.log)
+    # 3. Rotating File Handler (app.log)
     try:
-        file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
+        file_handler = RotatingFileHandler("app.log", maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
         file_handler.setFormatter(log_formatter)
         root_logger.addHandler(file_handler)
     except Exception as e:
