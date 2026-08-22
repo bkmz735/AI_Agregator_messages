@@ -1078,18 +1078,22 @@ def setup_all_handlers(master_bot):
             await master_bot.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
             return
 
-        # If not waiting for anything and not a menu button, it's a direct AI question!
+        # If not waiting for anything and not a menu button, it's a direct AI question/dialogue!
         chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
-        if master_bot.current_menu_state != 'main' or not chat_enabled:
-            sent_msg = await message.answer("⚠️ <b>Чат с ИИ недоступен</b>\nФункция отключена в настройках или вы находитесь не в Главном меню.", parse_mode="HTML")
-            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=5)
+        if not chat_enabled:
+            sent_msg = await message.answer(
+                "⚠️ <b>Чат с ИИ отключен</b>\n"
+                "Вы можете включить функцию в меню: <b>Настройки ⚙️ -> Настройки ИИ 🧠 -> Умный чат 🟢</b>",
+                parse_mode="HTML"
+            )
+            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=6)
             return
 
         if master_bot.user_agent:
             status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
             try:
                 result = await master_bot.user_agent.process_message(message.text)
-                reply_text = result.get("text", "Ошибка ИИ.")
+                reply_text = result.get("text", "Ошибка при обработке запроса ИИ.")
                 pending_action = result.get("pending_action")
                 
                 if pending_action:
@@ -1103,43 +1107,70 @@ def setup_all_handlers(master_bot):
                             await master_bot.settings.update_timezone_offset(offset)
                             master_bot.timezone_offset = offset
                             master_bot.start_digest_scheduler()
-                            result_msg = f"✅ Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}."
+                            result_msg = f"✅ Часовой пояс изменен на <b>UTC{'+' if offset >= 0 else ''}{offset}</b>."
                         elif action_name == "set_digest_interval":
                             mins = int(args.get("minutes", 60))
                             await master_bot.settings.update_digest_interval_minutes(mins)
                             master_bot.start_digest_scheduler()
-                            result_msg = f"✅ Интервал сводок изменен на {mins} минут."
+                            result_msg = f"✅ Интервал сводок изменен на <b>{mins} минут</b>."
                             
                         await master_bot.storage.add_ai_chat_message("user", user_text)
                         await master_bot.storage.add_ai_chat_message("model", result_msg)
                         
-                        if isinstance(status_msg, types.Message): await status_msg.edit_text(result_msg, parse_mode="HTML")
+                        if isinstance(status_msg, types.Message):
+                            try:
+                                await status_msg.edit_text(result_msg, parse_mode="HTML")
+                            except Exception:
+                                await status_msg.edit_text(result_msg, parse_mode=None)
                         
                         async def delayed_delete(msg):
                             await asyncio.sleep(5)
                             try:
                                 await msg.delete()
-                            except:
+                            except Exception:
                                 pass
                         asyncio.create_task(delayed_delete(status_msg))
                     else:
                         import uuid
                         action_id = str(uuid.uuid4())[:8]
                         master_bot.pending_ai_actions[action_id] = pending_action
-                        if isinstance(status_msg, types.Message): await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
+                        if isinstance(status_msg, types.Message):
+                            try:
+                                await status_msg.edit_text(
+                                    reply_text, 
+                                    parse_mode="HTML", 
+                                    reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id)
+                                )
+                            except Exception:
+                                await status_msg.edit_text(
+                                    reply_text, 
+                                    parse_mode=None, 
+                                    reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id)
+                                )
                 else:
-                    if isinstance(status_msg, types.Message): await status_msg.edit_text(reply_text, parse_mode="HTML")
+                    if isinstance(status_msg, types.Message):
+                        try:
+                            await status_msg.edit_text(reply_text, parse_mode="HTML")
+                        except Exception:
+                            # Fallback if markdown/HTML parsing fails
+                            await status_msg.edit_text(reply_text, parse_mode=None)
             except Exception as e:
-                logger.error(f"AI Chat error: {e}")
-                if isinstance(status_msg, types.Message): await status_msg.edit_text(f"❌ Ошибка: {e}")
-        elif master_bot.ai_engine:
+                logger.error(f"AI Chat error: {e}", exc_info=True)
+                if isinstance(status_msg, types.Message):
+                    await status_msg.edit_text(f"❌ Произошла ошибка при обращении к ИИ:\n<code>{html.escape(str(e))}</code>", parse_mode="HTML")
+        elif master_bot.ai_engine and master_bot.ai_engine.client:
             status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
             try:
                 response = await master_bot.ai_engine.ask_ai_question(message.text)
-                if isinstance(status_msg, types.Message): await status_msg.edit_text(f"🤖 <b>Ответ ИИ:</b>\n\n{html.escape(response)}", parse_mode="HTML")
+                if isinstance(status_msg, types.Message):
+                    try:
+                        await status_msg.edit_text(f"🤖 <b>Ответ ИИ:</b>\n\n{html.escape(response)}", parse_mode="HTML")
+                    except Exception:
+                        await status_msg.edit_text(f"🤖 Ответ ИИ:\n\n{response}", parse_mode=None)
             except Exception as e:
                 logger.error(f"Error asking AI question: {e}")
-                if isinstance(status_msg, types.Message): await status_msg.edit_text(f"❌ Ошибка обращения к ИИ: {e}")
+                if isinstance(status_msg, types.Message):
+                    await status_msg.edit_text(f"❌ Ошибка обращения к ИИ: {e}")
         else:
-            await message.answer("🤖 ИИ не настроен. Для работы этой функции требуется API-ключ.")
+            await message.answer("🤖 ИИ не настроен. Для работы этой функции требуется API-ключ в .env файле.")
     
