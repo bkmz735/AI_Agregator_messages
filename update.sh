@@ -28,17 +28,17 @@ chmod +x *.sh *.py 2>/dev/null || true
 NEW_REQ_HASH=$(md5sum requirements.txt 2>/dev/null)
 
 if [ "$OLD_REQ_HASH" != "$NEW_REQ_HASH" ]; then
-    echo "Обновление зависимостей Python (requirements.txt изменился)..."
+    echo "Обновление зависимостей (requirements.txt изменен)..."
     ./venv/bin/pip install -r requirements.txt
 else
-    echo "Зависимости актуальны, пропускаем pip (ускоренный запуск) ⚡"
+    echo "Зависимости актуальны, пропускаем pip..."
 fi
 
-echo "Обновление конфигурации службы systemd..."
+echo "Обновление конфигурации systemd..."
 cp -f ai-aggregator.service /etc/systemd/system/ai-aggregator.service
 systemctl daemon-reload
 
-echo "Перезапуск фоновой службы systemd..."
+echo "Перезапуск службы (это может занять пару секунд)..."
 systemctl restart ai-aggregator
 
 # Setup convenient bash aliases and bot-help in ~/.bashrc
