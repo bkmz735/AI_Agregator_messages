@@ -343,9 +343,15 @@ class MasterBot:
         return text, kb_ui.get_time_settings_keyboard()
 
     async def _get_timezone_settings_text_and_keyboard(self):
+        from datetime import datetime, timedelta
+        now_utc = datetime.utcnow()
+        now_local = now_utc + timedelta(hours=self.timezone_offset)
+        local_time_str = now_local.strftime("%H:%M")
+
         text = (
             "🌍 <b>Настройка часового пояса</b>\n\n"
-            f"Текущий пояс: <b>UTC{'+' if self.timezone_offset >= 0 else ''}{self.timezone_offset}</b>\n\n"
+            f"Текущий пояс: <b>UTC{'+' if self.timezone_offset >= 0 else ''}{self.timezone_offset}</b>\n"
+            f"Текущее время: <b>{local_time_str}</b>\n\n"
             "<i>Это нужно для правильной работы расписания сводки и ночного режима.</i>"
         )
         return text, kb_ui.get_timezone_keyboard(self.timezone_offset)
