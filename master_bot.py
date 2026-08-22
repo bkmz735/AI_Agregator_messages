@@ -7,6 +7,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from config import config
 from storage import Storage
+import ui_keyboards as kb_ui
 
 logger = logging.getLogger(__name__)
 
@@ -142,18 +143,7 @@ class MasterBot:
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
     def _get_menu_keyboard(self, buffer_count: int = 0):
-        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-        if buffer_count > 0:
-            kb = [
-                [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
-                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
-            ]
-        else:
-            kb = [
-                [KeyboardButton(text="📥 Буфер")],
-                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
-            ]
-        return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
+        return kb_ui.get_main_reply_keyboard(buffer_count)
 
     async def _register_bot_commands(self):
         """Registers blue '/' commands menu in Telegram app UI."""
@@ -198,11 +188,7 @@ class MasterBot:
             + "\n".join(log_lines)
         )
         
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить логи", callback_data="refresh_logs")],
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-        ])
-        return text, kb
+        return text, kb_ui.get_logs_keyboard()
 
     async def _get_settings_text_and_keyboard(self):
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -223,19 +209,7 @@ class MasterBot:
             "Вы можете изменить параметры, нажав на соответствующие кнопки ниже:"
         )
         
-        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"⚡ Режим: {'Сводка' if self.delivery_mode == 'instant' else 'Сразу'}", callback_data="settings_toggle_mode")],
-            [InlineKeyboardButton(text="⏱️ Изменить интервал сводки", callback_data="settings_menu_interval")],
-            [InlineKeyboardButton(text="🗑️ Изменить время автоудаления", callback_data="settings_menu_autodelete")],
-            [InlineKeyboardButton(text=f"🌙 Ночной режим: {'Вкл 🟢' if not self.night_mode_enabled else 'Выкл ❌'}", callback_data="settings_toggle_night_mode")],
-            [InlineKeyboardButton(text="⏰ Часы ночного режима", callback_data="settings_menu_night_hours")],
-            [
-                InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist"),
-                InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
-            ],
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-        ])
-        return text, inline_kb
+        return text, kb_ui.get_settings_keyboard(self.delivery_mode, self.night_mode_enabled)
 
     async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False):
         """Displays or smoothly edits the single active UI window in-place."""
@@ -526,28 +500,13 @@ class MasterBot:
 
         @self.dp.callback_query(F.data == "settings_menu_interval")
         async def process_settings_menu_interval(callback_query: types.CallbackQuery):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             text = (
                 "⏱️ <b>Настройка интервала выгрузки сводки:</b>\n\n"
                 f"Текущий интервал: <b>{self.digest_interval} мин</b>\n"
                 "Выберите новый интервал ниже:"
             )
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="15 мин", callback_data="set_interval_15"),
-                    InlineKeyboardButton(text="30 мин", callback_data="set_interval_30"),
-                    InlineKeyboardButton(text="1 час (60м)", callback_data="set_interval_60")
-                ],
-                [
-                    InlineKeyboardButton(text="2 часа (120м)", callback_data="set_interval_120"),
-                    InlineKeyboardButton(text="4 часа (240м)", callback_data="set_interval_240")
-                ],
-                [
-                    InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
-                ]
-            ])
             try:
-                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+                await callback_query.message.edit_text(text=text, reply_markup=kb_ui.get_interval_keyboard(), parse_mode="HTML")
             except Exception:
                 pass
             await callback_query.answer()
@@ -567,30 +526,14 @@ class MasterBot:
 
         @self.dp.callback_query(F.data == "settings_menu_autodelete")
         async def process_settings_menu_autodelete(callback_query: types.CallbackQuery):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             autodelete_label = f"<b>{self.auto_delete_delay_hours} ч</b>" if self.auto_delete_delay_hours > 0 else "<b>Выключено</b>"
             text = (
                 "🗑️ <b>Настройка времени автоудаления сообщений:</b>\n\n"
                 f"Текущее время автоудаления: {autodelete_label}\n"
                 "Выберите время жизни сообщений бота в чате (по истечении которого они будут стерты):"
             )
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="Отключить ❌", callback_data="set_autodelete_0"),
-                    InlineKeyboardButton(text="1 час", callback_data="set_autodelete_1"),
-                    InlineKeyboardButton(text="2 часа", callback_data="set_autodelete_2")
-                ],
-                [
-                    InlineKeyboardButton(text="4 часа", callback_data="set_autodelete_4"),
-                    InlineKeyboardButton(text="8 часов", callback_data="set_autodelete_8"),
-                    InlineKeyboardButton(text="24 часа", callback_data="set_autodelete_24")
-                ],
-                [
-                    InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
-                ]
-            ])
             try:
-                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+                await callback_query.message.edit_text(text=text, reply_markup=kb_ui.get_autodelete_keyboard(), parse_mode="HTML")
             except Exception:
                 pass
             await callback_query.answer()
@@ -624,27 +567,13 @@ class MasterBot:
 
         @self.dp.callback_query(F.data == "settings_menu_night_hours")
         async def process_settings_menu_night_hours(callback_query: types.CallbackQuery):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             text = (
                 "🌙 <b>Настройка часов тишины ночного режима:</b>\n\n"
                 f"Текущий интервал: <b>{self.night_start_hour:02d}:00 - {self.night_end_hour:02d}:00</b>\n"
                 "Выберите удобный промежуток сна (в это время ИИ отключается, а сообщения не беспокоят):"
             )
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="23:00 - 07:00", callback_data="set_nighthours_23_7"),
-                    InlineKeyboardButton(text="00:00 - 08:00", callback_data="set_nighthours_0_8")
-                ],
-                [
-                    InlineKeyboardButton(text="22:00 - 06:00", callback_data="set_nighthours_22_6"),
-                    InlineKeyboardButton(text="01:00 - 09:00", callback_data="set_nighthours_1_9")
-                ],
-                [
-                    InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")
-                ]
-            ])
             try:
-                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+                await callback_query.message.edit_text(text=text, reply_markup=kb_ui.get_nighthours_keyboard(), parse_mode="HTML")
             except Exception:
                 pass
             await callback_query.answer()
@@ -667,7 +596,6 @@ class MasterBot:
 
         @self.dp.callback_query(F.data == "settings_menu_blacklist")
         async def process_settings_menu_blacklist(callback_query: types.CallbackQuery):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             bws_email = await self.storage.get_banwords(scope="email")
             bws_vk = await self.storage.get_banwords(scope="vk")
             
@@ -682,31 +610,14 @@ class MasterBot:
                 "• <code>/unblock номер email</code> или <code>/unblock номер vk</code> — удалить"
             )
 
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text=f"✉️ Mail.ru ({len(bws_email)})", callback_data="bw_view_email_1"),
-                    InlineKeyboardButton(text=f"💬 ВКонтакте ({len(bws_vk)})", callback_data="bw_view_vk_1")
-                ],
-                [
-                    InlineKeyboardButton(text="❇️ ➕ Добавить в Mail.ru", callback_data="add_bw_prompt_email"),
-                    InlineKeyboardButton(text="❇️ ➕ Добавить в VK", callback_data="add_bw_prompt_vk")
-                ],
-                [
-                    InlineKeyboardButton(text="🔄 Сбросить все к базовым", callback_data="reset_banwords_confirm")
-                ],
-                [
-                    InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")
-                ]
-            ])
             try:
-                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+                await callback_query.message.edit_text(text=text, reply_markup=kb_ui.get_blacklist_menu_keyboard(len(bws_email), len(bws_vk)), parse_mode="HTML")
             except Exception:
                 pass
             await callback_query.answer()
 
         @self.dp.callback_query(F.data.startswith("bw_view_email_"))
         async def process_bw_view_email(callback_query: types.CallbackQuery):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             page = int(callback_query.data.replace("bw_view_email_", ""))
             bws = await self.storage.get_banwords(scope="email")
             
@@ -726,29 +637,7 @@ class MasterBot:
 
             lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления или отправьте <code>/unblock номер email</code></i>")
 
-            rows = []
-            row_buttons = []
-            for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
-                row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"remove_bw_email_{idx_in_page}_{page}"))
-                if len(row_buttons) == 3:
-                    rows.append(row_buttons)
-                    row_buttons = []
-            if row_buttons:
-                rows.append(row_buttons)
-
-            # Pagination buttons
-            nav_row = []
-            if page > 1:
-                nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bw_view_email_{page - 1}"))
-            nav_row.append(InlineKeyboardButton(text="❇️ ➕ Добавить банворд", callback_data="add_bw_prompt_email"))
-            if page < total_pages:
-                nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"bw_view_email_{page + 1}"))
-            rows.append(nav_row)
-
-            rows.append([InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")])
-            rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")])
-
-            kb = InlineKeyboardMarkup(inline_keyboard=rows)
+            kb = kb_ui.get_banwords_list_keyboard(page_bws, page, total_pages, "email", start_idx)
             try:
                 await callback_query.message.edit_text(text="\n".join(lines), reply_markup=kb, parse_mode="HTML")
             except Exception:
@@ -827,17 +716,13 @@ class MasterBot:
         @self.dp.callback_query(F.data == "add_bw_prompt_email")
         async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
             await callback_query.answer()
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")]
-            ])
             try:
                 await callback_query.message.edit_text(
                     "❇️ <b>Добавление банворда в Mail.ru:</b>\n\n"
                     "Отправьте команду:\n"
                     "<code>/block слово email</code>\n\n"
                     "<i>Пример:</i> <code>/block тинькофф email</code>",
-                    reply_markup=kb,
+                    reply_markup=kb_ui.get_add_banword_prompt_keyboard(),
                     parse_mode="HTML"
                 )
             except Exception:
@@ -846,17 +731,13 @@ class MasterBot:
         @self.dp.callback_query(F.data == "add_bw_prompt_vk")
         async def process_add_bw_prompt_vk(callback_query: types.CallbackQuery):
             await callback_query.answer()
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")]
-            ])
             try:
                 await callback_query.message.edit_text(
                     "❇️ <b>Добавление банворда в VK:</b>\n\n"
                     "Отправьте команду:\n"
                     "<code>/block слово vk</code>\n\n"
                     "<i>Пример:</i> <code>/block подпишись vk</code>",
-                    reply_markup=kb,
+                    reply_markup=kb_ui.get_add_banword_prompt_keyboard(),
                     parse_mode="HTML"
                 )
             except Exception:
