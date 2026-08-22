@@ -222,8 +222,11 @@ class MessageAggregatorApp:
         if queue_size > 0:
             logger.info(f"Flushing {queue_size} queued messages before shutdown...")
             try:
-                await self._flush_raw_queue()
+                # Add 3 second hard timeout to prevent systemd restart hangs
+                await asyncio.wait_for(self._flush_raw_queue(), timeout=3.0)
                 logger.info("Queue flushed successfully!")
+            except asyncio.TimeoutError:
+                logger.warning("Queue flush timed out during shutdown! Skipping.")
             except Exception as e:
                 logger.error(f"Error flushing queue on shutdown: {e}")
 

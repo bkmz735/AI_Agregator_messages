@@ -70,6 +70,12 @@ class Storage:
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Indexes for performance optimization
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_uid ON messages(msg_uid)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_ai_history_timestamp ON ai_chat_history(timestamp)")
+
             await db.commit()
 
             # Seed default banwords if table is empty
