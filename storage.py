@@ -74,7 +74,7 @@ class Storage:
             async with db.execute("SELECT COUNT(*) FROM tg_channels") as cursor:
                 row = await cursor.fetchone()
                 if row and row[0] == 0:
-                    defaults = ["rian_ru", "mash", "baza"]
+                    defaults = ["nexta_live", "batyanews", "maddysontg", "supernova_plus"]
                     if config.TG_NEWS_CHANNELS:
                         defaults = [c.strip().lstrip("@") for c in config.TG_NEWS_CHANNELS.split(",") if c.strip()]
                     for ch in defaults:
