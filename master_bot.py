@@ -142,8 +142,8 @@ class MasterBot:
         self._setup_handlers()
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
-    def _get_menu_keyboard(self, buffer_count: int = 0):
-        return kb_ui.get_main_reply_keyboard(buffer_count)
+    def _get_menu_keyboard(self, buffer_count: int = 0, is_sub_menu: bool = False):
+        return kb_ui.get_main_reply_keyboard(buffer_count, is_sub_menu=is_sub_menu)
 
     async def _register_bot_commands(self):
         """Registers blue '/' commands menu in Telegram app UI."""
@@ -211,15 +211,17 @@ class MasterBot:
         
         return text, kb_ui.get_settings_keyboard(self.delivery_mode, self.night_mode_enabled)
 
-    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False):
+    async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, is_sub_menu: bool = False, parse_mode: str = "HTML", force_new: bool = False):
         """Displays or smoothly edits the single active UI window in-place."""
         target_chat = self.master_chat_id
         if not target_chat or not self.bot:
             return
 
-        from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
+        from aiogram.types import InlineKeyboardMarkup
         inline_kb = keyboard if isinstance(keyboard, InlineKeyboardMarkup) else None
-        reply_kb = keyboard if isinstance(keyboard, ReplyKeyboardMarkup) else None
+        
+        buf_count = await self.storage.get_buffer_count()
+        reply_kb = kb_ui.get_main_reply_keyboard(buffer_count=buf_count, is_sub_menu=is_sub_menu)
 
         if self._last_ui_msg_id:
             if force_new:
@@ -254,20 +256,29 @@ class MasterBot:
             sent_msg = await self.bot.send_message(
                 chat_id=target_chat,
                 text=text,
-                reply_markup=inline_kb or reply_kb,
+                reply_markup=reply_kb,
                 parse_mode=parse_mode
             )
             self._last_ui_msg_id = sent_msg.message_id
             await self.storage.set_setting("last_ui_msg_id", str(sent_msg.message_id))
+
+            if inline_kb:
+                try:
+                    await self.bot.edit_message_reply_markup(
+                        chat_id=target_chat,
+                        message_id=sent_msg.message_id,
+                        reply_markup=inline_kb
+                    )
+                except Exception as ie:
+                    logger.debug(f"Could not attach inline_kb to panel: {ie}")
+
         except Exception as e:
             logger.error(f"Error updating single UI panel: {e}")
 
     async def update_status_banner(self, chat_id: Optional[int] = None, force_new: bool = False):
         """Creates or updates the single active status banner in-place."""
-        buf_count = await self.storage.get_buffer_count()
         text = "<b>AI Message Aggregator</b> — <i>Активен 🟢</i>"
-        reply_kb = self._get_menu_keyboard(buf_count)
-        await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
+        await self.show_or_edit_ui_panel(text=text, keyboard=None, is_sub_menu=False, force_new=force_new)
 
     def _setup_handlers(self):
         from aiogram.filters import Command
@@ -314,10 +325,7 @@ class MasterBot:
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
                 "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу без потери сообщений!"
             )
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-            ])
-            await self.show_or_edit_ui_panel(text=help_text, keyboard=kb, force_new=False)
+            await self.show_or_edit_ui_panel(text=help_text, keyboard=kb_ui.get_help_keyboard(), is_sub_menu=True, force_new=True)
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
@@ -379,25 +387,7 @@ class MasterBot:
             buf_count = await self.storage.get_buffer_count()
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             
-            if buf_count > 0:
-                text = (
-                    f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
-                    "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
-                )
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
-                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-                ])
-            else:
-                text = (
-                    "📥 <b>Буфер пуст!</b> Новых сообщений для сводки пока нет.\n"
-                    "Бот собирает входящие письма и сообщения в фоновом режиме."
-                )
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-                ])
-
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb_ui.get_buffer_keyboard(buf_count), is_sub_menu=True, force_new=True)
 
         @self.dp.callback_query(F.data == "flush_now")
         async def process_flush_now_callback(callback_query: types.CallbackQuery):
@@ -442,12 +432,7 @@ class MasterBot:
                 f"🚫 <b>Отфильтровано спама:</b> {stats.get('spam', 0)}\n\n"
                 f"📥 <b>Не доставлено в буфере:</b> {buf_count}"
             )
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-            ])
-            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, force_new=False)
+            await self.show_or_edit_ui_panel(text=stats_msg, keyboard=kb_ui.get_stats_keyboard(), is_sub_menu=True, force_new=True)
 
         @self.dp.message(Command("logs"))
         @self.dp.message(Command("debug"))
@@ -462,7 +447,7 @@ class MasterBot:
         @self.dp.callback_query(F.data == "refresh_logs")
         async def process_refresh_logs(callback_query: types.CallbackQuery):
             text, kb = await self._get_diagnostic_logs_text_and_keyboard()
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, is_sub_menu=True, force_new=True)
             await callback_query.answer("Логи обновлены!")
 
         @self.dp.message(F.text == "⚙️ Настройки")
@@ -474,7 +459,7 @@ class MasterBot:
                 pass
 
             text, kb = await self._get_settings_text_and_keyboard()
-            await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb, is_sub_menu=True, force_new=True)
 
         # Handle inline settings menu navigation and callbacks
         @self.dp.callback_query(F.data == "settings_main_menu")
@@ -962,12 +947,8 @@ class MasterBot:
                 await event.answer()
 
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")],
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-            ])
             text = "⚠️ <b>Вы действительно хотите очистить последние сообщения в чате?</b>\n<i>(Сообщения останутся в базе данных)</i>"
-            await self.show_or_edit_ui_panel(text=text, keyboard=inline_kb)
+            await self.show_or_edit_ui_panel(text=text, keyboard=kb_ui.get_clear_chat_prompt_keyboard(), is_sub_menu=True, force_new=True)
 
         # Handle inline "Close / Cancel" button click — returns UI to active status banner with ReplyKeyboard refreshed
         @self.dp.callback_query(F.data == "delete_msg")

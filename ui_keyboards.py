@@ -6,23 +6,25 @@ from typing import Optional, List, Dict, Any
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 
-def get_home_button() -> InlineKeyboardButton:
-    """Стандартная инлайн-кнопка возврата в Главное меню."""
-    return InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")
+def get_main_reply_keyboard(buffer_count: int = 0, is_sub_menu: bool = False) -> ReplyKeyboardMarkup:
+    """Нижняя финализированная Reply-клавиатура для Telegram бота."""
+    kb = []
+    if is_sub_menu:
+        kb.append([KeyboardButton(text="🏠 Главное меню")])
 
-
-def get_main_reply_keyboard(buffer_count: int = 0) -> ReplyKeyboardMarkup:
-    """Нижняя финализированная Reply-клавиатура для главного экрана бота."""
     if buffer_count > 0:
-        kb = [
-            [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
-        ]
+        kb.append([
+            KeyboardButton(text=f"📥 Буфер ({buffer_count})"),
+            KeyboardButton(text="🚀 Отправить сводку")
+        ])
     else:
-        kb = [
-            [KeyboardButton(text="📥 Буфер")],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
-        ]
+        kb.append([KeyboardButton(text="📥 Буфер")])
+
+    kb.append([
+        KeyboardButton(text="📊 Статистика"),
+        KeyboardButton(text="⚙️ Настройки")
+    ])
+    kb.append([KeyboardButton(text="🧹 Очистить чат")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
 
 
@@ -40,8 +42,7 @@ def get_settings_keyboard(delivery_mode: str, night_mode_enabled: bool) -> Inlin
         [
             InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist"),
             InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
-        ],
-        [get_home_button()]
+        ]
     ])
 
 
@@ -57,8 +58,7 @@ def get_interval_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="2 часа (120м)", callback_data="set_interval_120"),
             InlineKeyboardButton(text="4 часа (240м)", callback_data="set_interval_240")
         ],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")]
     ])
 
 
@@ -75,8 +75,7 @@ def get_autodelete_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="8 часов", callback_data="set_autodelete_8"),
             InlineKeyboardButton(text="24 часа", callback_data="set_autodelete_24")
         ],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")]
     ])
 
 
@@ -91,8 +90,7 @@ def get_nighthours_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="22:00 - 06:00", callback_data="set_nighthours_22_6"),
             InlineKeyboardButton(text="01:00 - 09:00", callback_data="set_nighthours_1_9")
         ],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")]
     ])
 
 
@@ -108,8 +106,7 @@ def get_blacklist_menu_keyboard(email_count: int, vk_count: int) -> InlineKeyboa
             InlineKeyboardButton(text="❇️ ➕ Добавить в VK", callback_data="add_bw_prompt_vk")
         ],
         [InlineKeyboardButton(text="🔄 Сбросить все к базовым", callback_data="reset_banwords_confirm")],
-        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")]
     ])
 
 
@@ -135,7 +132,6 @@ def get_banwords_list_keyboard(page_bws: List[Dict[str, Any]], page: int, total_
     rows.append(nav_row)
 
     rows.append([InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")])
-    rows.append([get_home_button()])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -143,16 +139,14 @@ def get_banwords_list_keyboard(page_bws: List[Dict[str, Any]], page: int, total_
 def get_add_banword_prompt_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура на экране с инструкцией добавления банворда."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")]
     ])
 
 
 def get_stats_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура экрана Статистики."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")]
     ])
 
 
@@ -160,34 +154,27 @@ def get_buffer_keyboard(buffer_count: int) -> Optional[InlineKeyboardMarkup]:
     """Инлайн-клавиатура экрана Буфера."""
     if buffer_count > 0:
         return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
-            [get_home_button()]
+            [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")]
         ])
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [get_home_button()]
-    ])
+    return None
 
 
-def get_help_keyboard() -> InlineKeyboardMarkup:
+def get_help_keyboard() -> Optional[InlineKeyboardMarkup]:
     """Инлайн-клавиатура экрана Справки."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [get_home_button()]
-    ])
+    return None
 
 
 def get_logs_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура экрана Логов диагностики."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить логи", callback_data="refresh_logs")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="🔄 Обновить логи", callback_data="refresh_logs")]
     ])
 
 
 def get_clear_chat_prompt_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура подтверждения очистки чата."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")],
-        [get_home_button()]
+        [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")]
     ])
 
 
