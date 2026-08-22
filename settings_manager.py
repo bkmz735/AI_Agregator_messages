@@ -112,6 +112,57 @@ class SettingsManager:
         val = await self.storage.get_setting("stats_spam_blocked", "0")
         return int(val)
 
+    async def get_ai_text_chat_enabled(self) -> bool:
+        val = await self.storage.get_setting("ai_text_chat_enabled", "true")
+        return val.lower() in ("true", "1", "yes")
+
+    async def update_ai_text_chat_enabled(self, enabled: bool):
+        await self.storage.set_setting("ai_text_chat_enabled", "true" if enabled else "false")
+
+    async def get_ai_suggestions_enabled(self) -> bool:
+        val = await self.storage.get_setting("ai_suggestions_enabled", "true")
+        return val.lower() in ("true", "1", "yes")
+
+    async def update_ai_suggestions_enabled(self, enabled: bool):
+        await self.storage.set_setting("ai_suggestions_enabled", "true" if enabled else "false")
+
+    async def get_ai_category_filters(self) -> dict:
+        import json
+        val = await self.storage.get_setting("ai_category_filters")
+        if val:
+            try:
+                return json.loads(val)
+            except:
+                pass
+        # Default: spam and bullshit are filtered (False = filtered, True = passed)
+        return {
+            "spam": False,
+            "bullshit": False,
+            "urgent": True,
+            "important": True,
+            "gov_debt": True,
+            "gov_service": True,
+            "news": True,
+            "media": True,
+            "general": True,
+            "politics": True,
+            "interesting": True
+        }
+
+    async def update_ai_category_filters(self, filters: dict):
+        import json
+        await self.storage.set_setting("ai_category_filters", json.dumps(filters))
+
+    async def toggle_ai_category_filter(self, category: str):
+        filters = await self.get_ai_category_filters()
+        # Toggle the boolean value
+        if category in filters:
+            filters[category] = not filters[category]
+        else:
+            # If not in dict, assume default was True, so toggle to False
+            filters[category] = False
+        await self.update_ai_category_filters(filters)
+
     async def get_ai_max_rpm(self) -> int:
         val = await self.storage.get_setting("ai_max_rpm", str(config.AI_MAX_RPM))
         return int(val)

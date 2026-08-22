@@ -545,3 +545,53 @@ class AIEngine:
             action_required=action_required,
             suggested_reply=suggested_reply
         )
+
+    async def ask_ai_question(self, user_text: str) -> str:
+        """Answers a direct question from the user using Gemini."""
+        if not self.client:
+            return "К сожалению, API-ключ ИИ не настроен, я не могу ответить на ваш вопрос."
+            
+        now = time.time()
+        if now < self.rate_limit_until:
+            wait_time = int(self.rate_limit_until - now)
+            return f"Извините, сейчас включена пауза API (лимит). Попробуйте через {wait_time} сек."
+
+        prompt = (
+            "Ты — умный ИИ-помощник (AI Message Aggregator). "
+            "Пользователь задает тебе вопрос или пишет сообщение напрямую в чат. "
+            "Отвечай кратко, полезно, вежливо и по делу.\n\n"
+            f"Сообщение пользователя:\n{user_text}"
+        )
+        
+        active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+        if not active_models:
+            return "К сожалению, все доступные модели ИИ исчерпали дневной лимит."
+            
+        for model_name in active_models:
+            try:
+                self._track_request()
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.models.generate_content,
+                        model=model_name,
+                        contents=prompt,
+                    ),
+                    timeout=15.0
+                )
+                if response and response.text:
+                    return response.text.strip()
+            except Exception as e:
+                err_str = str(e)
+                if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
+                    self.unsupported_models.add(model_name)
+                    continue
+                if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                        self.exhausted_models.add(model_name)
+                        continue
+                    else:
+                        self.rate_limit_until = time.time() + 60.0
+                        return f"Сработал минутный лимит запросов. Пожалуйста, подождите минуту. Ошибка: {e}"
+                continue
+                
+        return "Произошла ошибка при обращении к ИИ. Попробуйте позже."

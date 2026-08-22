@@ -17,6 +17,7 @@ def setup_all_handlers(master_bot):
     
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
+        master_bot.current_menu_state = 'main'
         if master_bot.master_chat_id != message.chat.id:
             master_bot.master_chat_id = message.chat.id
             await master_bot.settings.update_master_chat_id(master_bot.master_chat_id)
@@ -29,6 +30,7 @@ def setup_all_handlers(master_bot):
     
     @dp.message(F.text == "🏠 Главное меню")
     async def cmd_main_menu_button(message: types.Message):
+        master_bot.current_menu_state = 'main'
         try:
             await message.delete()
         except Exception:
@@ -51,7 +53,8 @@ def setup_all_handlers(master_bot):
             "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику сообщений\n"
             "🔹 `/clear` (или 🧹 Очистить чат) — Стереть сообщения в чате\n\n"
             "🏛️ <b>Умный помощник:</b> Бот автоматически находит и выделяет штрафы, налоги и уведомления от Госуслуг!\n\n"
-            "🎙️ <b>Расшифровка голосовых:</b> перешлите или отправьте голосовое сообщение, и оно автоматически переведется в текст!"
+            "🎙️ <b>Расшифровка голосовых:</b> перешлите или отправьте голосовое сообщение, и оно автоматически переведется в текст!\n\n"
+            "🤖 <b>Чат с ИИ:</b> Вы можете просто написать любой текст в чат (если бот не ждет от вас настройки), и умный ИИ ответит на ваш вопрос!"
         )
         await master_bot.show_or_edit_ui_panel(text=help_text, keyboard=kb_ui.get_help_keyboard(), force_new=False)
     
@@ -105,11 +108,19 @@ def setup_all_handlers(master_bot):
             logger.error(f"Error processing voice message: {e}")
             await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
     
-    @dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(getattr(master_bot, "_waiting_for_banword_scope", None)) or bool(getattr(master_bot, "_waiting_for_tg_channel", False)) or bool(getattr(master_bot, "_waiting_for_liked_topic", False)) or bool(getattr(master_bot, "_waiting_for_disliked_topic", False)))
+    @dp.message(F.text, ~F.text.startswith("/"))
     async def handle_text_message(message: types.Message):
         # If user tapped a ReplyButton while in input mode, cancel pending inputs
         menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
         if any(message.text.startswith(m) for m in menu_texts):
+            if message.text.startswith("🏠 Главное меню") or message.text.startswith("🧹 Очистить чат") or message.text.startswith("🚀 Отправить сводку"):
+                master_bot.current_menu_state = 'main'
+            elif message.text.startswith("⚙️ Настройки"):
+                master_bot.current_menu_state = 'settings'
+            elif message.text.startswith("📥 Буфер"):
+                master_bot.current_menu_state = 'buffer'
+            elif message.text.startswith("📊 Статистика"):
+                master_bot.current_menu_state = 'stats'
             master_bot._waiting_for_banword_scope = None
             master_bot._waiting_for_tg_channel = False
             master_bot._waiting_for_liked_topic = False
@@ -136,6 +147,29 @@ def setup_all_handlers(master_bot):
     
             await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
             await master_bot._show_tg_channels_page(1)
+            return
+            
+        if master_bot._waiting_for_liked_topic or master_bot._waiting_for_disliked_topic:
+            preference = "liked" if master_bot._waiting_for_liked_topic else "disliked"
+            master_bot._waiting_for_liked_topic = False
+            master_bot._waiting_for_disliked_topic = False
+            
+            raw_input = message.text.strip()
+            try:
+                await message.delete()
+            except Exception:
+                pass
+                
+            added = await master_bot.storage.add_news_topic(raw_input, preference=preference)
+            pref_name = "Желаемые" if preference == "liked" else "Запретные"
+            
+            if added:
+                sent_msg = await message.answer(f"✅ Тема <b>«{html.escape(raw_input)}»</b> добавлена в {pref_name}!", parse_mode="HTML")
+            else:
+                sent_msg = await message.answer(f"ℹ️ Тема <b>«{html.escape(raw_input)}»</b> уже есть в {pref_name}.", parse_mode="HTML")
+                
+            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
+            await master_bot._show_topics_list_page(preference, 1)
             return
     
         # Check if bot is waiting for interactive banword text input
@@ -175,6 +209,72 @@ def setup_all_handlers(master_bot):
     
             kb = kb_ui.get_banwords_list_keyboard(page_bws, 1, total_pages, scope, 0)
             await master_bot.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
+            return
+
+        # If not waiting for anything and not a menu button, it's a direct AI question!
+        chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
+        if master_bot.current_menu_state != 'main' or not chat_enabled:
+            sent_msg = await message.answer("⚠️ <b>Чат с ИИ недоступен</b>\nФункция отключена в настройках или вы находитесь не в Главном меню.", parse_mode="HTML")
+            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=5)
+            return
+
+        if master_bot.user_agent:
+            status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
+            try:
+                result = await master_bot.user_agent.process_message(message.text)
+                reply_text = result.get("text", "Ошибка ИИ.")
+                pending_action = result.get("pending_action")
+                
+                if pending_action:
+                    action_name = pending_action.get("action")
+                    args = pending_action.get("args", {})
+                    user_text = pending_action.get("user_text", "")
+                    
+                    if action_name in ["set_timezone", "set_digest_interval"]:
+                        if action_name == "set_timezone":
+                            offset = int(args.get("offset_hours", 0))
+                            await master_bot.settings.update_timezone_offset(offset)
+                            master_bot.timezone_offset = offset
+                            master_bot.start_digest_scheduler()
+                            result_msg = f"✅ Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}."
+                        elif action_name == "set_digest_interval":
+                            mins = int(args.get("minutes", 60))
+                            await master_bot.settings.update_digest_interval_minutes(mins)
+                            master_bot.start_digest_scheduler()
+                            result_msg = f"✅ Интервал сводок изменен на {mins} минут."
+                            
+                        await master_bot.storage.add_ai_chat_message("user", user_text)
+                        await master_bot.storage.add_ai_chat_message("model", result_msg)
+                        
+                        await status_msg.edit_text(result_msg, parse_mode="HTML")
+                        
+                        async def delayed_delete(msg):
+                            await asyncio.sleep(5)
+                            try:
+                                await msg.delete()
+                            except:
+                                pass
+                        asyncio.create_task(delayed_delete(status_msg))
+                    else:
+                        import uuid
+                        action_id = str(uuid.uuid4())[:8]
+                        master_bot.pending_ai_actions[action_id] = pending_action
+                        await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
+                else:
+                    await status_msg.edit_text(reply_text, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"AI Chat error: {e}")
+                await status_msg.edit_text(f"❌ Ошибка: {e}")
+        elif master_bot.ai_engine:
+            status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
+            try:
+                response = await master_bot.ai_engine.ask_ai_question(message.text)
+                await status_msg.edit_text(f"🤖 <b>Ответ ИИ:</b>\n\n{html.escape(response)}", parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Error asking AI question: {e}")
+                await status_msg.edit_text(f"❌ Ошибка обращения к ИИ: {e}")
+        else:
+            await message.answer("🤖 ИИ не настроен. Для работы этой функции требуется API-ключ.")
     
     @dp.message(F.text.startswith("📥 Буфер"))
     async def cmd_buffer(message: types.Message):
@@ -183,10 +283,20 @@ def setup_all_handlers(master_bot):
         except Exception:
             pass
             
-        buf_count = await master_bot.storage.get_buffer_count()
+        buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False)
+        buf_count = len(buffered_msgs)
         if buf_count > 0:
+            senders = [msg['sender'] for msg in buffered_msgs]
+            # Group senders and count them
+            from collections import Counter
+            sender_counts = Counter(senders)
+            senders_str = ", ".join([f"<b>{s}</b>" + (f" ({c})" if c > 1 else "") for s, c in sender_counts.most_common(5)])
+            if len(sender_counts) > 5:
+                senders_str += " и другие"
+
             text = (
-                f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n\n"
+                f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n"
+                f"<i>От: {senders_str}</i>\n\n"
                 "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
             )
         else:
@@ -250,6 +360,7 @@ def setup_all_handlers(master_bot):
     @dp.message(F.text.startswith("⚙️ Настройки"))
     @dp.message(Command("settings"))
     async def cmd_settings(message: types.Message):
+        master_bot.current_menu_state = 'settings'
         try:
             await message.delete()
         except Exception:
@@ -279,6 +390,21 @@ def setup_all_handlers(master_bot):
         except Exception:
             pass
         await callback_query.answer("Режим отправки изменен!")
+
+    @dp.callback_query(F.data == "settings_menu_content_filter")
+    async def process_settings_menu_content_filter(callback_query: types.CallbackQuery):
+        text = (
+            "🎛️ <b>Фильтр контента</b>\n\n"
+            "Здесь собраны все настройки модерации входящих сообщений:\n\n"
+            "🚫 <b>Строгие Банворды</b> — удаление сообщений по точным словам.\n"
+            "🧠 <b>Категории ИИ</b> — умная фильтрация спама, рекламы и различных тематик.\n"
+            "📰 <b>Темы новостей</b> — управление тем, какие новости вам интересны, а какие нет."
+        )
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb_ui.get_content_filter_keyboard(), parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer()
     
     @dp.callback_query(F.data == "settings_menu_tg_channels")
     async def process_settings_menu_tg_channels(callback_query: types.CallbackQuery):
@@ -459,6 +585,60 @@ def setup_all_handlers(master_bot):
         except Exception:
             pass
         await callback_query.answer()
+
+    @dp.callback_query(F.data == "settings_menu_ai")
+    async def process_settings_menu_ai(callback_query: types.CallbackQuery):
+        text, kb = await master_bot._get_ai_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer()
+
+    @dp.callback_query(F.data == "settings_toggle_ai_chat")
+    async def process_settings_toggle_ai_chat(callback_query: types.CallbackQuery):
+        current = await master_bot.settings.get_ai_text_chat_enabled()
+        await master_bot.settings.update_ai_text_chat_enabled(not current)
+        text, kb = await master_bot._get_ai_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        msg = "Умный чат включен!" if not current else "Умный чат выключен!"
+        await callback_query.answer(msg)
+
+    @dp.callback_query(F.data == "settings_toggle_ai_suggestions")
+    async def process_settings_toggle_ai_suggestions(callback_query: types.CallbackQuery):
+        current = await master_bot.settings.get_ai_suggestions_enabled()
+        await master_bot.settings.update_ai_suggestions_enabled(not current)
+        text, kb = await master_bot._get_ai_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        msg = "Подсказки ИИ включены!" if not current else "Подсказки ИИ выключены!"
+        await callback_query.answer(msg)
+
+    @dp.callback_query(F.data == "settings_menu_ai_filters")
+    async def process_settings_menu_ai_filters(callback_query: types.CallbackQuery):
+        text, kb = await master_bot._get_ai_filters_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer()
+
+    @dp.callback_query(F.data.startswith("toggle_ai_filter_"))
+    async def process_toggle_ai_filter(callback_query: types.CallbackQuery):
+        category = callback_query.data.replace("toggle_ai_filter_", "")
+        new_state = await master_bot.settings.toggle_ai_category_filter(category)
+        text, kb = await master_bot._get_ai_filters_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        msg = f"Категория {category}: {'Пропускать' if new_state else 'Фильтровать'}!"
+        await callback_query.answer(msg)
 
     @dp.callback_query(F.data.startswith("set_tz_"))
     async def process_set_timezone(callback_query: types.CallbackQuery):
@@ -776,10 +956,20 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "cmd_buf_inline")
     async def process_cmd_buf_inline(callback_query: types.CallbackQuery):
         await callback_query.answer()
-        buf_count = await master_bot.storage.get_buffer_count()
+        master_bot.current_menu_state = 'buffer'
+        buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False)
+        buf_count = len(buffered_msgs)
         if buf_count > 0:
+            senders = [msg['sender'] for msg in buffered_msgs]
+            from collections import Counter
+            sender_counts = Counter(senders)
+            senders_str = ", ".join([f"<b>{s}</b>" + (f" ({c})" if c > 1 else "") for s, c in sender_counts.most_common(5)])
+            if len(sender_counts) > 5:
+                senders_str += " и другие"
+
             text = (
-                f"📥 <b>В буфере ожидают:</b> {buf_count} сообщ.\n\n"
+                f"📥 <b>В буфере ожидают отправки:</b> {buf_count} сообщ.\n"
+                f"<i>От: {senders_str}</i>\n\n"
                 "Нажмите «🚀 Отправить сводку» для немедленного получения."
             )
         else:
@@ -794,6 +984,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "cmd_stats_inline")
     async def process_cmd_stats_inline(callback_query: types.CallbackQuery):
         await callback_query.answer()
+        master_bot.current_menu_state = 'stats'
         stats_msg = await master_bot._get_formatted_stats_text()
         inline_kb = kb_ui.get_stats_keyboard()
         await master_bot.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
@@ -802,6 +993,7 @@ def setup_all_handlers(master_bot):
     @dp.message(Command("clear"))
     @dp.message(F.text.startswith("🧹 Очистить чат"))
     async def cmd_clear_chat(event: Any):
+        master_bot.current_menu_state = 'main'
         if isinstance(event, types.Message):
             try:
                 await event.delete()
@@ -850,72 +1042,6 @@ def setup_all_handlers(master_bot):
             await master_bot.update_status_banner(target_chat)
     
         asyncio.create_task(_do_delete_bg())
-    
-    # --- AI Conversational Agent Handlers ---
-    @dp.message(F.text, ~F.text.startswith("/"))
-    async def handle_ai_chat_message(message: types.Message):
-        # If we are waiting for a specific setting input, let the previous handler take it
-        if any([getattr(master_bot, "_waiting_for_banword_scope", None), 
-                getattr(master_bot, "_waiting_for_tg_channel", False),
-                getattr(master_bot, "_waiting_for_liked_topic", False),
-                getattr(master_bot, "_waiting_for_disliked_topic", False)]):
-            return
-        
-        if not master_bot.user_agent:
-            await message.reply("ИИ агент не настроен.")
-            return
-            
-        status_msg = await message.reply("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
-        try:
-            result = await master_bot.user_agent.process_message(message.text)
-            reply_text = result.get("text", "Ошибка ИИ.")
-            pending_action = result.get("pending_action")
-            
-            if pending_action:
-                action_name = pending_action.get("action")
-                args = pending_action.get("args", {})
-                user_text = pending_action.get("user_text", "")
-                
-                # Auto-execute minor actions
-                if action_name in ["set_timezone", "set_digest_interval"]:
-                    if action_name == "set_timezone":
-                        offset = int(args.get("offset_hours", 0))
-                        await master_bot.settings.update_timezone_offset(offset)
-                        master_bot.timezone_offset = offset
-                        master_bot.start_digest_scheduler()
-                        result_msg = f"✅ Часовой пояс изменен на UTC{'+' if offset >= 0 else ''}{offset}."
-                    elif action_name == "set_digest_interval":
-                        mins = int(args.get("minutes", 60))
-                        await master_bot.settings.update_digest_interval_minutes(mins)
-                        master_bot.start_digest_scheduler()
-                        result_msg = f"✅ Интервал сводок изменен на {mins} минут."
-                        
-                    await master_bot.storage.add_ai_chat_message("user", user_text)
-                    await master_bot.storage.add_ai_chat_message("model", result_msg)
-                    
-                    await status_msg.edit_text(result_msg, parse_mode="HTML")
-                    
-                    # Delete the success message after 5 seconds
-                    import asyncio
-                    async def delayed_delete(msg):
-                        await asyncio.sleep(5)
-                        try:
-                            await msg.delete()
-                        except:
-                            pass
-                    asyncio.create_task(delayed_delete(status_msg))
-                    
-                else:
-                    # Require confirmation for major actions
-                    import uuid
-                    action_id = str(uuid.uuid4())[:8]
-                    master_bot.pending_ai_actions[action_id] = pending_action
-                    await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
-            else:
-                await status_msg.edit_text(reply_text, parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"AI Chat error: {e}")
-            await status_msg.edit_text(f"❌ Ошибка: {e}")
     
     @dp.callback_query(F.data.startswith("ai_confirm_"))
     async def process_ai_action_confirm(callback_query: types.CallbackQuery):

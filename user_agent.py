@@ -1,6 +1,5 @@
 import logging
 from typing import Dict, Any
-from google import genai
 from google.genai import types
 from settings_manager import SettingsManager
 
@@ -28,15 +27,15 @@ class ConversationalAgent:
     # Tool definitions
     def add_banword(self, word: str, scope: str = "global") -> str:
         """Adds a new banword to filter out unwanted messages."""
-        pass 
+        pass
 
     def add_news_topic(self, topic: str, preference: str) -> str:
         """Adds a news topic. Preference must be either 'liked' (interesting) or 'disliked' (ignore)."""
-        pass 
+        pass
 
     def remove_news_topic(self, topic: str, preference: str) -> str:
         """Removes a news topic. Preference must be either 'liked' or 'disliked'."""
-        pass 
+        pass
 
     def add_tg_channel(self, channel_username: str) -> str:
         """Adds a Telegram channel to the bot's watchlist. Make sure channel_username is a valid @username or t.me/ link."""
@@ -44,7 +43,7 @@ class ConversationalAgent:
 
     def get_bot_stats(self) -> str:
         """Returns the current message statistics."""
-        pass 
+        pass
 
     def set_timezone(self, offset_hours: int) -> str:
         """Sets the bot's timezone offset in hours from UTC (e.g., 3 for Moscow, 5 for Yekaterinburg)."""

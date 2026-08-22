@@ -109,6 +109,7 @@ class MasterBot:
         self.timezone_offset = 3  # Default UTC+3
         self.night_start_hour = config.NIGHT_START_HOUR
         self.night_end_hour = config.NIGHT_END_HOUR
+        self.current_menu_state = 'main'
         self._last_ui_msg_id = None
         self._last_clear_prompt_msg_id = None
         self._last_buffer_status_msg_id = None
@@ -175,7 +176,7 @@ class MasterBot:
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
     def _get_menu_keyboard(self, buffer_count: int = 0, is_sub_menu: bool = False):
-        return kb_ui.get_main_reply_keyboard(buffer_count, is_sub_menu=is_sub_menu)
+        return kb_ui.get_main_reply_keyboard(buffer_count)
 
     async def _register_bot_commands(self):
         """Registers blue '/' commands menu in Telegram app UI."""
@@ -377,6 +378,28 @@ class MasterBot:
         )
         return text, kb_ui.get_night_settings_keyboard(self.night_mode_enabled)
 
+    async def _get_ai_settings_text_and_keyboard(self):
+        chat_enabled = await self.settings.get_ai_text_chat_enabled()
+        sugg_enabled = await self.settings.get_ai_suggestions_enabled()
+        text = (
+            "🧠 <b>Настройки ИИ</b>\n\n"
+            "<b>Умный чат</b>: Позволяет боту отвечать на ваши текстовые сообщения в Главном меню.\n"
+            "<b>Умные подсказки</b>: ИИ помогает вам при вводе настроек (авто-исправление опечаток в банвордах, каналах и т.д.).\n\n"
+            "<i>Выберите нужные опции ниже:</i>"
+        )
+        return text, kb_ui.get_ai_settings_keyboard(chat_enabled, sugg_enabled)
+
+    async def _get_ai_filters_text_and_keyboard(self):
+        filters = await self.settings.get_ai_category_filters()
+        text = (
+            "🛡️ <b>Управление фильтрами ИИ</b>\n\n"
+            "Здесь вы можете выбрать, какие категории сообщений ИИ будет фильтровать (прятать) в фоне.\n\n"
+            "🟢 — Пропускать (доставлять в сводку)\n"
+            "🔴 — Фильтровать (удалять как спам)\n\n"
+            "<i>Нажмите на категорию, чтобы переключить ее статус:</i>"
+        )
+        return text, kb_ui.get_ai_filters_list_keyboard(filters)
+
     async def show_or_edit_ui_panel(self, text: str, keyboard: Any = None, parse_mode: str = "HTML", force_new: bool = False, chat_id: Optional[int] = None):
         """Displays or smoothly edits the single active UI window in-place."""
         target_chat = chat_id or self.master_chat_id
@@ -452,8 +475,9 @@ class MasterBot:
         Decides whether to send immediately or store in buffer based on category and delivery mode.
         Returns True if delivered immediately, False if buffered.
         """
-        if category in ("spam", "bullshit"):
-            logger.info(f"Muting {category} message from [{channel}] {sender}.")
+        filters = await self.settings.get_ai_category_filters()
+        if not filters.get(category, True):
+            logger.info(f"Muting {category} message from [{channel}] {sender} due to AI filter settings.")
             return False
 
         # Urgent messages ALWAYS bypass buffer and notify immediately!

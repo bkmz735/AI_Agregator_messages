@@ -2,7 +2,7 @@
 ui_keyboards.py — Единый модуль генерации клавиатур (Reply & Inline) для Telegram бота.
 Все кнопки и их компоновка изолированы здесь.
 """
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 
@@ -31,15 +31,28 @@ def get_settings_keyboard(delivery_mode: str) -> InlineKeyboardMarkup:
     mode_btn_text = f"⚡ Режим: {'Сводка' if delivery_mode == 'instant' else 'Сразу'}"
     
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist")],
+        [InlineKeyboardButton(text="🎛️ Фильтр контента", callback_data="settings_menu_content_filter")],
         [InlineKeyboardButton(text="✈️ ТГ-каналы новостей", callback_data="settings_menu_tg_channels")],
-        [InlineKeyboardButton(text="📰 Темы новостей", callback_data="settings_menu_topics")],
         [InlineKeyboardButton(text="⏱️ Время и Таймеры", callback_data="settings_menu_time")],
-        [InlineKeyboardButton(text="🌙 Ночной режим", callback_data="settings_menu_night")],
+        [
+            InlineKeyboardButton(text="🌙 Ночной режим", callback_data="settings_menu_night"),
+            InlineKeyboardButton(text="🧠 ИИ", callback_data="settings_menu_ai")
+        ],
         [
             InlineKeyboardButton(text=mode_btn_text, callback_data="settings_toggle_mode"),
             InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
         ],
+        [get_home_button()]
+    ])
+
+
+def get_content_filter_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура подменю «Фильтр контента»."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚫 Строгие Банворды", callback_data="settings_menu_blacklist")],
+        [InlineKeyboardButton(text="🧠 Категории ИИ", callback_data="ai_menu_filters")],
+        [InlineKeyboardButton(text="📰 Темы новостей", callback_data="settings_menu_topics")],
+        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
         [get_home_button()]
     ])
 
@@ -64,6 +77,58 @@ def get_night_settings_keyboard(night_mode_enabled: bool) -> InlineKeyboardMarku
         [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
         [get_home_button()]
     ])
+
+
+def get_ai_settings_keyboard(chat_enabled: bool, suggestions_enabled: bool) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура подменю «Настройки ИИ»."""
+    chat_text = "Умный чат 🟢" if chat_enabled else "Умный чат 🔴"
+    sugg_text = "Умные подсказки 🟢" if suggestions_enabled else "Умные подсказки 🔴"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=chat_text, callback_data="ai_toggle_chat")],
+        [InlineKeyboardButton(text=sugg_text, callback_data="ai_toggle_suggestions")],
+        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
+        [get_home_button()]
+    ])
+
+def get_ai_filters_list_keyboard(filters: Dict[str, bool]) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура управления фильтрами (категориями) ИИ."""
+    rows = []
+    # Display categories in pairs per row if possible, or one by one
+    # True = Pass (🟢), False = Filter/Hide (🔴)
+    
+    # Map internal categories to Russian display names for better UI
+    display_names = {
+        "spam": "Спам",
+        "bullshit": "Бред / Мусор",
+        "urgent": "Срочное",
+        "important": "Важное",
+        "gov_debt": "Госуслуги (Долги)",
+        "gov_service": "Госуслуги (Прочее)",
+        "news": "Новости",
+        "media": "Медиа",
+        "general": "Общее",
+        "politics": "Политика",
+        "interesting": "Интересное"
+    }
+
+    current_row = []
+    for cat, passed in filters.items():
+        name = display_names.get(cat, cat.capitalize())
+        icon = "🟢" if passed else "🔴"
+        btn_text = f"{name} {icon}"
+        current_row.append(InlineKeyboardButton(text=btn_text, callback_data=f"ai_filter_toggle_{cat}"))
+        
+        if len(current_row) == 2:
+            rows.append(current_row)
+            current_row = []
+            
+    if current_row:
+        rows.append(current_row)
+
+    rows.append([InlineKeyboardButton(text="🔙 Назад к Фильтрам", callback_data="settings_menu_content_filter")])
+    rows.append([get_home_button()])
+    
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def get_interval_keyboard() -> InlineKeyboardMarkup:
@@ -142,7 +207,7 @@ def get_blacklist_menu_keyboard(email_count: int, vk_count: int) -> InlineKeyboa
             InlineKeyboardButton(text=f"💬 ВКонтакте ({vk_count})", callback_data="bw_view_vk_1")
         ],
         [InlineKeyboardButton(text="➕ Добавить", callback_data="add_bw_select_scope")],
-        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
+        [InlineKeyboardButton(text="🔙 Назад к Фильтрам", callback_data="settings_menu_content_filter")],
         [get_home_button()]
     ])
 
@@ -296,7 +361,7 @@ def get_news_topics_main_keyboard(liked_count: int, disliked_count: int) -> Inli
             InlineKeyboardButton(text=f"💚 Желаемые темы ({liked_count})", callback_data="topics_view_liked_1"),
             InlineKeyboardButton(text=f"🛑 Запретные темы ({disliked_count})", callback_data="topics_view_disliked_1")
         ],
-        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
+        [InlineKeyboardButton(text="🔙 Назад к Фильтрам", callback_data="settings_menu_content_filter")],
         [get_home_button()]
     ])
 

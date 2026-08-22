@@ -287,10 +287,11 @@ class Storage:
                     rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
-    async def add_banword(self, word: str, scope: str = "email") -> Optional[Dict[str, Any]]:
-        """Adds a banword with scope ('email' or 'vk')."""
+    async def add_banword(self, word: str, scope: str = "global") -> Optional[Dict[str, Any]]:
+        """Adds a banword with scope ('global', 'email', or 'vk')."""
         clean_word = word.strip().lower()
-        clean_scope = "vk" if "vk" in scope.strip().lower() else "email"
+        scope_l = scope.strip().lower()
+        clean_scope = scope_l if scope_l in ("global", "email", "vk") else "global"
         if not clean_word:
             return None
         async with self.get_db() as db:
@@ -469,14 +470,6 @@ class Storage:
         """Removes a Telegram channel by its DB ID."""
         async with self.get_db() as db:
             cursor = await db.execute("DELETE FROM tg_channels WHERE id = ?", (channel_id,))
-            await db.commit()
-            return cursor.rowcount > 0
-
-    async def remove_tg_channel(self, username: str) -> bool:
-        """Removes a Telegram channel by username."""
-        clean_user = username.strip().lstrip("@").lower()
-        async with self.get_db() as db:
-            cursor = await db.execute("DELETE FROM tg_channels WHERE username = ?", (clean_user,))
             await db.commit()
             return cursor.rowcount > 0
 
