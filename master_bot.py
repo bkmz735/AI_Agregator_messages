@@ -722,8 +722,7 @@ class MasterBot:
             else:
                 for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
                     lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
-
-            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
+                lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
 
             kb = kb_ui.get_banwords_list_keyboard(page_bws, page, total_pages, "email", start_idx)
             try:
@@ -734,7 +733,6 @@ class MasterBot:
 
         @self.dp.callback_query(F.data.startswith("bw_view_vk_"))
         async def process_bw_view_vk(callback_query: types.CallbackQuery):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             page = int(callback_query.data.replace("bw_view_vk_", ""))
             bws = await self.storage.get_banwords(scope="vk")
             
@@ -751,32 +749,9 @@ class MasterBot:
             else:
                 for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
                     lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
+                lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
 
-            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
-
-            rows = []
-            row_buttons = []
-            for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
-                row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"remove_bw_vk_{idx_in_page}_{page}"))
-                if len(row_buttons) == 3:
-                    rows.append(row_buttons)
-                    row_buttons = []
-            if row_buttons:
-                rows.append(row_buttons)
-
-            # Pagination buttons
-            nav_row = []
-            if page > 1:
-                nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"bw_view_vk_{page - 1}"))
-            nav_row.append(InlineKeyboardButton(text="❇️ ➕ Добавить банворд", callback_data="add_bw_prompt_vk"))
-            if page < total_pages:
-                nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"bw_view_vk_{page + 1}"))
-            rows.append(nav_row)
-
-            rows.append([InlineKeyboardButton(text="🔙 К категориям банвордов", callback_data="settings_menu_blacklist")])
-            rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")])
-
-            kb = InlineKeyboardMarkup(inline_keyboard=rows)
+            kb = kb_ui.get_banwords_list_keyboard(page_bws, page, total_pages, "vk", start_idx)
             try:
                 await callback_query.message.edit_text(text="\n".join(lines), reply_markup=kb, parse_mode="HTML")
             except Exception:
