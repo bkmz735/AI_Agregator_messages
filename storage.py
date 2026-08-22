@@ -52,8 +52,21 @@ class Storage:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS tg_channels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    title TEXT DEFAULT ''
+                    username TEXT UNIQUE NOT NULL
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS news_topics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT UNIQUE NOT NULL,
+                    preference TEXT NOT NULL
+                )
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ai_chat_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             await db.commit()
@@ -321,31 +334,98 @@ class Storage:
 
     # Telegram News Channels Management
     async def get_tg_channels(self) -> List[Dict[str, Any]]:
-        """Returns all monitored Telegram news channels."""
+        """Returns a list of tracked public Telegram news channels."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT id, username, title FROM tg_channels ORDER BY id ASC") as cursor:
+            async with db.execute("SELECT id, username FROM tg_channels ORDER BY id ASC") as cursor:
                 rows = await cursor.fetchall()
                 return [dict(r) for r in rows]
 
-    async def add_tg_channel(self, username: str, title: str = "") -> Optional[int]:
-        """Adds a Telegram channel to monitoring."""
-        clean_user = username.strip().lstrip("@").lower()
-        # Clean URL if passed as link (https://t.me/channel_name)
-        if "t.me/" in clean_user:
-            clean_user = clean_user.split("t.me/")[-1].split("/")[0].strip()
+    async def add_tg_channel(self, username: str) -> Optional[Dict[str, Any]]:
+        clean_user = username.replace("https://t.me/", "").replace("@", "").strip().lower()
         if not clean_user:
             return None
         async with aiosqlite.connect(self.db_path) as db:
             try:
+                cursor = await db.execute("INSERT INTO tg_channels (username) VALUES (?)", (clean_user,))
+                await db.commit()
+                return {"id": cursor.lastrowid, "username": clean_user}
+            except Exception:
+                return None
+
+    async def remove_tg_channel(self, identifier: str) -> Optional[str]:
+        clean_val = identifier.strip().lower()
+        async with aiosqlite.connect(self.db_path) as db:
+            deleted_username = None
+            if clean_val.isdigit():
+                idx = int(clean_val)
+                chans = await self.get_tg_channels()
+                if 1 <= idx <= len(chans):
+                    target_ch = chans[idx - 1]
+                    deleted_username = target_ch["username"]
+                    await db.execute("DELETE FROM tg_channels WHERE id = ?", (target_ch["id"],))
+            else:
+                clean_val = clean_val.replace("https://t.me/", "").replace("@", "")
+                async with db.execute("SELECT username FROM tg_channels WHERE username = ?", (clean_val,)) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        deleted_username = row[0]
+                        await db.execute("DELETE FROM tg_channels WHERE username = ?", (clean_val,))
+            if deleted_username:
+                await db.commit()
+                return deleted_username
+        return None
+
+    # --- News Topics Management ---
+
+    async def get_news_topics(self, preference: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns a list of news topics. If preference is provided (liked/disliked), filters by it."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if preference:
+                async with db.execute("SELECT id, topic, preference FROM news_topics WHERE preference = ? ORDER BY id ASC", (preference,)) as cursor:
+                    rows = await cursor.fetchall()
+            else:
+                async with db.execute("SELECT id, topic, preference FROM news_topics ORDER BY id ASC") as cursor:
+                    rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    async def add_news_topic(self, topic: str, preference: str) -> Optional[Dict[str, Any]]:
+        clean_topic = topic.strip()
+        if not clean_topic or preference not in ("liked", "disliked"):
+            return None
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
                 cursor = await db.execute(
-                    "INSERT INTO tg_channels (username, title) VALUES (?, ?)",
-                    (clean_user, title)
+                    "INSERT INTO news_topics (topic, preference) VALUES (?, ?)", 
+                    (clean_topic, preference)
                 )
                 await db.commit()
-                return cursor.lastrowid
-            except aiosqlite.IntegrityError:
+                return {"id": cursor.lastrowid, "topic": clean_topic, "preference": preference}
+            except Exception:
                 return None
+
+    async def remove_news_topic(self, identifier: str, preference: str) -> Optional[str]:
+        clean_val = identifier.strip()
+        async with aiosqlite.connect(self.db_path) as db:
+            deleted_topic = None
+            if clean_val.isdigit():
+                idx = int(clean_val)
+                topics = await self.get_news_topics(preference=preference)
+                if 1 <= idx <= len(topics):
+                    target_topic = topics[idx - 1]
+                    deleted_topic = target_topic["topic"]
+                    await db.execute("DELETE FROM news_topics WHERE id = ?", (target_topic["id"],))
+            else:
+                async with db.execute("SELECT topic FROM news_topics WHERE topic = ? AND preference = ?", (clean_val, preference)) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        deleted_topic = row[0]
+                        await db.execute("DELETE FROM news_topics WHERE topic = ? AND preference = ?", (clean_val, preference))
+            if deleted_topic:
+                await db.commit()
+                return deleted_topic
+        return None
 
     async def remove_tg_channel_by_id(self, channel_id: int) -> bool:
         """Removes a Telegram channel by its DB ID."""
@@ -362,10 +442,28 @@ class Storage:
             await db.commit()
             return cursor.rowcount > 0
 
-    # Legacy compatibility methods
     async def get_custom_spam_keywords(self) -> List[str]:
         bws = await self.get_banwords()
-        return [b["word"] for b in bws]
+        return [bw["word"] for bw in bws]
+        
+    # --- AI Chat History Methods ---
+    async def add_ai_chat_message(self, role: str, content: str):
+        """Adds a message to the AI chat history."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("INSERT INTO ai_chat_history (role, content) VALUES (?, ?)", (role, content))
+            await db.commit()
+
+    async def get_ai_chat_history(self) -> List[Dict[str, str]]:
+        """Retrieves history from the last 6 hours and deletes older messages."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            # Delete messages older than 6 hours
+            await db.execute("DELETE FROM ai_chat_history WHERE timestamp <= datetime('now', '-6 hours')")
+            await db.commit()
+            
+            async with db.execute("SELECT role, content FROM ai_chat_history ORDER BY id ASC") as cursor:
+                rows = await cursor.fetchall()
+                return [{"role": r["role"], "content": r["content"]} for r in rows]
 
     async def add_spam_keyword(self, word: str) -> bool:
         res = await self.add_banword(word, "global")

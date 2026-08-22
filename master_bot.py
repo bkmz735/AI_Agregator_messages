@@ -106,12 +106,22 @@ class MasterBot:
         self._waiting_for_tg_channel: bool = False
         self.dp = None
         self.bot = None
+        
+        self.pending_ai_actions = {}
+        if self.ai_engine and hasattr(self.ai_engine, 'client'):
+            from user_agent import ConversationalAgent
+            self.user_agent = ConversationalAgent(self.ai_engine, self.storage)
+        else:
+            self.user_agent = None
 
         if self.bot_token:
             self._init_bot_instance(use_proxy=True if config.TELEGRAM_PROXY else False)
 
     def set_ai_engine(self, ai_engine):
         self.ai_engine = ai_engine
+        if self.ai_engine and hasattr(self.ai_engine, 'client'):
+            from user_agent import ConversationalAgent
+            self.user_agent = ConversationalAgent(self.ai_engine, self.storage)
 
     def set_flush_raw_queue_callback(self, callback: Callable[[], Awaitable[None]]):
         self.on_flush_raw_queue = callback
@@ -265,6 +275,40 @@ class MasterBot:
             lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления из отслеживания:</i>")
 
         kb = kb_ui.get_tg_channels_list_keyboard(page_chans, page, total_pages, start_idx)
+        await self.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
+
+    async def _show_topics_main_page(self):
+        liked_topics = await self.storage.get_news_topics(preference="liked")
+        disliked_topics = await self.storage.get_news_topics(preference="disliked")
+        
+        text = (
+            "📰 <b>Темы новостей</b>\n\n"
+            "Укажите, какие темы вам нравятся (бот будет собирать их в интересное), "
+            "а какие вам неприятны или неинтересны (бот будет их игнорировать как спам/bullshit)."
+        )
+        kb = kb_ui.get_news_topics_main_keyboard(len(liked_topics), len(disliked_topics))
+        await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
+
+    async def _show_topics_list_page(self, preference: str, page: int):
+        topics = await self.storage.get_news_topics(preference=preference)
+        per_page = 9
+        total_pages = max(1, (len(topics) + per_page - 1) // per_page)
+        
+        start_idx = (page - 1) * per_page
+        page_topics = topics[start_idx : start_idx + per_page]
+        
+        icon = "💚" if preference == "liked" else "🛑"
+        pref_name = "Желаемые" if preference == "liked" else "Запретные"
+        
+        lines = [f"{icon} <b>{pref_name} темы новостей</b>\n<i>(Стр. {page}/{total_pages}, всего: {len(topics)})</i>\n"]
+        if not topics:
+            lines.append(f"<i>Список пуст.</i>")
+        else:
+            for idx_in_page, t in enumerate(page_topics, start=start_idx + 1):
+                lines.append(f"{idx_in_page}. <code>{html.escape(t['topic'])}</code>")
+            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
+
+        kb = kb_ui.get_news_topics_list_keyboard(page_topics, page, total_pages, preference, start_idx)
         await self.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
 
     async def _get_settings_text_and_keyboard(self):
@@ -452,16 +496,17 @@ class MasterBot:
                 logger.error(f"Error processing voice message: {e}")
                 await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
 
-        @self.dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(getattr(self, "_waiting_for_banword_scope", None)) or bool(getattr(self, "_waiting_for_tg_channel", False)))
+        @self.dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(getattr(self, "_waiting_for_banword_scope", None)) or bool(getattr(self, "_waiting_for_tg_channel", False)) or bool(getattr(self, "_waiting_for_liked_topic", False)) or bool(getattr(self, "_waiting_for_disliked_topic", False)))
         async def handle_text_message(message: types.Message):
             # If user tapped a ReplyButton while in input mode, cancel pending inputs
             menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
             if any(message.text.startswith(m) for m in menu_texts):
                 self._waiting_for_banword_scope = None
                 self._waiting_for_tg_channel = False
+                self._waiting_for_liked_topic = False
+                self._waiting_for_disliked_topic = False
                 return
 
-            # Check if bot is waiting for interactive TG news channel text input
             if self._waiting_for_tg_channel:
                 self._waiting_for_tg_channel = False
                 raw_input = message.text.strip()
@@ -629,6 +674,60 @@ class MasterBot:
         @self.dp.callback_query(F.data == "settings_menu_tg_channels")
         async def process_settings_menu_tg_channels(callback_query: types.CallbackQuery):
             await self._show_tg_channels_page(1)
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data == "settings_menu_topics")
+        async def process_settings_menu_topics(callback_query: types.CallbackQuery):
+            await self._show_topics_main_page()
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("topics_view_"))
+        async def process_topics_view(callback_query: types.CallbackQuery):
+            parts = callback_query.data.split("_")
+            preference = parts[2]
+            page = int(parts[3])
+            await self._show_topics_list_page(preference, page)
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("remove_topic_"))
+        async def process_remove_topic(callback_query: types.CallbackQuery):
+            parts = callback_query.data.split("_")
+            preference = parts[2]
+            idx_in_page = parts[3]
+            page_val = int(parts[4])
+            
+            removed = await self.storage.remove_news_topic(idx_in_page, preference=preference)
+            if removed:
+                await callback_query.answer("Тема удалена!")
+            else:
+                await callback_query.answer("Тема не найдена!")
+            await self._show_topics_list_page(preference, page_val)
+
+        @self.dp.callback_query(F.data.startswith("add_topic_prompt_"))
+        async def process_add_topic_prompt(callback_query: types.CallbackQuery):
+            preference = callback_query.data.split("_")[-1]
+            if preference == "liked":
+                self._waiting_for_liked_topic = True
+                icon = "💚"
+                pref_name = "Желаемой"
+            else:
+                self._waiting_for_disliked_topic = True
+                icon = "🛑"
+                pref_name = "Запретной"
+
+            text = (
+                f"{icon} <b>Добавление {pref_name} темы</b>\n\n"
+                "Отправьте тему следующим сообщением в чат.\n\n"
+                "<i>Например:</i>\n"
+                "• <code>IT технологии</code>\n"
+                "• <code>Убийства</code>"
+            )
+            
+            kb = kb_ui.get_add_topic_prompt_keyboard(preference)
+            try:
+                await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
             await callback_query.answer()
 
         @self.dp.callback_query(F.data.startswith("tg_chan_page_"))
@@ -1015,19 +1114,12 @@ class MasterBot:
 
 
             
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-            ])
+            inline_kb = kb_ui.get_home_only_keyboard()
             await self.show_or_edit_ui_panel(text="\n".join(lines), keyboard=inline_kb)
 
         @self.dp.callback_query(F.data == "confirm_reset_stats")
         async def process_confirm_reset_stats(callback_query: types.CallbackQuery):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="do_reset_stats")]
-            ])
+            inline_kb = kb_ui.get_confirm_reset_stats_keyboard()
             try:
                 await callback_query.message.edit_text(
                     "⚠️ <b>Вы действительно хотите сбросить всю накопленную статистику сообщений?</b>",
@@ -1043,11 +1135,7 @@ class MasterBot:
             await self.storage.reset_stats()
             stats_msg = await self._get_formatted_stats_text(" (Сброшено ✅)")
             
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")],
-                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")]
-            ])
+            inline_kb = kb_ui.get_stats_keyboard()
             try:
                 await callback_query.message.edit_text(stats_msg, reply_markup=inline_kb, parse_mode="HTML")
             except Exception:
@@ -1058,25 +1146,17 @@ class MasterBot:
         async def process_cmd_buf_inline(callback_query: types.CallbackQuery):
             await callback_query.answer()
             buf_count = await self.storage.get_buffer_count()
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            
             if buf_count > 0:
                 text = (
                     f"📥 <b>В буфере ожидают:</b> {buf_count} сообщ.\n\n"
                     "Нажмите «🚀 Отправить сводку» для немедленного получения."
                 )
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
-                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-                ])
             else:
                 text = (
                     "📥 <b>Буфер пуст!</b> Новых сообщений для сводки пока нет.\n"
                     "Бот собирает входящие письма и сообщения в фоновом режиме."
                 )
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-                ])
+            kb = kb_ui.get_buffer_keyboard(buf_count)
 
             await self.show_or_edit_ui_panel(text=text, keyboard=kb)
 
@@ -1084,11 +1164,7 @@ class MasterBot:
         async def process_cmd_stats_inline(callback_query: types.CallbackQuery):
             await callback_query.answer()
             stats_msg = await self._get_formatted_stats_text()
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
-            ])
+            inline_kb = kb_ui.get_stats_keyboard()
             await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb)
 
         @self.dp.callback_query(F.data == "prompt_clear_chat")
@@ -1142,6 +1218,93 @@ class MasterBot:
 
             asyncio.create_task(_do_delete_bg())
 
+        # --- AI Conversational Agent Handlers ---
+        @self.dp.message(F.text, ~F.text.startswith("/"))
+        async def handle_ai_chat_message(message: types.Message):
+            # If we are waiting for a specific setting input, let the previous handler take it
+            if any([getattr(self, "_waiting_for_banword_scope", None), 
+                    getattr(self, "_waiting_for_tg_channel", False),
+                    getattr(self, "_waiting_for_liked_topic", False),
+                    getattr(self, "_waiting_for_disliked_topic", False)]):
+                return
+            
+            if not self.user_agent:
+                await message.reply("ИИ агент не настроен.")
+                return
+                
+            status_msg = await message.reply("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
+            try:
+                result = await self.user_agent.process_message(message.text)
+                reply_text = result.get("text", "Ошибка ИИ.")
+                pending_action = result.get("pending_action")
+                
+                if pending_action:
+                    import uuid
+                    action_id = str(uuid.uuid4())[:8]
+                    self.pending_ai_actions[action_id] = pending_action
+                    await status_msg.edit_text(reply_text, parse_mode="HTML", reply_markup=kb_ui.get_ai_action_confirm_keyboard(action_id))
+                else:
+                    await status_msg.edit_text(reply_text, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"AI Chat error: {e}")
+                await status_msg.edit_text(f"❌ Ошибка: {e}")
+
+        @self.dp.callback_query(F.data.startswith("ai_confirm_"))
+        async def process_ai_action_confirm(callback_query: types.CallbackQuery):
+            action_id = callback_query.data.replace("ai_confirm_", "")
+            action_data = self.pending_ai_actions.pop(action_id, None)
+            
+            if not action_data:
+                await callback_query.answer("Действие устарело.", show_alert=True)
+                await callback_query.message.edit_reply_markup(reply_markup=None)
+                return
+                
+            action = action_data.get("action")
+            args = action_data.get("args", {})
+            user_text = action_data.get("user_text", "")
+            
+            try:
+                if action == "add_banword":
+                    word = args.get("word")
+                    await self.storage.add_spam_keyword(word)
+                    result_msg = f"✅ Банворд «{word}» добавлен ИИ."
+                elif action == "add_news_topic":
+                    topic = args.get("topic")
+                    pref = args.get("preference")
+                    await self.storage.add_news_topic(topic, pref)
+                    result_msg = f"✅ Тема «{topic}» добавлена ИИ ({pref})."
+                elif action == "remove_news_topic":
+                    topic = args.get("topic")
+                    pref = args.get("preference")
+                    await self.storage.remove_news_topic(topic, pref)
+                    result_msg = f"✅ Тема «{topic}» удалена ИИ ({pref})."
+                elif action == "add_tg_channel":
+                    channel = args.get("channel_username")
+                    await self.storage.add_tg_channel(channel)
+                    result_msg = f"✅ Telegram канал «{channel}» добавлен ИИ."
+                else:
+                    result_msg = "❌ Неизвестное действие."
+                    
+                await self.storage.add_ai_chat_message("user", user_text)
+                await self.storage.add_ai_chat_message("model", result_msg)
+                
+                await callback_query.message.edit_text(f"{callback_query.message.text}\n\n{result_msg}", parse_mode="HTML")
+            except Exception as e:
+                await callback_query.message.edit_text(f"❌ Ошибка выполнения: {e}")
+
+        @self.dp.callback_query(F.data.startswith("ai_reject_"))
+        async def process_ai_action_reject(callback_query: types.CallbackQuery):
+            action_id = callback_query.data.replace("ai_reject_", "")
+            action_data = self.pending_ai_actions.pop(action_id, None)
+            
+            if action_data:
+                user_text = action_data.get("user_text", "")
+                await self.storage.add_ai_chat_message("user", user_text)
+                await self.storage.add_ai_chat_message("model", "Пользователь отменил действие.")
+                
+            await callback_query.message.edit_text(f"{callback_query.message.text}\n\n❌ Действие отменено.", parse_mode="HTML")
+
+
     async def handle_incoming_analyzed_message(
         self, channel: str, sender: str, text: str, category: str, summary: str, action_required: bool, suggested_reply: Optional[str] = None
     ) -> bool:
@@ -1179,10 +1342,7 @@ class MasterBot:
 
         if self.bot and self.master_chat_id:
             try:
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🗑️ Прочитано", callback_data="delete_this_message")]
-                ])
+                inline_kb = kb_ui.get_read_notification_keyboard()
                 sent_msg = await self.bot.send_message(
                     chat_id=self.master_chat_id,
                     text=message_text,
@@ -1248,10 +1408,7 @@ class MasterBot:
 
         if self.bot and self.master_chat_id:
             try:
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🗑️ Прочитано", callback_data="delete_this_message")]
-                ])
+                inline_kb = kb_ui.get_read_notification_keyboard()
                 # Отправляем сводку, разбивая по сообщениям, чтобы не разорвать HTML-теги
                 current_chunk = ""
                 for part in digest_parts:

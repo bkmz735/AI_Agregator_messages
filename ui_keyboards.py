@@ -33,6 +33,7 @@ def get_settings_keyboard(delivery_mode: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist")],
         [InlineKeyboardButton(text="✈️ ТГ-каналы новостей", callback_data="settings_menu_tg_channels")],
+        [InlineKeyboardButton(text="📰 Темы новостей", callback_data="settings_menu_topics")],
         [InlineKeyboardButton(text="⏱️ Время и Таймеры", callback_data="settings_menu_time")],
         [InlineKeyboardButton(text="🌙 Ночной режим", callback_data="settings_menu_night")],
         [
@@ -213,9 +214,17 @@ def get_logs_keyboard() -> InlineKeyboardMarkup:
 def get_clear_chat_prompt_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-клавиатура подтверждения очистки чата."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")],
+        [InlineKeyboardButton(text="🗑️ Да, очистить чат", callback_data="do_clear_chat")],
         [get_home_button()]
     ])
+
+def get_ai_action_confirm_keyboard(action_id: str) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура для подтверждения действий ИИ (добавление банворда/темы)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"ai_confirm_{action_id}")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data=f"ai_reject_{action_id}")],
+    ])
+
 
 
 def get_read_notification_keyboard() -> InlineKeyboardMarkup:
@@ -259,3 +268,63 @@ def get_add_tg_channel_prompt_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_menu_tg_channels")],
         [get_home_button()]
     ])
+
+# --- News Topics Keyboards ---
+
+def get_news_topics_main_keyboard(liked_count: int, disliked_count: int) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура меню выбора предпочтений (Желаемые / Запретные)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=f"💚 Желаемые темы ({liked_count})", callback_data="topics_view_liked_1"),
+            InlineKeyboardButton(text=f"🛑 Запретные темы ({disliked_count})", callback_data="topics_view_disliked_1")
+        ],
+        [InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")],
+        [get_home_button()]
+    ])
+
+def get_news_topics_list_keyboard(page_topics: List[Dict[str, Any]], page: int, total_pages: int, preference: str, start_idx: int) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура со списком тем (Желаемых или Запретных)."""
+    rows = []
+    row_buttons = []
+    for idx_in_page, _ in enumerate(page_topics, start=start_idx + 1):
+        row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"remove_topic_{preference}_{idx_in_page}_{page}"))
+        if len(row_buttons) == 3:
+            rows.append(row_buttons)
+            row_buttons = []
+    if row_buttons:
+        rows.append(row_buttons)
+
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Пред", callback_data=f"topics_view_{preference}_{page-1}"))
+    if page < total_pages:
+        nav_buttons.append(InlineKeyboardButton(text="След ➡️", callback_data=f"topics_view_{preference}_{page+1}"))
+    if nav_buttons:
+        rows.append(nav_buttons)
+
+    rows.append([InlineKeyboardButton(text="➕ Добавить тему", callback_data=f"add_topic_prompt_{preference}")])
+    rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="settings_menu_topics")])
+    rows.append([get_home_button()])
+    
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def get_add_topic_prompt_keyboard(preference: str) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура на экране ввода новой темы."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"topics_view_{preference}_1")],
+        [get_home_button()]
+    ])
+
+def get_home_only_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура только с кнопкой Главного меню."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [get_home_button()]
+    ])
+
+def get_confirm_reset_stats_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для подтверждения сброса статистики."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="do_reset_stats")],
+        [get_home_button()]
+    ])
+

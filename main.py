@@ -100,8 +100,22 @@ class MessageAggregatorApp:
         logger.info(f"Processing BATCH of {len(batch)} messages via Gemini API...")
 
         try:
+            # Fetch custom news topics
+            liked_topics = await self.storage.get_news_topics(preference="liked")
+            disliked_topics = await self.storage.get_news_topics(preference="disliked")
+            
+            custom_prompt_suffix = ""
+            if liked_topics or disliked_topics:
+                custom_prompt_suffix = "Дополнительные инструкции по фильтрации тем от пользователя:\n"
+                if liked_topics:
+                    liked_list = ", ".join([t["topic"] for t in liked_topics])
+                    custom_prompt_suffix += f"- ЖЕЛАТЕЛЬНЫЕ ТЕМЫ (относи к категории interesting): {liked_list}\n"
+                if disliked_topics:
+                    disliked_list = ", ".join([t["topic"] for t in disliked_topics])
+                    custom_prompt_suffix += f"- ЗАПРЕТНЫЕ ТЕМЫ (игнорируй, относи к категории bullshit): {disliked_list}\n"
+
             # Analyze entire batch in ONE Gemini API call
-            analysis_results = await self.ai_engine.analyze_batch_messages(batch)
+            analysis_results = await self.ai_engine.analyze_batch_messages(batch, custom_prompt_suffix)
             results_map = {res.msg_uid: res for res in analysis_results}
 
             for msg in batch:

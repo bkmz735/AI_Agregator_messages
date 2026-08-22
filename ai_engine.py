@@ -131,6 +131,61 @@ class AIEngine:
             "status_text": f"🔴 Пауза лимита ({pause_seconds_left}с)" if is_paused else "🟢 API Активен"
         }
 
+    async def generate_content_with_retry(self, contents: Any, config: Any) -> Any:
+        """Executes a Gemini API request with the priority models fallback and rate limit protections."""
+        now = time.time()
+        if now < self.rate_limit_until:
+            wait_time = int(self.rate_limit_until - now)
+            raise RuntimeError(f"Gemini API rate limit active. Resuming in {wait_time}s.")
+            
+        rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
+        if rpm_count >= self.MAX_RPM:
+            self.rate_limit_until = time.time() + 60.0
+            raise RuntimeError(f"Gemini API RPM limit reached ({rpm_count}/{self.MAX_RPM}). Pausing API calls for 60s.")
+            
+        if not self.client:
+            raise RuntimeError("Gemini client not initialized.")
+            
+        active_models = [m for m in self.priority_models if m not in self.exhausted_models and m not in self.unsupported_models]
+        if not active_models:
+            raise RuntimeError("No active Gemini models available (all exhausted or unsupported for today).")
+            
+        last_error = None
+        for model_name in active_models:
+            try:
+                self._track_request()
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.models.generate_content,
+                        model=model_name,
+                        contents=contents,
+                        config=config
+                    ),
+                    timeout=20.0
+                )
+                return response
+            except Exception as e:
+                err_str = str(e)
+                last_error = e
+                # Handle 404
+                if "404" in err_str or "not found" in err_str.lower() or "no longer available" in err_str.lower():
+                    logger.warning(f"Gemini model {model_name} is unsupported (404).")
+                    self.unsupported_models.add(model_name)
+                    continue
+                # Handle 429
+                if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    if "day" in err_str.lower() or "daily" in err_str.lower() or "quota" in err_str.lower():
+                        logger.error(f"Gemini model {model_name} hit daily quota.")
+                        self.exhausted_models.add(model_name)
+                        continue
+                    else:
+                        self.rate_limit_until = time.time() + 60.0
+                        raise RuntimeError(f"Gemini API 429 Minute Limit hit! Pausing API calls for 60s. Error: {e}")
+                logger.warning(f"Model {model_name} failed: {e}")
+                continue
+                
+        raise RuntimeError(f"All models failed. Last error: {last_error}")
+
     async def transcribe_and_analyze_audio(self, audio_bytes: bytes, mime_type: str = "audio/ogg") -> AudioAnalysisResult:
         """Transcribes audio/voice message using Gemini multimodal capabilities and analyzes it."""
         now = time.time()
@@ -212,7 +267,7 @@ class AIEngine:
             suggested_reply="Здравствуйте! Прослушал ваше голосовое сообщение, скоро отвечу."
         )
 
-    async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
+    async def analyze_batch_messages(self, messages_batch: List[Dict[str, str]], custom_prompt_suffix: str = "") -> List[AnalysisResult]:
         """
         Analyzes a BATCH of raw incoming messages.
         If batch size exceeds 5 messages, automatically splits into chunks of 5 for optimal Gemini accuracy.
@@ -230,7 +285,7 @@ class AIEngine:
                 logger.info(f"Processing chunk {idx}/{len(chunks)} ({len(chunk)} messages)...")
                 while True:
                     try:
-                        chunk_results = await self._analyze_single_batch_chunk(chunk)
+                        chunk_results = await self._analyze_single_batch_chunk(chunk, custom_prompt_suffix)
                         all_results.extend(chunk_results)
                         break
                     except RuntimeError as e:
@@ -244,7 +299,7 @@ class AIEngine:
         else:
             while True:
                 try:
-                    return await self._analyze_single_batch_chunk(messages_batch)
+                    return await self._analyze_single_batch_chunk(messages_batch, custom_prompt_suffix)
                 except RuntimeError as e:
                     if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
                         logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
@@ -253,7 +308,7 @@ class AIEngine:
                     else:
                         raise e
 
-    async def _analyze_single_batch_chunk(self, messages_batch: List[Dict[str, str]]) -> List[AnalysisResult]:
+    async def _analyze_single_batch_chunk(self, messages_batch: List[Dict[str, str]], custom_prompt_suffix: str = "") -> List[AnalysisResult]:
         """Analyzes a single chunk (up to 5 messages) in ONE Gemini API call."""
         now = time.time()
         if now < self.rate_limit_until:
@@ -271,7 +326,8 @@ class AIEngine:
             else:
                 batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
                 prompt = (
-                    f"{config.AI_FILTER_PROMPT}\n\n"
+                    f"{config.AI_FILTER_PROMPT}\n"
+                    f"{custom_prompt_suffix}\n\n"
                     f"Проанализируй список входящих сообщений ниже и верни массив JSON ответов для каждого сообщения:\n"
                     f"{batch_json_input}"
                 )
