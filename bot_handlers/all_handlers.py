@@ -105,7 +105,7 @@ def setup_all_handlers(master_bot):
             logger.error(f"Error processing voice message: {e}")
             await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
     
-    @dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(getattr(self, "_waiting_for_banword_scope", None)) or bool(getattr(self, "_waiting_for_tg_channel", False)) or bool(getattr(self, "_waiting_for_liked_topic", False)) or bool(getattr(self, "_waiting_for_disliked_topic", False)))
+    @dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(getattr(master_bot, "_waiting_for_banword_scope", None)) or bool(getattr(master_bot, "_waiting_for_tg_channel", False)) or bool(getattr(master_bot, "_waiting_for_liked_topic", False)) or bool(getattr(master_bot, "_waiting_for_disliked_topic", False)))
     async def handle_text_message(message: types.Message):
         # If user tapped a ReplyButton while in input mode, cancel pending inputs
         menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]

@@ -196,7 +196,11 @@ class MasterBot:
         if not recent:
             log_lines = ["<i>Логи пока пусты.</i>"]
         else:
-            log_lines = [f"• <code>{html.escape(line)}</code>" for line in recent]
+            log_lines = []
+            for line in recent:
+                if len(line) > 300:
+                    line = line[:300] + "..."
+                log_lines.append(f"• <code>{html.escape(line)}</code>")
         
         proxy_info = config.TELEGRAM_PROXY if config.TELEGRAM_PROXY else "Прямое (Direct 🟢)"
         
@@ -209,6 +213,9 @@ class MasterBot:
             "📜 <b>Последние 10 системных событий:</b>\n"
             + "\n".join(log_lines)
         )
+        
+        if len(text) > 4000:
+            text = text[:4000] + "...\n[Лог обрезан из-за лимитов Telegram]"
         
         return text, kb_ui.get_logs_keyboard()
 
