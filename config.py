@@ -43,6 +43,7 @@ class Config:
     
     # 🤖 AI LIMITS
     AI_MAX_RPM: int = _get_int_env("AI_MAX_RPM", 3)
+    AI_BATCH_CHUNK_SIZE: int = _get_int_env("AI_BATCH_CHUNK_SIZE", 3)
     
     # Night Mode (Quiet Hours - Pause AI & Notifications during sleep to save tokens)
     NIGHT_MODE_ENABLED: bool = os.getenv("NIGHT_MODE_ENABLED", "false").strip().lower() in ("true", "1", "yes")

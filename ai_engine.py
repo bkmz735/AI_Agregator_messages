@@ -278,8 +278,11 @@ class AIEngine:
         if not messages_batch:
             return []
 
-        # Chunking: split large batches into sub-batches of max 3 items
-        CHUNK_SIZE = 3
+        # Chunking: split large batches into sub-batches
+        from settings_manager import SettingsManager
+        settings = SettingsManager(self.storage) if self.storage else None
+        CHUNK_SIZE = (await settings.get_ai_batch_chunk_size()) if settings else config.AI_BATCH_CHUNK_SIZE
+        
         if len(messages_batch) > CHUNK_SIZE:
             chunks = [messages_batch[i:i + CHUNK_SIZE] for i in range(0, len(messages_batch), CHUNK_SIZE)]
             logger.info(f"Splitting batch of {len(messages_batch)} messages into {len(chunks)} sub-chunks (max {CHUNK_SIZE} msgs each)...")

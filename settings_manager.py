@@ -118,3 +118,10 @@ class SettingsManager:
 
     async def update_ai_max_rpm(self, rpm: int):
         await self.storage.set_setting("ai_max_rpm", str(rpm))
+
+    async def get_ai_batch_chunk_size(self) -> int:
+        val = await self.storage.get_setting("ai_batch_chunk_size", str(config.AI_BATCH_CHUNK_SIZE))
+        return int(val)
+
+    async def update_ai_batch_chunk_size(self, size: int):
+        await self.storage.set_setting("ai_batch_chunk_size", str(size))
