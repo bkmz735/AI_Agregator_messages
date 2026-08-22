@@ -278,21 +278,51 @@ class AIEngine:
         if not messages_batch:
             return []
 
+        results_map = {}
+        messages_to_ai = []
+        
+        for i, m in enumerate(messages_batch):
+            text = m.get('text', '')
+            if text == "[Голосовое сообщение без текстовой расшифровки]" or text == "[Голосовое сообщение]":
+                results_map[i] = AnalysisResult(
+                    msg_uid=m.get("msg_uid", ""),
+                    category="general",
+                    summary="🎤 Голосовое сообщение (без текста)",
+                    action_required=False,
+                    suggested_reply=None
+                )
+            elif text == "[Фотография]":
+                results_map[i] = AnalysisResult(
+                    msg_uid=m.get("msg_uid", ""),
+                    category="general",
+                    summary="📷 Фотография",
+                    action_required=False,
+                    suggested_reply=None
+                )
+            else:
+                messages_to_ai.append((i, m))
+
+        if not messages_to_ai:
+            return [results_map[i] for i in range(len(messages_batch))]
+
+        ai_batch = [m for i, m in messages_to_ai]
+
         # Chunking: split large batches into sub-batches
         from settings_manager import SettingsManager
         settings = SettingsManager(self.storage) if self.storage else None
         CHUNK_SIZE = (await settings.get_ai_batch_chunk_size()) if settings else config.AI_BATCH_CHUNK_SIZE
         
-        if len(messages_batch) > CHUNK_SIZE:
-            chunks = [messages_batch[i:i + CHUNK_SIZE] for i in range(0, len(messages_batch), CHUNK_SIZE)]
-            logger.info(f"Splitting batch of {len(messages_batch)} messages into {len(chunks)} sub-chunks (max {CHUNK_SIZE} msgs each)...")
-            all_results = []
+        all_ai_results = []
+        if len(ai_batch) > CHUNK_SIZE:
+            chunks = [ai_batch[i:i + CHUNK_SIZE] for i in range(0, len(ai_batch), CHUNK_SIZE)]
+            logger.info(f"Splitting batch of {len(ai_batch)} messages into {len(chunks)} sub-chunks (max {CHUNK_SIZE} msgs each)...")
+            
             for idx, chunk in enumerate(chunks, 1):
                 logger.info(f"Processing chunk {idx}/{len(chunks)} ({len(chunk)} messages)...")
                 while True:
                     try:
                         chunk_results = await self._analyze_single_batch_chunk(chunk, custom_prompt_suffix)
-                        all_results.extend(chunk_results)
+                        all_ai_results.extend(chunk_results)
                         break
                     except RuntimeError as e:
                         if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
@@ -301,11 +331,11 @@ class AIEngine:
                             await asyncio.sleep(60)
                         else:
                             raise e
-            return all_results
         else:
             while True:
                 try:
-                    return await self._analyze_single_batch_chunk(messages_batch, custom_prompt_suffix)
+                    all_ai_results = await self._analyze_single_batch_chunk(ai_batch, custom_prompt_suffix)
+                    break
                 except RuntimeError as e:
                     if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
                         logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
@@ -313,6 +343,12 @@ class AIEngine:
                         await asyncio.sleep(60)
                     else:
                         raise e
+
+        # Map results back to original positions
+        for (i, _), res in zip(messages_to_ai, all_ai_results):
+            results_map[i] = res
+
+        return [results_map[i] for i in range(len(messages_batch))]
 
     async def _analyze_single_batch_chunk(self, messages_batch: List[Dict[str, str]], custom_prompt_suffix: str = "") -> List[AnalysisResult]:
         """Analyzes a single chunk (up to 5 messages) in ONE AI API call."""

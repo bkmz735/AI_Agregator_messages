@@ -13,12 +13,17 @@ logger = logging.getLogger(__name__)
 
 # Category Emojis
 CATEGORY_EMOJIS = {
-    "urgent": "🚨 <b>СРОЧНО</b>",
-    "important": "⭐ <b>ВАЖНОЕ</b>",
-    "gov_debt": "⚖️ <b>Задолженности:</b>",
-    "gov_service": "🏛️ <b>Госуслуги:</b>",
-    "general": "💬 <b>ОБЫЧНОЕ</b>",
-    "spam": "🚫 <b>СПАМ</b>"
+    "urgent": "🚨",
+    "important": "⭐",
+    "gov_debt": "⚖️",
+    "gov_service": "🏛️",
+    "general": "💬",
+    "spam": "🚫",
+    "news": "📰",
+    "politics": "🏛️",
+    "interesting": "💡",
+    "bullshit": "🗑️",
+    "media": "🎬"
 }
 
 class AccessControlMiddleware(BaseMiddleware):
@@ -514,7 +519,7 @@ class MasterBot:
         if not regular_messages:
             return len(messages)
 
-        digest_parts.append(f"📬 <b>СВОДКА СООБЩЕНИЙ ({len(regular_messages)})</b>\n")
+        digest_parts.append("📬 <b>СВОДКА СООБЩЕНИЙ</b>\n")
         
         groups = {
             "important": [],
@@ -524,7 +529,10 @@ class MasterBot:
         
         for m in regular_messages:
             cat = m['category']
-            if cat in ['urgent', 'important', 'gov', 'gov_debt', 'gov_service']:
+            # Все новости из Telegram принудительно идут в блок новостей, даже если ИИ пометил их как 'urgent'
+            if m['msg_uid'].startswith("tg_news_"):
+                groups['news'].append(m)
+            elif cat in ['urgent', 'important', 'gov', 'gov_debt', 'gov_service']:
                 groups['important'].append(m)
             elif cat in ['news', 'politics', 'interesting', 'bullshit', 'media']:
                 groups['news'].append(m)
@@ -532,7 +540,6 @@ class MasterBot:
                 groups['general'].append(m)
                 
         def format_msg(m):
-            emoji = CATEGORY_EMOJIS.get(m['category'], "💬")
             sender = html.escape(m['sender'])
             
             # Create inline link for TG news to save space
@@ -547,7 +554,7 @@ class MasterBot:
             else:
                 sender_display = f"<b>{sender}</b> [{html.escape(m['channel'])}]"
                 
-            return f"▫️ {emoji} {sender_display}: {html.escape(m['summary'])}"
+            return f"▫️ {sender_display}: {html.escape(m['summary'])}"
             
         if groups['important']:
             digest_parts.append("\n🔴 <b>ВАЖНОЕ</b>")

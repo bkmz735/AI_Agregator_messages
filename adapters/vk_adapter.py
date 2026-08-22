@@ -215,7 +215,7 @@ class VKAdapter(BaseAdapter):
             "v": "5.131"
         }
         text = ""
-        for attempt in range(6):  # Up to 6 attempts, total ~18 seconds
+        for attempt in range(15):  # Up to 15 attempts, total ~45 seconds
             await asyncio.sleep(3)
             try:
                 async with session.get("https://api.vk.com/method/messages.getById", params=full_msg_params) as fm_resp:
