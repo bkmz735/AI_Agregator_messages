@@ -1149,8 +1149,8 @@ class MasterBot:
         Decides whether to send immediately or store in buffer based on category and delivery mode.
         Returns True if delivered immediately, False if buffered.
         """
-        if category == "spam":
-            logger.info(f"Muting spam message from [{channel}] {sender}.")
+        if category in ("spam", "bullshit"):
+            logger.info(f"Muting {category} message from [{channel}] {sender}.")
             return False
 
         # Urgent messages ALWAYS bypass buffer and notify immediately!
@@ -1172,9 +1172,7 @@ class MasterBot:
             f"{header}\n"
             f"📍 <b>Канал:</b> {html.escape(channel)}\n"
             f"👤 <b>От:</b> {html.escape(sender)}\n\n"
-            f"📝 <b>Выжимка AI:</b>\n{html.escape(summary)}{action_part}{reply_part}\n\n"
-            f"--- Текст ---\n"
-            f"<i>{html.escape(text)}</i>"
+            f"📝 <b>Выжимка AI:</b>\n{html.escape(summary)}{action_part}{reply_part}"
         )
 
         logger.info(f"Sending Instant Notification [{category}] from {sender}")
@@ -1208,13 +1206,42 @@ class MasterBot:
         if not messages:
             return 0
 
-        digest_parts = [f"📬 <b>СВОДКА СООБЩЕНИЙ ({len(messages)})</b>\n"]
-        for idx, m in enumerate(messages, 1):
+        digest_parts = []
+        regular_messages = []
+
+        if self.bot and self.master_chat_id:
+            for m in messages:
+                copied = False
+                if m['msg_uid'].startswith("tg_news_"):
+                    try:
+                        # msg_uid is like tg_news_nexta_live_25000
+                        prefix = "tg_news_"
+                        rest = m['msg_uid'][len(prefix):]
+                        tg_channel, msg_id = rest.rsplit('_', 1)
+                        
+                        await self.bot.copy_message(
+                            chat_id=self.master_chat_id,
+                            from_chat_id=f"@{tg_channel}",
+                            message_id=int(msg_id)
+                        )
+                        copied = True
+                    except Exception as e:
+                        logger.error(f"Failed to copy tg_news message {m['msg_uid']}: {e}. Fallback to text digest.")
+                
+                if not copied:
+                    regular_messages.append(m)
+        else:
+            regular_messages = messages
+
+        if not regular_messages:
+            return len(messages)
+
+        digest_parts.append(f"📬 <b>СВОДКА СООБЩЕНИЙ ({len(regular_messages)})</b>\n")
+        for idx, m in enumerate(regular_messages, 1):
             emoji = CATEGORY_EMOJIS.get(m['category'], "💬")
             digest_parts.append(
                 f"<b>{idx}. [{html.escape(m['channel'])}]</b> {html.escape(m['sender'])} ({emoji})\n"
                 f"📝 {html.escape(m['summary'])}\n"
-                f"<i>{html.escape(m['text'])}</i>\n"
             )
 
         full_digest = "\n---\n".join(digest_parts)
