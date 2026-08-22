@@ -195,38 +195,6 @@ class Storage:
             deleted_count = cursor.rowcount
             if deleted_count > 0:
                 logger.info(f"Auto-purged {deleted_count} delivered/spam messages older than {days} days from database.")
-            return deleted_count
-
-    async def get_custom_spam_keywords(self) -> list:
-        """Retrieves user-defined custom spam keywords from settings."""
-        val = await self.get_setting("custom_spam_keywords", "")
-        if not val:
-            return []
-        return [k.strip().lower() for k in val.split(",") if k.strip()]
-
-    async def add_spam_keyword(self, keyword: str) -> bool:
-        """Adds a new custom spam keyword to SQLite settings."""
-        keyword = keyword.strip().lower()
-        if not keyword:
-            return False
-        keywords = await self.get_custom_spam_keywords()
-        if keyword in keywords:
-            return False
-        keywords.append(keyword)
-        await self.set_setting("custom_spam_keywords", ",".join(keywords))
-        logger.info(f"Added custom spam keyword: '{keyword}'")
-        return True
-
-    async def remove_spam_keyword(self, keyword: str) -> bool:
-        """Removes a custom spam keyword from SQLite settings."""
-        keyword = keyword.strip().lower()
-        keywords = await self.get_custom_spam_keywords()
-        if keyword not in keywords:
-            return False
-        keywords.remove(keyword)
-        await self.set_setting("custom_spam_keywords", ",".join(keywords))
-        logger.info(f"Removed custom spam keyword: '{keyword}'")
-        return True
 
     async def save_sent_notification(self, chat_id: int, message_id: int, delay_seconds: int):
         """Saves sent message ID and calculates deletion time."""
@@ -255,22 +223,6 @@ class Storage:
         """Deletes a notification record from DB."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("DELETE FROM sent_notifications WHERE id = ?", (notification_id,))
-            await db.commit()
-
-    async def get_setting(self, key: str, default: str) -> str:
-        """Fetches a setting value from SQLite."""
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
-                row = await cursor.fetchone()
-                return row[0] if row else default
-
-    async def set_setting(self, key: str, value: str):
-        """Saves a setting value in SQLite."""
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                (key, str(value))
-            )
             await db.commit()
 
     async def get_banwords(self, scope: Optional[str] = None) -> List[Dict[str, Any]]:
