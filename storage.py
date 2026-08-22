@@ -49,6 +49,13 @@ class Storage:
                     scope TEXT DEFAULT 'global'
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS tg_channels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    title TEXT DEFAULT ''
+                )
+            """)
             await db.commit()
 
             # Seed default banwords if table is empty
@@ -62,7 +69,21 @@ class Storage:
                             (bw["word"], bw["scope"])
                         )
                     await db.commit()
-            logger.info("Database schema initialized with banwords table.")
+
+            # Seed default TG news channels if table is empty
+            async with db.execute("SELECT COUNT(*) FROM tg_channels") as cursor:
+                row = await cursor.fetchone()
+                if row and row[0] == 0:
+                    defaults = ["rian_ru", "mash", "baza"]
+                    if config.TG_NEWS_CHANNELS:
+                        defaults = [c.strip().lstrip("@") for c in config.TG_NEWS_CHANNELS.split(",") if c.strip()]
+                    for ch in defaults:
+                        await db.execute(
+                            "INSERT OR IGNORE INTO tg_channels (username) VALUES (?)",
+                            (ch.lower(),)
+                        )
+                    await db.commit()
+            logger.info("Database schema initialized with banwords and tg_channels tables.")
 
     async def is_duplicate(self, msg_uid: str) -> bool:
         """Checks if message UID has already been processed."""
@@ -345,6 +366,49 @@ class Storage:
                 (key, str(value))
             )
             await db.commit()
+
+    # Telegram News Channels Management
+    async def get_tg_channels(self) -> List[Dict[str, Any]]:
+        """Returns all monitored Telegram news channels."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT id, username, title FROM tg_channels ORDER BY id ASC") as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def add_tg_channel(self, username: str, title: str = "") -> Optional[int]:
+        """Adds a Telegram channel to monitoring."""
+        clean_user = username.strip().lstrip("@").lower()
+        # Clean URL if passed as link (https://t.me/channel_name)
+        if "t.me/" in clean_user:
+            clean_user = clean_user.split("t.me/")[-1].split("/")[0].strip()
+        if not clean_user:
+            return None
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                cursor = await db.execute(
+                    "INSERT INTO tg_channels (username, title) VALUES (?, ?)",
+                    (clean_user, title)
+                )
+                await db.commit()
+                return cursor.lastrowid
+            except aiosqlite.IntegrityError:
+                return None
+
+    async def remove_tg_channel_by_id(self, channel_id: int) -> bool:
+        """Removes a Telegram channel by its DB ID."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("DELETE FROM tg_channels WHERE id = ?", (channel_id,))
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def remove_tg_channel(self, username: str) -> bool:
+        """Removes a Telegram channel by username."""
+        clean_user = username.strip().lstrip("@").lower()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("DELETE FROM tg_channels WHERE username = ?", (clean_user,))
+            await db.commit()
+            return cursor.rowcount > 0
 
     # Legacy compatibility methods
     async def get_custom_spam_keywords(self) -> List[str]:

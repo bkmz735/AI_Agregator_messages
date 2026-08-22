@@ -32,6 +32,7 @@ def get_settings_keyboard(delivery_mode: str) -> InlineKeyboardMarkup:
     
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist")],
+        [InlineKeyboardButton(text="✈️ ТГ-каналы новостей", callback_data="settings_menu_tg_channels")],
         [InlineKeyboardButton(text="⏱️ Время и Таймеры", callback_data="settings_menu_time")],
         [InlineKeyboardButton(text="🌙 Ночной режим", callback_data="settings_menu_night")],
         [
@@ -221,4 +222,40 @@ def get_read_notification_keyboard() -> InlineKeyboardMarkup:
     """Инлайн-кнопка «Прочитано» для сообщений-сводок и срочных уведомлений."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗑️ Прочитано", callback_data="delete_this_message")]
+    ])
+
+
+def get_tg_channels_list_keyboard(page_channels: List[Dict[str, Any]], page: int, total_pages: int, start_idx: int) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура со списком отслеживаемых ТГ-каналов (сетка 3x3)."""
+    rows = []
+    row_buttons = []
+    for idx_in_page, ch in enumerate(page_channels, start=start_idx + 1):
+        ch_id = ch["id"]
+        row_buttons.append(InlineKeyboardButton(text=f"❌ #{idx_in_page}", callback_data=f"tg_chan_del_{ch_id}_{page}"))
+        if len(row_buttons) == 3:
+            rows.append(row_buttons)
+            row_buttons = []
+    if row_buttons:
+        rows.append(row_buttons)
+
+    # Кнопки пагинации и добавления
+    nav_row = []
+    if page > 1:
+        nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"tg_chan_page_{page - 1}"))
+    nav_row.append(InlineKeyboardButton(text="➕ Добавить канал", callback_data="tg_chan_add_prompt"))
+    if page < total_pages:
+        nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"tg_chan_page_{page + 1}"))
+    rows.append(nav_row)
+
+    rows.append([InlineKeyboardButton(text="🔙 Назад в настройки", callback_data="settings_main_menu")])
+    rows.append([get_home_button()])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_add_tg_channel_prompt_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура на экране отмены ввода ТГ-канала."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_menu_tg_channels")],
+        [get_home_button()]
     ])

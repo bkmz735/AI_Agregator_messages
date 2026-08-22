@@ -19,22 +19,16 @@ class TGNewsAdapter(BaseAdapter):
 
     async def start(self):
         self._running = True
-        raw_channels = config.TG_NEWS_CHANNELS
-        channels = [c.strip().lstrip("@") for c in raw_channels.split(",") if c.strip()]
-        
-        if channels:
-            logger.info(f"Starting Telegram News adapter monitoring channels: {channels}")
-            self._task = asyncio.create_task(self._poll_channels(channels))
-        else:
-            logger.info("No TG_NEWS_CHANNELS configured. Telegram News adapter in standby mode.")
+        logger.info("Starting Telegram News adapter polling service...")
+        self._task = asyncio.create_task(self._poll_channels())
 
     async def stop(self):
         self._running = False
         if self._task:
             self._task.cancel()
 
-    async def _poll_channels(self, channels: list[str]):
-        """Periodically polls public Telegram channels via official t.me/s/ web previews."""
+    async def _poll_channels(self):
+        """Periodically polls public Telegram channels configured in SQLite DB."""
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
@@ -44,22 +38,31 @@ class TGNewsAdapter(BaseAdapter):
 
         while self._running:
             try:
-                async with aiohttp.ClientSession(headers=headers) as session:
-                    for channel in channels:
-                        if not self._running:
-                            break
-                        try:
-                            url = f"https://t.me/s/{channel}"
-                            async with session.get(url, proxy=proxy, timeout=15) as resp:
-                                if resp.status == 200:
-                                    html_content = await resp.text()
-                                    await self._parse_channel_html(channel, html_content)
-                                else:
-                                    logger.warning(f"Telegram News: HTTP {resp.status} for channel @{channel}")
-                        except Exception as ce:
-                            logger.warning(f"Telegram News: Error fetching channel @{channel}: {ce}")
-                        
-                        await asyncio.sleep(2)  # Polite gap between channel requests
+                channels = []
+                if self.storage:
+                    db_chans = await self.storage.get_tg_channels()
+                    channels = [c["username"] for c in db_chans]
+                
+                if not channels and config.TG_NEWS_CHANNELS:
+                    channels = [c.strip().lstrip("@") for c in config.TG_NEWS_CHANNELS.split(",") if c.strip()]
+
+                if channels:
+                    async with aiohttp.ClientSession(headers=headers) as session:
+                        for channel in channels:
+                            if not self._running:
+                                break
+                            try:
+                                url = f"https://t.me/s/{channel}"
+                                async with session.get(url, proxy=proxy, timeout=15) as resp:
+                                    if resp.status == 200:
+                                        html_content = await resp.text()
+                                        await self._parse_channel_html(channel, html_content)
+                                    else:
+                                        logger.warning(f"Telegram News: HTTP {resp.status} for channel @{channel}")
+                            except Exception as ce:
+                                logger.warning(f"Telegram News: Error fetching channel @{channel}: {ce}")
+                            
+                            await asyncio.sleep(2)  # Polite gap between channel requests
 
                 await asyncio.sleep(config.TG_NEWS_POLL_INTERVAL_SECONDS)
             except asyncio.CancelledError:

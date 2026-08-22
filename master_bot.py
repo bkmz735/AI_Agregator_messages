@@ -103,6 +103,7 @@ class MasterBot:
         self._last_clear_prompt_msg_id = None
         self._last_buffer_status_msg_id = None
         self._waiting_for_banword_scope: Optional[str] = None
+        self._waiting_for_tg_channel: bool = False
         self.dp = None
         self.bot = None
 
@@ -245,6 +246,26 @@ class MasterBot:
         ])
 
         return "\n".join(lines)
+
+    async def _show_tg_channels_page(self, page: int = 1):
+        chans = await self.storage.get_tg_channels()
+        per_page = 9
+        total_pages = max(1, (len(chans) + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+
+        start_idx = (page - 1) * per_page
+        page_chans = chans[start_idx:start_idx + per_page]
+
+        lines = [f"✈️ <b>Отслеживаемые ТГ-каналы новостей</b>\n<i>(Стр. {page}/{total_pages}, всего: {len(chans)})</i>\n"]
+        if not chans:
+            lines.append("<i>Список отслеживаемых каналов пуст.</i>\n\n📌 <i>Нажмите ➕ Добавить канал ниже.</i>")
+        else:
+            for idx_in_page, c in enumerate(page_chans, start=start_idx + 1):
+                lines.append(f"{idx_in_page}. <code>@{html.escape(c['username'])}</code>")
+            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления из отслеживания:</i>")
+
+        kb = kb_ui.get_tg_channels_list_keyboard(page_chans, page, total_pages, start_idx)
+        await self.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
 
     async def _get_settings_text_and_keyboard(self):
         mode_label = "⚡ Сразу" if self.delivery_mode == "instant" else "📥 Сводка"
@@ -431,12 +452,36 @@ class MasterBot:
                 logger.error(f"Error processing voice message: {e}")
                 await status_msg.edit_text(f"❌ Ошибка расшифровки голосового: {e}")
 
-        @self.dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(getattr(self, "_waiting_for_banword_scope", None)))
+        @self.dp.message(F.text, ~F.text.startswith("/"), lambda message: bool(getattr(self, "_waiting_for_banword_scope", None)) or bool(getattr(self, "_waiting_for_tg_channel", False)))
         async def handle_text_message(message: types.Message):
-            # If user tapped a ReplyButton while in banword mode, cancel banword input
+            # If user tapped a ReplyButton while in input mode, cancel pending inputs
             menu_texts = ["📥 Буфер", "📊 Статистика", "⚙️ Настройки", "🧹 Очистить чат", "🚀 Отправить сводку", "🏠 Главное меню"]
             if any(message.text.startswith(m) for m in menu_texts):
                 self._waiting_for_banword_scope = None
+                self._waiting_for_tg_channel = False
+                return
+
+            # Check if bot is waiting for interactive TG news channel text input
+            if self._waiting_for_tg_channel:
+                self._waiting_for_tg_channel = False
+                raw_input = message.text.strip()
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+
+                added_id = await self.storage.add_tg_channel(raw_input)
+                clean_user = raw_input.strip().lstrip("@").lower()
+                if "t.me/" in clean_user:
+                    clean_user = clean_user.split("t.me/")[-1].split("/")[0].strip()
+
+                if added_id:
+                    sent_msg = await message.answer(f"✅ Канал <b>«@{html.escape(clean_user)}»</b> добавлен в отслеживание!", parse_mode="HTML")
+                else:
+                    sent_msg = await message.answer(f"ℹ️ Канал <b>«@{html.escape(clean_user)}»</b> уже есть в отслеживании.", parse_mode="HTML")
+
+                await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
+                await self._show_tg_channels_page(1)
                 return
 
             # Check if bot is waiting for interactive banword text input
@@ -580,6 +625,51 @@ class MasterBot:
             except Exception:
                 pass
             await callback_query.answer("Режим отправки изменен!")
+
+        @self.dp.callback_query(F.data == "settings_menu_tg_channels")
+        async def process_settings_menu_tg_channels(callback_query: types.CallbackQuery):
+            await self._show_tg_channels_page(1)
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("tg_chan_page_"))
+        async def process_tg_chan_page(callback_query: types.CallbackQuery):
+            page_val = int(callback_query.data.split("_")[-1])
+            await self._show_tg_channels_page(page_val)
+            await callback_query.answer()
+
+        @self.dp.callback_query(F.data.startswith("tg_chan_del_"))
+        async def process_tg_chan_del(callback_query: types.CallbackQuery):
+            parts = callback_query.data.split("_")
+            chan_id = int(parts[3])
+            page_val = int(parts[4]) if len(parts) > 4 else 1
+
+            removed = await self.storage.remove_tg_channel_by_id(chan_id)
+            if removed:
+                await callback_query.answer("Канал удален из отслеживания!")
+            else:
+                await callback_query.answer("Канал не найден!")
+            await self._show_tg_channels_page(page_val)
+
+        @self.dp.callback_query(F.data == "tg_chan_add_prompt")
+        async def process_tg_chan_add_prompt(callback_query: types.CallbackQuery):
+            self._waiting_for_tg_channel = True
+            text = (
+                "✏️ <b>Добавление ТГ-канала новостей</b>\n\n"
+                "Отправьте юзернейм или ссылку на открытый Telegram-канал следующим сообщением в чат.\n\n"
+                "<i>Примеры формата:</i>\n"
+                "• <code>@mash</code>\n"
+                "• <code>rian_ru</code>\n"
+                "• <code>https://t.me/baza</code>"
+            )
+            try:
+                await callback_query.message.edit_text(
+                    text=text,
+                    reply_markup=kb_ui.get_add_tg_channel_prompt_keyboard(),
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+            await callback_query.answer()
 
         @self.dp.callback_query(F.data == "settings_menu_time")
         async def process_settings_menu_time(callback_query: types.CallbackQuery):
