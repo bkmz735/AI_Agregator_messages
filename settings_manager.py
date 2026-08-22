@@ -165,7 +165,7 @@ class SettingsManager:
 
     async def get_ai_max_rpm(self) -> int:
         val = await self.storage.get_setting("ai_max_rpm", str(config.AI_MAX_RPM))
-        return int(val)
+        return max(int(val), 15)
 
     async def update_ai_max_rpm(self, rpm: int):
         await self.storage.set_setting("ai_max_rpm", str(rpm))

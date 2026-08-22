@@ -202,5 +202,9 @@ class ConversationalAgent:
             return {"text": reply_text, "pending_action": None}
 
         except Exception as e:
+            err_msg = str(e)
+            if "временно на паузе" in err_msg or "лимит" in err_msg.lower():
+                logger.warning(f"ConversationalAgent temporary rate limit: {e}")
+                return {"text": f"⏳ {e}", "pending_action": None}
             logger.error(f"Error in ConversationalAgent: {e}", exc_info=True)
-            return {"text": f"Произошла ошибка при обращении к ИИ: {e}", "pending_action": None}
+            return {"text": f"⚠️ Произошла ошибка при обращении к ИИ: {e}", "pending_action": None}

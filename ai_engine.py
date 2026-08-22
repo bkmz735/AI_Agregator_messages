@@ -179,7 +179,6 @@ class AIEngine:
         last_error = None
         for model_name in active_models:
             try:
-                self._track_request()
                 response = await asyncio.wait_for(
                     self.client.aio.models.generate_content(
                         model=model_name,
@@ -188,6 +187,7 @@ class AIEngine:
                     ),
                     timeout=25.0
                 )
+                self._track_request()
                 return response
             except Exception as e:
                 err_str = str(e)
@@ -200,11 +200,11 @@ class AIEngine:
                 # Handle 429 (quota exhausted)
                 if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                     if "day" in err_str.lower() or "daily" in err_str.lower():
-                        logger.error(f"AI model {model_name} hit daily quota.")
+                        logger.error(f"AI model {model_name} hit daily quota: {e}")
                         self.exhausted_models.add(model_name)
                         continue
                     else:
-                        logger.warning(f"AI model {model_name} hit minute rate limit. Cooling down for 60s.")
+                        logger.warning(f"AI model {model_name} hit minute rate limit (429): {e}. Cooling down for 60s.")
                         self.model_cooldowns[model_name] = time.time() + 60.0
                         continue
                 logger.warning(f"Model {model_name} failed: {e}")
