@@ -458,14 +458,21 @@ class MasterBot:
 
                 await self.storage.save_sent_notification(chat_id=self.master_chat_id, message_id=sent_msg.message_id, delay_seconds=60)
                 
-                # Refresh UI panel to show banword list
+                # Refresh UI panel to show banword list cleanly (per_page = 9)
                 bws = await self.storage.get_banwords(scope=scope)
-                lines = [f"{'✉️' if scope == 'email' else '💬'} <b>Банворды {scope_name}</b> (Всего: {len(bws)})\n"]
-                for idx, b in enumerate(bws, 1):
-                    lines.append(f"{idx}. <code>{html.escape(b['word'])}</code>")
-                lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления</i>")
-                
-                kb = kb_ui.get_banwords_list_keyboard(bws[:10], 1, max(1, (len(bws)+9)//10), scope, 0)
+                per_page = 9
+                total_pages = max(1, (len(bws) + per_page - 1) // per_page)
+                page_bws = bws[:per_page]
+
+                lines = [f"{'✉️' if scope == 'email' else '💬'} <b>Банворды {scope_name}</b>\n<i>(Стр. 1/{total_pages}, всего: {len(bws)})</i>\n"]
+                if not bws:
+                    lines.append(f"<i>Список банвордов {scope_name} пуст.</i>")
+                else:
+                    for idx_in_page, b in enumerate(page_bws, start=1):
+                        lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
+                    lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
+
+                kb = kb_ui.get_banwords_list_keyboard(page_bws, 1, total_pages, scope, 0)
                 await self.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
 
         @self.dp.message(F.text.startswith("📥 Буфер"))
