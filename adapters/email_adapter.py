@@ -111,7 +111,10 @@ class EmailAdapter(BaseAdapter):
                 if not msg_numbers:
                     # No unread mail — nothing to do
                     await imap_client.logout()
-                    await asyncio.sleep(config.EMAIL_POLL_INTERVAL_SECONDS)
+                    from settings_manager import SettingsManager
+                    settings = SettingsManager(self.storage) if self.storage else None
+                    poll_interval = (await settings.get_email_poll_interval_seconds()) if settings else config.EMAIL_POLL_INTERVAL_SECONDS
+                    await asyncio.sleep(poll_interval)
                     continue
 
                 logger.info(f"Mail.ru IMAP found {len(msg_numbers)} UNSEEN emails to process.")
@@ -192,7 +195,9 @@ class EmailAdapter(BaseAdapter):
                         logger.warning(f"Error fetching email #{num}: {fe}")
 
                 await imap_client.logout()
-                await asyncio.sleep(config.EMAIL_POLL_INTERVAL_SECONDS)
+                settings = SettingsManager(self.storage) if self.storage else None
+                poll_interval = (await settings.get_email_poll_interval_seconds()) if settings else config.EMAIL_POLL_INTERVAL_SECONDS
+                await asyncio.sleep(poll_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:

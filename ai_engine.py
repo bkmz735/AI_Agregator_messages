@@ -56,9 +56,10 @@ class AudioAnalysisResult(BaseModel):
     suggested_reply: Optional[str] = None
 
 class AIEngine:
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, storage=None):
         self.api_key = api_key or config.AI_API_KEY
         self.client = None
+        self.storage = storage
         
         # Quota and Rate Limit trackers
         self.requests_today = 0
@@ -116,10 +117,14 @@ class AIEngine:
         is_paused = now < self.rate_limit_until
         pause_seconds_left = int(self.rate_limit_until - now) if is_paused else 0
 
+        from settings_manager import SettingsManager
+        settings = SettingsManager(self.storage) if self.storage else None
+        max_rpm = (await settings.get_ai_max_rpm()) if settings else config.AI_MAX_RPM
+
         return {
             "requests_today": self.requests_today,
             "requests_this_minute": len(self.minute_request_timestamps),
-            "max_rpm": config.AI_MAX_RPM,
+            "max_rpm": max_rpm,
             "is_paused": is_paused,
             "pause_seconds_left": pause_seconds_left,
             "status_text": f"🔴 Пауза лимита ({pause_seconds_left}с)" if is_paused else "🟢 API Активен"
@@ -132,10 +137,14 @@ class AIEngine:
             wait_time = int(self.rate_limit_until - now)
             raise RuntimeError(f"AI API rate limit active. Resuming in {wait_time}s.")
             
+        from settings_manager import SettingsManager
+        settings = SettingsManager(self.storage) if self.storage else None
+        max_rpm = (await settings.get_ai_max_rpm()) if settings else config.AI_MAX_RPM
+
         rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
-        if rpm_count >= config.AI_MAX_RPM:
+        if rpm_count >= max_rpm:
             self.rate_limit_until = time.time() + 60.0
-            raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{config.AI_MAX_RPM}). Pausing API calls for 60s.")
+            raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{max_rpm}). Pausing API calls for 60s.")
             
         if not self.client:
             raise RuntimeError("AI client not initialized.")
@@ -310,11 +319,15 @@ class AIEngine:
             raise RuntimeError(f"AI API minute rate limit active. Resuming in {wait_time}s.")
 
         if self.client:
+            from settings_manager import SettingsManager
+            settings = SettingsManager(self.storage) if self.storage else None
+            max_rpm = (await settings.get_ai_max_rpm()) if settings else config.AI_MAX_RPM
+
             # Pre-check: don't waste an API call if we already know we're over limit
             rpm_count = len([t for t in self.minute_request_timestamps if time.time() - t <= 60])
-            if rpm_count >= config.AI_MAX_RPM:
+            if rpm_count >= max_rpm:
                 self.rate_limit_until = time.time() + 60.0
-                raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{config.AI_MAX_RPM}). Pausing API calls for 60s.")
+                raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{max_rpm}). Pausing API calls for 60s.")
             else:
                 batch_json_input = json.dumps(messages_batch, ensure_ascii=False)
                 prompt = (

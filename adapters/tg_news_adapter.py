@@ -64,7 +64,11 @@ class TGNewsAdapter(BaseAdapter):
                             
                             await asyncio.sleep(2)  # Polite gap between channel requests
 
-                await asyncio.sleep(config.TG_NEWS_POLL_INTERVAL_SECONDS)
+                from settings_manager import SettingsManager
+                settings = SettingsManager(self.storage) if self.storage else None
+                poll_interval = (await settings.get_tg_news_poll_interval_seconds()) if settings else config.TG_NEWS_POLL_INTERVAL_SECONDS
+                await asyncio.sleep(poll_interval)
+                
             except asyncio.CancelledError:
                 break
             except Exception as e:

@@ -23,6 +23,34 @@ class SettingsManager:
     async def update_digest_interval_minutes(self, mins: int):
         await self.storage.set_setting("digest_interval_minutes", str(mins))
 
+    async def get_ai_batch_interval_seconds(self) -> int:
+        val = await self.storage.get_setting("ai_batch_interval_seconds", str(config.AI_BATCH_INTERVAL_SECONDS))
+        return int(val)
+
+    async def update_ai_batch_interval_seconds(self, secs: int):
+        await self.storage.set_setting("ai_batch_interval_seconds", str(secs))
+
+    async def get_email_poll_interval_seconds(self) -> int:
+        val = await self.storage.get_setting("email_poll_interval_seconds", str(config.EMAIL_POLL_INTERVAL_SECONDS))
+        return int(val)
+
+    async def update_email_poll_interval_seconds(self, secs: int):
+        await self.storage.set_setting("email_poll_interval_seconds", str(secs))
+
+    async def get_tg_news_poll_interval_seconds(self) -> int:
+        val = await self.storage.get_setting("tg_news_poll_interval_seconds", str(config.TG_NEWS_POLL_INTERVAL_SECONDS))
+        return int(val)
+
+    async def update_tg_news_poll_interval_seconds(self, secs: int):
+        await self.storage.set_setting("tg_news_poll_interval_seconds", str(secs))
+
+    async def get_db_purge_days(self) -> int:
+        val = await self.storage.get_setting("db_purge_days", str(config.DB_PURGE_DAYS))
+        return int(val)
+
+    async def update_db_purge_days(self, days: int):
+        await self.storage.set_setting("db_purge_days", str(days))
+
     async def get_auto_delete_delay_hours(self) -> int:
         val = await self.storage.get_setting("auto_delete_delay_hours", str(config.AUTO_DELETE_DELAY_HOURS))
         return int(val)
@@ -83,3 +111,10 @@ class SettingsManager:
     async def get_stats_spam_blocked(self) -> int:
         val = await self.storage.get_setting("stats_spam_blocked", "0")
         return int(val)
+
+    async def get_ai_max_rpm(self) -> int:
+        val = await self.storage.get_setting("ai_max_rpm", str(config.AI_MAX_RPM))
+        return int(val)
+
+    async def update_ai_max_rpm(self, rpm: int):
+        await self.storage.set_setting("ai_max_rpm", str(rpm))
