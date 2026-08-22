@@ -79,9 +79,9 @@ class TGNewsAdapter(BaseAdapter):
             re.DOTALL
         )
 
-        # Ограничиваем до 10 последних (самых свежих) новостей за один цикл проверки,
+        # Ограничиваем до 5 последних (самых свежих) новостей за один цикл проверки,
         # чтобы не заваливать нейросеть десятками старых постов при первом запуске
-        posts = posts[-10:]
+        posts = posts[-5:]
 
         for post_path, text_raw in posts:
             msg_uid = f"tg_news_{post_path.replace('/', '_')}"

@@ -1174,7 +1174,7 @@ class MasterBot:
             f"👤 <b>От:</b> {html.escape(sender)}\n\n"
             f"📝 <b>Выжимка AI:</b>\n{html.escape(summary)}{action_part}{reply_part}\n\n"
             f"--- Текст ---\n"
-            f"<i>{html.escape(text[:250])}{'...' if len(text) > 250 else ''}</i>"
+            f"<i>{html.escape(text)}</i>"
         )
 
         logger.info(f"Sending Instant Notification [{category}] from {sender}")
@@ -1214,7 +1214,7 @@ class MasterBot:
             digest_parts.append(
                 f"<b>{idx}. [{html.escape(m['channel'])}]</b> {html.escape(m['sender'])} ({emoji})\n"
                 f"📝 {html.escape(m['summary'])}\n"
-                f"<i>{html.escape(m['text'][:150])}...</i>\n"
+                f"<i>{html.escape(m['text'])}</i>\n"
             )
 
         full_digest = "\n---\n".join(digest_parts)
