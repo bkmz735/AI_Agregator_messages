@@ -190,32 +190,9 @@ class VKAdapter(BaseAdapter):
                                                 attachments = event[6] if len(event) > 6 else {}
                                                 
                                                 if not text and attachments:
-                                                    await asyncio.sleep(2) # Даем ВК пару секунд на расшифровку
-                                                    full_msg_params = {
-                                                        "message_ids": msg_id,
-                                                        "access_token": self.token,
-                                                        "v": "5.131"
-                                                    }
-                                                    try:
-                                                        async with session.get("https://api.vk.com/method/messages.getById", params=full_msg_params) as fm_resp:
-                                                            fm_data = await fm_resp.json()
-                                                            if "response" in fm_data and fm_data["response"]["items"]:
-                                                                atts = fm_data["response"]["items"][0].get("attachments", [])
-                                                                for att in atts:
-                                                                    if att["type"] == "audio_message":
-                                                                        am = att["audio_message"]
-                                                                        if "transcript" in am and am["transcript"]:
-                                                                            text = f"[Голосовое] {am['transcript']}"
-                                                                        else:
-                                                                            text = "[Голосовое сообщение без текстовой расшифровки]"
-                                                                        break
-                                                                    elif att["type"] == "photo":
-                                                                        text = "[Фотография]"
-                                                                        break
-                                                    except Exception as e:
-                                                        logger.warning(f"Could not fetch full VK message {msg_id}: {e}")
-                                                
-                                                if text:
+                                                    # Launch an async task that fetches the full message and emits it
+                                                    asyncio.create_task(self._process_vk_attachment_async(session, msg_id, uid, peer_id))
+                                                elif text:
                                                     sender_name = await self._resolve_user_name(session, peer_id)
                                                     await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
                         except asyncio.CancelledError:
@@ -230,3 +207,43 @@ class VKAdapter(BaseAdapter):
                 except Exception as e:
                     logger.error(f"Error in VK listener: {e}")
                     await asyncio.sleep(5)
+
+    async def _process_vk_attachment_async(self, session, msg_id, uid, peer_id):
+        full_msg_params = {
+            "message_ids": msg_id,
+            "access_token": self.token,
+            "v": "5.131"
+        }
+        text = ""
+        for attempt in range(6):  # Up to 6 attempts, total ~18 seconds
+            await asyncio.sleep(3)
+            try:
+                async with session.get("https://api.vk.com/method/messages.getById", params=full_msg_params) as fm_resp:
+                    fm_data = await fm_resp.json()
+                    if "response" in fm_data and fm_data["response"]["items"]:
+                        atts = fm_data["response"]["items"][0].get("attachments", [])
+                        for att in atts:
+                            if att["type"] == "audio_message":
+                                am = att["audio_message"]
+                                if "transcript" in am and am["transcript"]:
+                                    text = f"[Голосовое] {am['transcript']}"
+                                    break
+                                elif am.get("transcript_state") in ["in_progress", "pending"] or "transcript" not in am:
+                                    text = "" # Keep waiting
+                                else:
+                                    text = "[Голосовое сообщение без текстовой расшифровки]"
+                            elif att["type"] == "photo":
+                                text = "[Фотография]"
+                                break
+            except Exception as e:
+                logger.warning(f"Could not fetch full VK message {msg_id}: {e}")
+                
+            if text:
+                break
+                
+        if not text:
+            text = "[Голосовое сообщение без текстовой расшифровки]"
+            
+        if text:
+            sender_name = await self._resolve_user_name(session, peer_id)
+            await self.emit_message(sender=sender_name, text=text, msg_uid=uid)
