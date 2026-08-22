@@ -145,17 +145,13 @@ class MasterBot:
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
         if buffer_count > 0:
             kb = [
-                [KeyboardButton(text="🏠 Главное меню")],
                 [KeyboardButton(text=f"📥 Буфер ({buffer_count})"), KeyboardButton(text="🚀 Отправить сводку")],
-                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки")],
-                [KeyboardButton(text="🧹 Очистить чат")]
+                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
             ]
         else:
             kb = [
-                [KeyboardButton(text="🏠 Главное меню")],
                 [KeyboardButton(text="📥 Буфер")],
-                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки")],
-                [KeyboardButton(text="🧹 Очистить чат")]
+                [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="🧹 Очистить чат")]
             ]
         return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, is_persistent=True)
 
@@ -203,7 +199,8 @@ class MasterBot:
         )
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить логи", callback_data="refresh_logs")]
+            [InlineKeyboardButton(text="🔄 Обновить логи", callback_data="refresh_logs")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
         ])
         return text, kb
 
@@ -235,7 +232,8 @@ class MasterBot:
             [
                 InlineKeyboardButton(text="🚫 Управление Банвордами", callback_data="settings_menu_blacklist"),
                 InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
-            ]
+            ],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
         ])
         return text, inline_kb
 
@@ -342,7 +340,10 @@ class MasterBot:
                 "• Запросы клиентов обработаются пакетно раз в 60с для экономии токенов.\n"
                 "• При превышении лимита (429 Rate Limit) бот автоматически сделает паузу без потери сообщений!"
             )
-            await self.show_or_edit_ui_panel(text=help_text, keyboard=None, force_new=False)
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
+            ])
+            await self.show_or_edit_ui_panel(text=help_text, keyboard=kb, force_new=False)
 
         @self.dp.message(F.voice | F.audio)
         async def handle_voice_message(message: types.Message):
@@ -410,14 +411,17 @@ class MasterBot:
                     "Нажмите «🚀 Отправить сводку», чтобы получить их прямо сейчас, или дождитесь отправки по расписанию."
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")]
+                    [InlineKeyboardButton(text="🚀 Отправить сводку", callback_data="flush_now")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
                 ])
             else:
                 text = (
                     "📥 <b>Буфер пуст!</b> Новых сообщений для сводки пока нет.\n"
                     "Бот собирает входящие письма и сообщения в фоновом режиме."
                 )
-                kb = None
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
+                ])
 
             await self.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
 
@@ -466,7 +470,8 @@ class MasterBot:
             )
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")]
+                [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="confirm_reset_stats")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             await self.show_or_edit_ui_panel(text=stats_msg, keyboard=inline_kb, force_new=False)
 
@@ -1077,7 +1082,8 @@ class MasterBot:
 
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")]
+                [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear_chat")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="delete_msg")]
             ])
             text = "⚠️ <b>Вы действительно хотите очистить последние сообщения в чате?</b>\n<i>(Сообщения останутся в базе данных)</i>"
             await self.show_or_edit_ui_panel(text=text, keyboard=inline_kb)
