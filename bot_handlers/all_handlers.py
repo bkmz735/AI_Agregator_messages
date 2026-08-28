@@ -3,7 +3,7 @@ import html
 import io
 import asyncio
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 from aiogram.filters import Command
 from aiogram import types, F, Router
 from aiogram.fsm.context import FSMContext

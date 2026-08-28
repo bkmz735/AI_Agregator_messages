@@ -2,7 +2,7 @@ import asyncio
 import logging
 import html
 import io
-from typing import Optional, Callable, Awaitable, Any, Dict
+from typing import List, Optional, Callable, Awaitable, Any, Dict, Set, Union, Tuple
 from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.types import TelegramObject
 from config import config
