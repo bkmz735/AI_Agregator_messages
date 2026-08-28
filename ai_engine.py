@@ -585,10 +585,7 @@ class AIEngine:
                 response = await asyncio.wait_for(
                     self.client.aio.models.generate_content(
                         model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            tools=[{"google_search": {}}]
-                        )
+                        contents=prompt
                     ),
                     timeout=30.0
                 )

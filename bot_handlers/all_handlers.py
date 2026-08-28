@@ -2,12 +2,16 @@ import logging
 import html
 import io
 import asyncio
+import time
 from typing import Any, Dict
 from aiogram.filters import Command
 from aiogram import types, F
+from aiogram.fsm.context import FSMContext
 import ui_keyboards as kb_ui
 
 logger = logging.getLogger(__name__)
+
+last_warning_time: Dict[int, float] = {}
 
 def setup_all_handlers(master_bot):
     dp = master_bot.dp
@@ -1027,8 +1031,12 @@ def setup_all_handlers(master_bot):
             await master_bot.storage.add_ai_chat_message("model", result_msg)
             
             await callback_query.message.edit_text(f"{callback_query.message.text}\n\n{result_msg}", parse_mode="HTML")
+            if master_bot.master_chat_id:
+                asyncio.create_task(master_bot.update_status_banner(master_bot.master_chat_id))
+            master_bot.schedule_delayed_deletion(callback_query.message.chat.id, [callback_query.message.message_id])
         except Exception as e:
             await callback_query.message.edit_text(f"❌ Ошибка выполнения: {e}")
+            master_bot.schedule_delayed_deletion(callback_query.message.chat.id, [callback_query.message.message_id])
     
     @dp.callback_query(F.data.startswith("ai_reject_"))
     async def process_ai_action_reject(callback_query: types.CallbackQuery):
@@ -1042,10 +1050,19 @@ def setup_all_handlers(master_bot):
             await master_bot.storage.add_ai_chat_message("model", "Пользователь отменил действие.")
             
         await callback_query.message.edit_text(f"{callback_query.message.text}\n\n❌ Действие отменено.", parse_mode="HTML")
+        if master_bot.master_chat_id:
+            asyncio.create_task(master_bot.update_status_banner(master_bot.master_chat_id))
+        master_bot.schedule_delayed_deletion(callback_query.message.chat.id, [callback_query.message.message_id])
 
 
     @dp.message(F.text)
-    async def handle_text_message(message: types.Message):
+    async def handle_text_message(message: types.Message, state: FSMContext = None):
+        # 0. Check if user is in an active FSM state
+        if state:
+            current_state = await state.get_state()
+            if current_state is not None:
+                return
+
         # Protect against accidental menu button presses or slash commands being treated as input
         is_system_cmd = message.text and (message.text.startswith("/") or message.text in [
             "🏠 Главное меню", "📥 Буфер", "🚀 Отправить сводку", "⚙️ Настройки", "📊 Статистика", "🧹 Очистить чат"
@@ -1055,15 +1072,41 @@ def setup_all_handlers(master_bot):
             if message.text in ["🏠 Главное меню", "📥 Буфер", "⚙️ Настройки", "📊 Статистика", "🗑 Очистить чат"]:
                 return
 
-        # Handle interactive input states
-        if master_bot._waiting_for_tg_channel:
-            master_bot._waiting_for_tg_channel = False
-            raw_input = message.text.strip() if message.text else ""
+        # Check interactive input states
+        is_waiting_input = (
+            master_bot._waiting_for_tg_channel or
+            master_bot._waiting_for_liked_topic or
+            master_bot._waiting_for_disliked_topic or
+            master_bot._waiting_for_banword_scope
+        )
+
+        chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
+        sugg_enabled = await master_bot.settings.get_ai_suggestions_enabled()
+
+        # If both AI features are disabled and not in interactive input state
+        if not chat_enabled and not sugg_enabled and not is_waiting_input:
             try:
                 await message.delete()
             except Exception:
                 pass
-    
+
+            now = time.time()
+            chat_id = message.chat.id
+            last_time = last_warning_time.get(chat_id, 0)
+            if now - last_time > 300:
+                last_warning_time[chat_id] = now
+                sent_msg = await message.answer(
+                    "⚠️ <b>Чат с ИИ недоступен</b>\n"
+                    "Функция отключена в настройках или вы находитесь не в Главном меню (нажмите <b>🏠 Главное меню</b>).",
+                    parse_mode="HTML"
+                )
+                await master_bot.storage.save_sent_notification(chat_id=chat_id, message_id=sent_msg.message_id, delay_seconds=5)
+            return
+
+        # Handle interactive input states
+        if master_bot._waiting_for_tg_channel:
+            master_bot._waiting_for_tg_channel = False
+            raw_input = message.text.strip() if message.text else ""
             clean_user = raw_input.strip()
             if "t.me/" in clean_user:
                 clean_user = clean_user.split("t.me/")[-1].split("/")[0].strip()
@@ -1076,7 +1119,7 @@ def setup_all_handlers(master_bot):
                 text_out = "❌ Не удалось распознать юзернейм канала."
 
             sent_msg = await master_bot.bot.send_message(chat_id=master_bot.master_chat_id, text=text_out, parse_mode="HTML")
-            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
+            master_bot.schedule_delayed_deletion(master_bot.master_chat_id, [message.message_id, sent_msg.message_id])
             await master_bot._show_tg_channels_page(1)
             return
             
@@ -1086,11 +1129,6 @@ def setup_all_handlers(master_bot):
             master_bot._waiting_for_disliked_topic = False
             
             raw_input = message.text.strip() if message.text else ""
-            try:
-                await message.delete()
-            except Exception:
-                pass
-                
             pref_name = "Желаемые" if preference == "liked" else "Запретные"
             if raw_input:
                 added = await master_bot.storage.add_news_topic(raw_input, preference=preference)
@@ -1099,7 +1137,7 @@ def setup_all_handlers(master_bot):
                 text_out = "❌ Имя темы не может быть пустым."
 
             sent_msg = await master_bot.bot.send_message(chat_id=master_bot.master_chat_id, text=text_out, parse_mode="HTML")
-            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
+            master_bot.schedule_delayed_deletion(master_bot.master_chat_id, [message.message_id, sent_msg.message_id])
             await master_bot._show_topics_list_page(preference, 1)
             return
     
@@ -1109,11 +1147,6 @@ def setup_all_handlers(master_bot):
             scope = master_bot._waiting_for_banword_scope
             master_bot._waiting_for_banword_scope = None
     
-            try:
-                await message.delete()
-            except Exception:
-                pass
-    
             scope_name = "Mail.ru" if scope == "email" else ("ВКонтакте" if scope == "vk" else "Общие")
             if word_to_add:
                 added = await master_bot.storage.add_banword(word_to_add, scope=scope)
@@ -1122,7 +1155,7 @@ def setup_all_handlers(master_bot):
                 text_out = "❌ Банворд не может быть пустым."
 
             sent_msg = await master_bot.bot.send_message(chat_id=master_bot.master_chat_id, text=text_out, parse_mode="HTML")
-            await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
+            master_bot.schedule_delayed_deletion(master_bot.master_chat_id, [message.message_id, sent_msg.message_id])
             
             # Refresh UI panel to show banword list cleanly (per_page = 9)
             bws = await master_bot.storage.get_banwords(scope=scope)
@@ -1229,13 +1262,8 @@ def setup_all_handlers(master_bot):
                             except Exception:
                                 await status_msg.edit_text(result_msg, parse_mode=None)
                         
-                        async def delayed_delete(msg):
-                            await asyncio.sleep(5)
-                            try:
-                                await msg.delete()
-                            except Exception:
-                                pass
-                        asyncio.create_task(delayed_delete(status_msg))
+                        if isinstance(status_msg, types.Message):
+                            master_bot.schedule_delayed_deletion(message.chat.id, [message.message_id, status_msg.message_id])
                     else:
                         import uuid
                         action_id = str(uuid.uuid4())[:8]

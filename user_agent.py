@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import Dict, Any
 from google.genai import types
 from settings_manager import SettingsManager
@@ -6,6 +7,44 @@ from settings_manager import SettingsManager
 logger = logging.getLogger(__name__)
 
 # Tool definitions for schema generation
+def web_search(query: str) -> str:
+    """Searches the internet for current news, facts, articles, weather, stock prices, or events. Parameter 'query' is the search query string."""
+    return ''
+
+async def perform_web_search(query: str, max_results: int = 5) -> str:
+    """Executes DuckDuckGo search asynchronously using a thread pool and formats results into text."""
+    if not query or not str(query).strip():
+        return "Ошибка: Пустой поисковый запрос."
+
+    def _sync_search():
+        try:
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(str(query).strip(), max_results=max_results))
+                return results
+        except Exception as e:
+            logger.error(f"DuckDuckGo search error for query '{query}': {e}", exc_info=True)
+            return e
+
+    try:
+        results = await asyncio.to_thread(_sync_search)
+        if isinstance(results, Exception):
+            return f"⚠️ Не удалось выполнить поиск в интернете ({results}). Попробуйте позже."
+        if not results:
+            return f"ℹ️ По запросу «{query}» ничего не найдено в интернете."
+
+        formatted_lines = [f"🔎 Результаты веб-поиска по запросу «{query}»:\n"]
+        for idx, item in enumerate(results, 1):
+            title = item.get("title", "Без названия")
+            snippet = item.get("body", "")
+            href = item.get("href", "")
+            formatted_lines.append(f"{idx}. [{title}]({href})\n{snippet}\n")
+
+        return "\n".join(formatted_lines)
+    except Exception as e:
+        logger.error(f"Async web search error: {e}", exc_info=True)
+        return f"⚠️ Ошибка при выполнении веб-поиска: {e}"
+
 def add_banword(word: str, scope: str = "global") -> str:
     """Adds a new banword to filter out unwanted messages. Scope can be 'global', 'email' or 'vk'."""
     return ''
@@ -73,6 +112,7 @@ class ConversationalAgent:
 
     def _get_tools(self):
         return [
+            web_search,
             add_banword,
             remove_banword,
             add_news_topic, 
@@ -153,7 +193,41 @@ class ConversationalAgent:
                 logger.info(f"🤖 AI Conversational Agent invoked tool: {action_name} with args: {args}")
 
                 # Format a user-friendly response
-                if action_name == "add_banword":
+                if action_name == "web_search":
+                    search_query = args.get("query", text)
+                    logger.info(f"🌐 Executing DuckDuckGo web search for query: '{search_query}'")
+                    search_results = await perform_web_search(search_query)
+
+                    # Feed search results back into Gemini conversation context to synthesize full answer
+                    contents.append(
+                        types.Content(
+                            role="model",
+                            parts=[types.Part.from_function_call(name="web_search", args={"query": search_query})]
+                        )
+                    )
+                    contents.append(
+                        types.Content(
+                            role="user",
+                            parts=[types.Part.from_text(text=f"[Результаты веб-поиска по запросу '{search_query}']:\n{search_results}\n\nПожалуйста, сформируй подробный и понятный ответ пользователю на основе этих результатов поиска. Обязательно укажи ключевые факты и ссылки на источники.")]
+                        )
+                    )
+                    try:
+                        second_response = await self.ai_engine.generate_content_with_retry(
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=self.system_instruction,
+                                temperature=0.7
+                            )
+                        )
+                        reply_text = second_response.text if second_response and second_response.text else search_results
+                    except Exception as e:
+                        logger.error(f"Error generating search summary response: {e}")
+                        reply_text = search_results
+
+                    await self.storage.add_ai_chat_message("user", text)
+                    await self.storage.add_ai_chat_message("model", reply_text)
+                    return {"text": reply_text, "pending_action": None}
+                elif action_name == "add_banword":
                     word = args.get("word")
                     scope = args.get("scope", "global")
                     scope_title = f" ({scope})" if scope != "global" else ""

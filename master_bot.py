@@ -487,6 +487,35 @@ class MasterBot:
         except Exception as e:
             logger.error(f"Error updating single UI panel: {e}")
 
+    def schedule_delayed_deletion(self, chat_id: int, message_ids: List[int], delay_seconds: Optional[float] = None):
+        """Schedules non-blocking async deletion of message IDs after delay_seconds (defaults to AUTO_DELETE_ACTION_DELAY)."""
+        if not chat_id or not message_ids or not self.bot:
+            return
+        if delay_seconds is None:
+            delay_seconds = float(getattr(config, 'AUTO_DELETE_ACTION_DELAY', 7))
+
+        valid_ids = list({mid for mid in message_ids if mid and mid != self._last_ui_msg_id})
+        if not valid_ids:
+            return
+
+        async def _worker():
+            await asyncio.sleep(delay_seconds)
+            for mid in valid_ids:
+                if mid == self._last_ui_msg_id:
+                    continue
+                try:
+                    await self.bot.delete_message(chat_id=chat_id, message_id=mid)
+                except Exception:
+                    pass
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_worker())
+            for mid in valid_ids:
+                loop.create_task(self.storage.save_sent_notification(chat_id, mid, int(delay_seconds)))
+        except RuntimeError:
+            pass
+
     async def update_status_banner(self, chat_id: Optional[int] = None, force_new: bool = False):
         """Creates or updates the single active status banner in-place."""
         target_chat = chat_id or self.master_chat_id
