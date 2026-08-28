@@ -1212,7 +1212,11 @@ def setup_all_handlers(master_bot):
         sugg_enabled = await master_bot.settings.get_ai_suggestions_enabled()
         if not chat_enabled:
             if sugg_enabled:
-                logger.info(f"Ignoring message (only suggestions enabled) from user {message.from_user.id if message.from_user else 'Unknown'}")
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                logger.info(f"Deleted message (only suggestions enabled, no reply) from user {message.from_user.id if message.from_user else 'Unknown'}")
                 return
             else:
                 sent_msg = await message.answer(

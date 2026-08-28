@@ -74,7 +74,7 @@ class TestAIDisabledBehavior(unittest.IsolatedAsyncioTestCase):
         msg.delete.assert_called_once()
         msg.answer.assert_called_once()
 
-    async def test_one_flag_enabled_does_not_autodelete(self):
+    async def test_one_flag_enabled_deletes_without_reply(self):
         # Enable suggestions flag, keep chat disabled
         await self.storage.set_setting("ai_text_chat_enabled", "false")
         await self.storage.set_setting("ai_suggestions_enabled", "true")
@@ -88,8 +88,8 @@ class TestAIDisabledBehavior(unittest.IsolatedAsyncioTestCase):
         msg.answer = AsyncMock(return_value=sent_msg)
 
         await self.handler(msg)
-        # Message should NOT be auto-deleted by the dual-off handler, and NO warning should be sent
-        msg.delete.assert_not_called()
+        # Message SHOULD be deleted, and NO warning/reply should be sent
+        msg.delete.assert_called_once()
         msg.answer.assert_not_called()
 
 if __name__ == "__main__":
