@@ -39,6 +39,7 @@ class Config:
     EMAIL_POLL_INTERVAL_SECONDS: int = _get_int_env("EMAIL_POLL_INTERVAL_SECONDS", 60)
     AUTO_DELETE_DELAY_HOURS: int = _get_int_env("AUTO_DELETE_DELAY_HOURS", 1)
     AUTO_DELETE_ACTION_DELAY: int = _get_int_env("AUTO_DELETE_ACTION_DELAY", 7)
+    LIST_RESPONSE_KEEP_SECONDS: int = _get_int_env("LIST_RESPONSE_KEEP_SECONDS", 60)
     DB_PURGE_DAYS: int = _get_int_env("DB_PURGE_DAYS", 7)
     
     # 🤖 AI LIMITS

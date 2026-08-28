@@ -8,6 +8,7 @@ from aiogram.filters import Command
 from aiogram import types, F, Router
 from aiogram.fsm.context import FSMContext
 import ui_keyboards as kb_ui
+from config.settings import config
 
 logger = logging.getLogger(__name__)
 
@@ -1215,7 +1216,23 @@ def setup_all_handlers(master_bot):
                 text_lower = (message.text or "").lower()
                 is_list_query = any(kw in text_lower for kw in ['канал', 'банворд', 'тема', 'настройк'])
                 if is_list_query:
-                    logger.info(f"Processing list request via AI (only suggestions enabled) from user {message.from_user.id if message.from_user else 'Unknown'}")
+                    logger.info(f"Processing list request (only suggestions enabled) from user {message.from_user.id if message.from_user else 'Unknown'}")
+                    if master_bot.user_agent:
+                        if 'канал' in text_lower:
+                            response_text = await master_bot.user_agent._list_tg_channels()
+                        elif 'банворд' in text_lower:
+                            response_text = await master_bot.user_agent._list_banwords()
+                        elif 'тема' in text_lower:
+                            response_text = await master_bot.user_agent._list_news_topics()
+                        else:
+                            response_text = await master_bot.user_agent._get_settings_summary()
+                    else:
+                        response_text = "ℹ️ Информация по вашему запросу недоступна."
+
+                    reply_msg = await message.answer(response_text, parse_mode="HTML")
+                    master_bot.schedule_delayed_deletion(message.chat.id, [message.message_id], delay_seconds=config.AUTO_DELETE_ACTION_DELAY)
+                    master_bot.schedule_delayed_deletion(message.chat.id, [reply_msg.message_id], delay_seconds=config.LIST_RESPONSE_KEEP_SECONDS)
+                    return
                 else:
                     try:
                         await message.delete()

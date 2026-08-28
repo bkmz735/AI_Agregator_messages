@@ -99,18 +99,20 @@ class TestAIDisabledBehavior(unittest.IsolatedAsyncioTestCase):
         msg = AsyncMock()
         msg.text = "Покажи мои каналы"
         msg.chat.id = 12345
+        msg.message_id = 100
         msg.delete = AsyncMock()
         sent_msg = AsyncMock()
         sent_msg.message_id = 997
         msg.answer = AsyncMock(return_value=sent_msg)
 
         self.master_bot.user_agent = AsyncMock()
-        self.master_bot.user_agent.process_message = AsyncMock(return_value={"text": "📢 Ваши каналы: @channel", "pending_action": None})
+        self.master_bot.user_agent._list_tg_channels = AsyncMock(return_value="📢 Ваши каналы: @channel")
+        self.master_bot.schedule_delayed_deletion = MagicMock()
 
         await self.handler(msg)
-        # List query message should NOT be deleted, and user_agent SHOULD be invoked
-        msg.delete.assert_not_called()
-        self.master_bot.user_agent.process_message.assert_called_once()
+        msg.answer.assert_called_once()
+        self.assertIn("📢 Ваши каналы: @channel", msg.answer.call_args[0][0])
+        self.assertEqual(self.master_bot.schedule_delayed_deletion.call_count, 2)
 
 if __name__ == "__main__":
     unittest.main()
