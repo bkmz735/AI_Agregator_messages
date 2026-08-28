@@ -11,9 +11,6 @@ logger = logging.getLogger(__name__)
 
 def setup_all_handlers(master_bot):
     dp = master_bot.dp
-
-    from aiogram.filters import Command
-    from aiogram import types, F
     
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
@@ -287,6 +284,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data.startswith("add_topic_prompt_"))
     async def process_add_topic_prompt(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         preference = (callback_query.data or "").split("_")[-1]
         if preference == "liked":
             master_bot._waiting_for_liked_topic = True
@@ -336,6 +334,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "tg_chan_add_prompt")
     async def process_tg_chan_add_prompt(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         master_bot._waiting_for_tg_channel = True
         text = (
             "✏️ <b>Добавление ТГ-канала новостей</b>\n\n"
@@ -520,6 +519,7 @@ def setup_all_handlers(master_bot):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         master_bot.night_mode_enabled = not master_bot.night_mode_enabled
         await master_bot.settings.update_night_mode_enabled(master_bot.night_mode_enabled)
+        await master_bot.check_night_mode_transition()
         
         text, kb = await master_bot._get_night_settings_text_and_keyboard()
         try:
@@ -553,6 +553,7 @@ def setup_all_handlers(master_bot):
         
         await master_bot.settings.update_night_start_hour(start_h)
         await master_bot.settings.update_night_end_hour(end_h)
+        await master_bot.check_night_mode_transition()
         
         text, kb = await master_bot._get_night_settings_text_and_keyboard()
         try:
@@ -583,9 +584,8 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data.startswith("bw_view_email_"))
     async def process_bw_view_email(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
-        page = int(callback_query.data.replace("bw_view_email_", ""))
-        bws = await master_bot.storage.get_banwords(scope="email")
-        
+    async def _render_bw_page(callback_query: types.CallbackQuery, scope: str, page: int):
+        bws = await master_bot.storage.get_banwords(scope=scope)
         per_page = 9
         total_pages = max(1, (len(bws) + per_page - 1) // per_page)
         page = max(1, min(page, total_pages))
@@ -593,68 +593,53 @@ def setup_all_handlers(master_bot):
         start_idx = (page - 1) * per_page
         page_bws = bws[start_idx:start_idx + per_page]
     
-        lines = [f"✉️ <b>Банворды Mail.ru</b>\n<i>(Стр. {page}/{total_pages}, всего: {len(bws)})</i>\n"]
+        scope_title = "Mail.ru" if scope == "email" else "ВКонтакте"
+        icon = "✉️" if scope == "email" else "💬"
+
+        lines = [f"{icon} <b>Банворды {scope_title}</b>\n<i>(Стр. {page}/{total_pages}, всего: {len(bws)})</i>\n"]
         if not bws:
-            lines.append("<i>Список банвордов Mail.ru пуст.</i>")
+            lines.append(f"<i>Список банвордов {scope_title} пуст.</i>")
         else:
             for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
                 lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
             lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
     
-        kb = kb_ui.get_banwords_list_keyboard(page_bws, page, total_pages, "email", start_idx)
+        kb = kb_ui.get_banwords_list_keyboard(page_bws, page, total_pages, scope, start_idx)
         try:
             await callback_query.message.edit_text(text="\n".join(lines), reply_markup=kb, parse_mode="HTML")
         except Exception:
             pass
         await callback_query.answer()
+
+    @dp.callback_query(F.data.startswith("bw_view_email_"))
+    async def process_bw_view_email(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        page = int(callback_query.data.replace("bw_view_email_", ""))
+        await _render_bw_page(callback_query, "email", page)
     
     @dp.callback_query(F.data.startswith("bw_view_vk_"))
     async def process_bw_view_vk(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         page = int(callback_query.data.replace("bw_view_vk_", ""))
-        bws = await master_bot.storage.get_banwords(scope="vk")
-        
-        per_page = 9
-        total_pages = max(1, (len(bws) + per_page - 1) // per_page)
-        page = max(1, min(page, total_pages))
-        
-        start_idx = (page - 1) * per_page
-        page_bws = bws[start_idx:start_idx + per_page]
-    
-        lines = [f"💬 <b>Банворды ВКонтакте</b>\n<i>(Стр. {page}/{total_pages}, всего: {len(bws)})</i>\n"]
-        if not bws:
-            lines.append("<i>Список банвордов VK пуст.</i>")
-        else:
-            for idx_in_page, b in enumerate(page_bws, start=start_idx + 1):
-                lines.append(f"{idx_in_page}. <code>{html.escape(b['word'])}</code>")
-            lines.append("\n📌 <i>Нажмите ❌ #№ ниже для удаления:</i>")
-    
-        kb = kb_ui.get_banwords_list_keyboard(page_bws, page, total_pages, "vk", start_idx)
-        try:
-            await callback_query.message.edit_text(text="\n".join(lines), reply_markup=kb, parse_mode="HTML")
-        except Exception:
-            pass
-        await callback_query.answer()
+        await _render_bw_page(callback_query, "vk", page)
     
     @dp.callback_query(F.data.startswith("remove_bw_email_"))
     async def process_remove_bw_email(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         parts = callback_query.data.replace("remove_bw_email_", "").split("_")
         idx = parts[0]
-        page = parts[1] if len(parts) > 1 else "1"
+        page = int(parts[1]) if len(parts) > 1 else 1
         await master_bot.storage.remove_banword(idx, scope="email")
-        callback_query.data = f"bw_view_email_{page}"
-        await process_bw_view_email(callback_query)
+        await _render_bw_page(callback_query, "email", page)
     
     @dp.callback_query(F.data.startswith("remove_bw_vk_"))
     async def process_remove_bw_vk(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         parts = callback_query.data.replace("remove_bw_vk_", "").split("_")
         idx = parts[0]
-        page = parts[1] if len(parts) > 1 else "1"
+        page = int(parts[1]) if len(parts) > 1 else 1
         await master_bot.storage.remove_banword(idx, scope="vk")
-        callback_query.data = f"bw_view_vk_{page}"
-        await process_bw_view_vk(callback_query)
+        await _render_bw_page(callback_query, "vk", page)
     
     @dp.callback_query(F.data == "add_bw_select_scope")
     async def process_add_bw_select_scope(callback_query: types.CallbackQuery):
@@ -673,6 +658,7 @@ def setup_all_handlers(master_bot):
     async def process_add_bw_prompt_email(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
+        master_bot.clear_input_states()
         master_bot._waiting_for_banword_scope = "email"
         try:
             await callback_query.message.edit_text(
@@ -687,6 +673,7 @@ def setup_all_handlers(master_bot):
     async def process_add_bw_prompt_vk(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
+        master_bot.clear_input_states()
         master_bot._waiting_for_banword_scope = "vk"
         try:
             await callback_query.message.edit_text(
@@ -880,7 +867,6 @@ def setup_all_handlers(master_bot):
         elif isinstance(event, types.CallbackQuery):
             await event.answer()
     
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         text = "⚠️ <b>Вы действительно хотите очистить последние сообщения в чате?</b>\n<i>(Сообщения останутся в базе данных)</i>"
         await master_bot.show_or_edit_ui_panel(text=text, keyboard=kb_ui.get_clear_chat_prompt_keyboard(), force_new=False)
     
@@ -965,13 +951,22 @@ def setup_all_handlers(master_bot):
                 await master_bot.storage.remove_news_topic(topic, pref)
                 result_msg = f"✅ Тема «{topic}» удалена ИИ ({'желаемая' if pref == 'liked' else 'запретная'})."
             elif action == "add_tg_channel":
-                channel = args.get("channel_username")
-                await master_bot.storage.add_tg_channel(channel)
-                clean_ch = channel.strip().lstrip('@')
-                result_msg = f"✅ Telegram канал «@{clean_ch}» добавлен ИИ."
+                raw_channel = str(args.get("channel_username", "")).strip()
+                clean_ch = raw_channel
+                if "t.me/" in clean_ch:
+                    clean_ch = clean_ch.split("t.me/")[-1].split("/")[0]
+                clean_ch = clean_ch.strip().lstrip('@')
+                if clean_ch:
+                    await master_bot.storage.add_tg_channel(clean_ch)
+                    result_msg = f"✅ Telegram канал «@{clean_ch}» добавлен ИИ."
+                else:
+                    result_msg = "❌ Не удалось распознать юзернейм канала."
             elif action == "remove_tg_channel":
-                channel = args.get("channel_username")
-                clean_ch = channel.strip().lstrip('@')
+                raw_channel = str(args.get("channel_username", "")).strip()
+                clean_ch = raw_channel
+                if "t.me/" in clean_ch:
+                    clean_ch = clean_ch.split("t.me/")[-1].split("/")[0]
+                clean_ch = clean_ch.strip().lstrip('@')
                 channels = await master_bot.storage.get_tg_channels()
                 target_id = None
                 for ch in channels:
@@ -983,6 +978,45 @@ def setup_all_handlers(master_bot):
                     result_msg = f"✅ Telegram канал «@{clean_ch}» удален ИИ."
                 else:
                     result_msg = f"ℹ️ Telegram канал «@{clean_ch}» не найден в списке."
+            elif action == "set_timezone":
+                offset = int(args.get("offset_hours", 3))
+                await master_bot.settings.update_timezone_offset(offset)
+                master_bot.timezone_offset = offset
+                result_msg = f"✅ Часовой пояс изменен ИИ на UTC{'+' if offset >= 0 else ''}{offset}."
+            elif action == "set_digest_interval":
+                mins = int(args.get("minutes", 60))
+                await master_bot.settings.update_digest_interval_minutes(mins)
+                master_bot.digest_interval = mins
+                result_msg = f"✅ Интервал сводок изменен ИИ на {mins} мин."
+            elif action == "set_delivery_mode":
+                mode = str(args.get("mode", "digest")).lower()
+                if mode not in ("instant", "digest"):
+                    mode = "digest"
+                await master_bot.settings.update_delivery_mode(mode)
+                master_bot.delivery_mode = mode
+                result_msg = f"✅ Режим доставки изменен ИИ на «{'мгновенный' if mode == 'instant' else 'сводка'}»."
+            elif action == "toggle_night_mode":
+                enabled = bool(args.get("enabled", True))
+                await master_bot.settings.update_night_mode_enabled(enabled)
+                master_bot.night_mode_enabled = enabled
+                await master_bot.check_night_mode_transition()
+                result_msg = f"✅ Ночной режим {'включен' if enabled else 'выключен'} ИИ."
+            elif action == "set_night_hours":
+                start_h = int(args.get("start_hour", 23))
+                end_h = int(args.get("end_hour", 7))
+                await master_bot.settings.update_night_start_hour(start_h)
+                await master_bot.settings.update_night_end_hour(end_h)
+                master_bot.night_start_hour = start_h
+                master_bot.night_end_hour = end_h
+                await master_bot.check_night_mode_transition()
+                result_msg = f"✅ Часы ночного режима изменены ИИ на {start_h}:00 - {end_h}:00."
+            elif action == "toggle_category_filter":
+                cat = str(args.get("category", "")).lower()
+                enabled = bool(args.get("enabled", True))
+                filters = await master_bot.settings.get_ai_category_filters()
+                filters[cat] = enabled
+                await master_bot.settings.update_ai_category_filters(filters)
+                result_msg = f"✅ Категория «{cat}» {'включена' if enabled else 'отключена'} ИИ."
             elif action == "clear_chat":
                 await master_bot.storage.clear_all_messages()
                 result_msg = "✅ История сообщений полностью очищена."
@@ -1010,15 +1044,18 @@ def setup_all_handlers(master_bot):
         await callback_query.message.edit_text(f"{callback_query.message.text}\n\n❌ Действие отменено.", parse_mode="HTML")
 
 
-    @dp.message(F.text, ~F.text.startswith("/"))
+    @dp.message(F.text)
     async def handle_text_message(message: types.Message):
-        # Protect against accidental menu button presses being treated as input
-        if message.text in ["🏠 Главное меню", "📥 Буфер", "⚙️ Настройки", "📊 Статистика", "🗑 Очистить чат"]:
+        # Protect against accidental menu button presses or slash commands being treated as input
+        is_system_cmd = message.text and (message.text.startswith("/") or message.text in [
+            "🏠 Главное меню", "📥 Буфер", "🚀 Отправить сводку", "⚙️ Настройки", "📊 Статистика", "🧹 Очистить чат"
+        ])
+        if is_system_cmd:
             master_bot.clear_input_states()
-            return
+            if message.text in ["🏠 Главное меню", "📥 Буфер", "⚙️ Настройки", "📊 Статистика", "🗑 Очистить чат"]:
+                return
 
-        # If user tapped a ReplyButton while in input mode, cancel pending inputs
-    
+        # Handle interactive input states
         if master_bot._waiting_for_tg_channel:
             master_bot._waiting_for_tg_channel = False
             raw_input = message.text.strip() if message.text else ""
@@ -1027,16 +1064,18 @@ def setup_all_handlers(master_bot):
             except Exception:
                 pass
     
-            added_id = await master_bot.storage.add_tg_channel(raw_input)
-            clean_user = raw_input.strip().lstrip("@").lower()
+            clean_user = raw_input.strip()
             if "t.me/" in clean_user:
                 clean_user = clean_user.split("t.me/")[-1].split("/")[0].strip()
-    
-            if added_id:
-                sent_msg = await message.answer(f"✅ Канал <b>«@{html.escape(clean_user)}»</b> добавлен в отслеживание!", parse_mode="HTML")
+            clean_user = clean_user.lstrip("@").lower()
+
+            if clean_user:
+                added_id = await master_bot.storage.add_tg_channel(clean_user)
+                text_out = f"✅ Канал <b>«@{html.escape(clean_user)}»</b> добавлен в отслеживание!" if added_id else f"ℹ️ Канал <b>«@{html.escape(clean_user)}»</b> уже есть в отслеживании."
             else:
-                sent_msg = await message.answer(f"ℹ️ Канал <b>«@{html.escape(clean_user)}»</b> уже есть в отслеживании.", parse_mode="HTML")
-    
+                text_out = "❌ Не удалось распознать юзернейм канала."
+
+            sent_msg = await master_bot.bot.send_message(chat_id=master_bot.master_chat_id, text=text_out, parse_mode="HTML")
             await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
             await master_bot._show_tg_channels_page(1)
             return
@@ -1052,14 +1091,14 @@ def setup_all_handlers(master_bot):
             except Exception:
                 pass
                 
-            added = await master_bot.storage.add_news_topic(raw_input, preference=preference)
             pref_name = "Желаемые" if preference == "liked" else "Запретные"
-            
-            if added:
-                sent_msg = await message.answer(f"✅ Тема <b>«{html.escape(raw_input)}»</b> добавлена в {pref_name}!", parse_mode="HTML")
+            if raw_input:
+                added = await master_bot.storage.add_news_topic(raw_input, preference=preference)
+                text_out = f"✅ Тема <b>«{html.escape(raw_input)}»</b> добавлена в {pref_name}!" if added else f"ℹ️ Тема <b>«{html.escape(raw_input)}»</b> уже есть в {pref_name}."
             else:
-                sent_msg = await message.answer(f"ℹ️ Тема <b>«{html.escape(raw_input)}»</b> уже есть в {pref_name}.", parse_mode="HTML")
-                
+                text_out = "❌ Имя темы не может быть пустым."
+
+            sent_msg = await master_bot.bot.send_message(chat_id=master_bot.master_chat_id, text=text_out, parse_mode="HTML")
             await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
             await master_bot._show_topics_list_page(preference, 1)
             return
@@ -1075,14 +1114,14 @@ def setup_all_handlers(master_bot):
             except Exception:
                 pass
     
-            added = await master_bot.storage.add_banword(word_to_add, scope=scope)
             scope_name = "Mail.ru" if scope == "email" else ("ВКонтакте" if scope == "vk" else "Общие")
-    
-            if added:
-                sent_msg = await message.answer(f"✅ Банворд <b>«{html.escape(word_to_add)}»</b> успешно добавлен в {scope_name}!", parse_mode="HTML")
+            if word_to_add:
+                added = await master_bot.storage.add_banword(word_to_add, scope=scope)
+                text_out = f"✅ Банворд <b>«{html.escape(word_to_add)}»</b> успешно добавлен в {scope_name}!" if added else f"ℹ️ Банворд <b>«{html.escape(word_to_add)}»</b> уже есть в {scope_name}."
             else:
-                sent_msg = await message.answer(f"ℹ️ Банворд <b>«{html.escape(word_to_add)}»</b> уже есть в {scope_name}.", parse_mode="HTML")
-    
+                text_out = "❌ Банворд не может быть пустым."
+
+            sent_msg = await master_bot.bot.send_message(chat_id=master_bot.master_chat_id, text=text_out, parse_mode="HTML")
             await master_bot.storage.save_sent_notification(chat_id=master_bot.master_chat_id, message_id=sent_msg.message_id, delay_seconds=10)
             
             # Refresh UI panel to show banword list cleanly (per_page = 9)
@@ -1114,31 +1153,73 @@ def setup_all_handlers(master_bot):
             await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=5)
             return
 
+        user_input_text = message.text or ""
+        if len(user_input_text) > 3000:
+            user_input_text = user_input_text[:3000] + "..."
+
         if master_bot.user_agent:
             status_msg = await message.answer("⏳ <i>ИИ думает...</i>", parse_mode="HTML")
             try:
-                result = await master_bot.user_agent.process_message(message.text)
+                result = await master_bot.user_agent.process_message(user_input_text)
                 reply_text = result.get("text", "Ошибка при обработке запроса ИИ.")
                 pending_action = result.get("pending_action")
                 
                 if pending_action:
                     action_name = pending_action.get("action")
-                    args = pending_action.get("args", {})
+                    args = pending_action.get("args", {}) or {}
                     user_text = pending_action.get("user_text", "")
                     
-                    if action_name in ["set_timezone", "set_digest_interval"]:
+                    DIRECT_ACTIONS = [
+                        "set_timezone", "set_digest_interval", "set_delivery_mode", 
+                        "toggle_night_mode", "set_night_hours", "toggle_category_filter"
+                    ]
+                    if action_name in DIRECT_ACTIONS:
                         if action_name == "set_timezone":
                             offset = int(args.get("offset_hours", 0))
                             await master_bot.settings.update_timezone_offset(offset)
                             master_bot.timezone_offset = offset
-                            master_bot.start_digest_scheduler()
                             result_msg = f"✅ Часовой пояс изменен на <b>UTC{'+' if offset >= 0 else ''}{offset}</b>."
                         elif action_name == "set_digest_interval":
                             mins = int(args.get("minutes", 60))
                             await master_bot.settings.update_digest_interval_minutes(mins)
-                            master_bot.start_digest_scheduler()
+                            master_bot.digest_interval = mins
                             result_msg = f"✅ Интервал сводок изменен на <b>{mins} минут</b>."
-                            
+                        elif action_name == "set_delivery_mode":
+                            mode = str(args.get("mode", "digest")).lower()
+                            if mode not in ["instant", "digest"]:
+                                mode = "digest"
+                            await master_bot.settings.update_delivery_mode(mode)
+                            master_bot.delivery_mode = mode
+                            result_msg = f"✅ Режим доставки изменен на <b>{'Мгновенный (instant)' if mode == 'instant' else 'Сводка (digest)'}</b>."
+                        elif action_name == "toggle_night_mode":
+                            enabled = bool(args.get("enabled", True))
+                            if isinstance(args.get("enabled"), str):
+                                enabled = args.get("enabled").lower() in ("true", "1", "yes")
+                            await master_bot.settings.update_night_mode_enabled(enabled)
+                            master_bot.night_mode_enabled = enabled
+                            await master_bot.check_night_mode_transition()
+                            result_msg = f"✅ Ночной режим <b>{'ВКЛЮЧЕН 🟢' if enabled else 'ВЫКЛЮЧЕН ❌'}</b>."
+                        elif action_name == "set_night_hours":
+                            start_h = int(args.get("start_hour", 23))
+                            end_h = int(args.get("end_hour", 7))
+                            await master_bot.settings.update_night_start_hour(start_h)
+                            await master_bot.settings.update_night_end_hour(end_h)
+                            master_bot.night_start_hour = start_h
+                            master_bot.night_end_hour = end_h
+                            await master_bot.check_night_mode_transition()
+                            result_msg = f"✅ Часы тишины установлены: <b>{start_h:02d}:00 - {end_h:02d}:00</b>."
+                        elif action_name == "toggle_category_filter":
+                            cat = str(args.get("category", "")).lower()
+                            enabled = bool(args.get("enabled", True))
+                            if isinstance(args.get("enabled"), str):
+                                enabled = args.get("enabled").lower() in ("true", "1", "yes")
+                            await master_bot.settings.update_ai_category_filter(cat, enabled)
+                            result_msg = f"✅ Категория <b>{cat}</b>: <b>{'Пропускать 🟢' if enabled else 'Фильтровать 🔴'}</b>."
+
+                        # Refresh active UI banner in-place
+                        if master_bot.master_chat_id:
+                            asyncio.create_task(master_bot.update_status_banner(master_bot.master_chat_id))
+
                         await master_bot.storage.add_ai_chat_message("user", user_text)
                         await master_bot.storage.add_ai_chat_message("model", result_msg)
                         
@@ -1158,6 +1239,11 @@ def setup_all_handlers(master_bot):
                     else:
                         import uuid
                         action_id = str(uuid.uuid4())[:8]
+                        # Prune old actions to prevent memory leaks
+                        if len(master_bot.pending_ai_actions) > 50:
+                            for old_k in list(master_bot.pending_ai_actions.keys())[:20]:
+                                master_bot.pending_ai_actions.pop(old_k, None)
+
                         master_bot.pending_ai_actions[action_id] = pending_action
                         if isinstance(status_msg, types.Message):
                             try:

@@ -41,13 +41,17 @@ DEFAULT_SYSTEM_BANWORDS = [
 ]
 
 
+import re
+
 def is_text_spam(text: str, channel: str = "email", active_banwords: list = None) -> bool:
     """
     Checks if given text contains any active banword for the given channel category ('email' or 'vk').
+    Normalizes punctuation and enforces word boundary matching for short banwords.
     """
     if not text:
         return False
 
+    clean_text = re.sub(r'[^\w\s]', ' ', text.lower())
     lower_text = text.lower()
     words_to_check = active_banwords if active_banwords is not None else DEFAULT_SYSTEM_BANWORDS
 
@@ -60,14 +64,20 @@ def is_text_spam(text: str, channel: str = "email", active_banwords: list = None
         chan_clean = "other"
 
     for item in words_to_check:
-        word = item.get("word", "").lower()
+        word = item.get("word", "").lower().strip()
         scope = item.get("scope", "email").lower()
         if not word:
             continue
 
         if scope == chan_clean or scope == "global":
-            if word in lower_text:
-                return True
+            # For short words (5 chars or less), use word boundary regex to prevent false positives (e.g. '777' in '777123')
+            if len(word) <= 5:
+                pattern = r'\b' + re.escape(word) + r'\b'
+                if re.search(pattern, clean_text):
+                    return True
+            else:
+                if word in clean_text or word in lower_text:
+                    return True
 
     return False
 

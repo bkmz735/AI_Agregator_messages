@@ -38,22 +38,7 @@ try:
 except Exception as e:
     logger.warning(f"Could not initialize Xbox DNS Resolver: {e}")
 
-class AnalysisResult(BaseModel):
-    msg_uid: str
-    category: str  # "spam", "urgent", "important", "gov_debt", "gov_service", "news", "media", "general", "politics", "interesting", "bullshit"
-    summary: str
-    action_required: bool
-    suggested_reply: Optional[str] = None
-
-class AnalysisBatchResponse(BaseModel):
-    results: List[AnalysisResult]
-
-class AudioAnalysisResult(BaseModel):
-    transcription: str
-    category: str
-    summary: str
-    action_required: bool
-    suggested_reply: Optional[str] = None
+from models import AnalysisResult, AnalysisBatchResponse, AudioAnalysisResult
 
 class AIEngine:
     def __init__(self, api_key: Optional[str] = None, storage=None):
@@ -625,3 +610,52 @@ class AIEngine:
                 continue
                 
         return "Произошла ошибка при обращении к ИИ. Попробуйте позже."
+
+    async def transcribe_and_analyze_audio(self, audio_bytes: bytes, mime_type: str = "audio/ogg") -> AudioAnalysisResult:
+        """Transcribes audio payload and classifies text content using Gemini Multimodal API."""
+        if not self.client:
+            return AudioAnalysisResult(
+                transcription="[Голосовое сообщение — ИИ недоступен]",
+                category="general",
+                summary="Голосовое сообщение (без ИИ)",
+                action_required=False
+            )
+
+        from google.genai import types
+        from config.prompts import AUDIO_TRANSCRIPTION_PROMPT
+        prompt = AUDIO_TRANSCRIPTION_PROMPT
+
+        active_models = self._get_active_models()
+        if not active_models:
+            active_models = self.priority_models
+
+        for model_name in active_models:
+            try:
+                self._track_request()
+                response = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                            prompt
+                        ],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=AudioAnalysisResult
+                        )
+                    ),
+                    timeout=30.0
+                )
+                if response and response.text:
+                    data = json.loads(response.text)
+                    return AudioAnalysisResult(**data)
+            except Exception as e:
+                logger.warning(f"Audio transcription failed on model {model_name}: {e}")
+                continue
+
+        return AudioAnalysisResult(
+            transcription="[Ошибка расшифровки аудиозаписи]",
+            category="general",
+            summary="Голосовое сообщение",
+            action_required=False
+        )

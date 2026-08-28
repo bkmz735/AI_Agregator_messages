@@ -117,3 +117,5 @@ class TGNewsAdapter(BaseAdapter):
                 channel_override=channel_override
             )
             self._seen_uids.add(msg_uid)
+            if len(self._seen_uids) > 1000:
+                self._seen_uids = set(list(self._seen_uids)[-500:])

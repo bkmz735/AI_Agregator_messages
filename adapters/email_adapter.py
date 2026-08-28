@@ -188,6 +188,8 @@ class EmailAdapter(BaseAdapter):
                                 logger.info(f"Emitting email: [{channel_name}] From: {from_addr} Subject: {subject}")
                                 await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid, channel_override=channel_name)
                                 self._seen_nums.add(num_str)
+                                if len(self._seen_nums) > 1000:
+                                    self._seen_nums = set(list(self._seen_nums)[-500:])
                             else:
                                 logger.warning(f"Email #{num_str}: could not extract raw body from IMAP response.")
                         else:

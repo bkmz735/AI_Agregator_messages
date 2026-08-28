@@ -86,11 +86,11 @@ class MessageAggregatorApp:
             except Exception as e:
                 logger.error(f"Critical error in AI batch worker during flush: {e}", exc_info=True)
 
-    async def _flush_raw_queue(self):
+    async def _flush_raw_queue(self, force: bool = False):
         async with self._queue_lock:
             if not self.raw_message_queue:
                 return
-            if self.bot and self.bot.is_night_time():
+            if not force and self.bot and self.bot.is_night_time():
                 logger.info(
                     f"🌙 Night mode active ({self.bot.night_start_hour:02d}:00 - {self.bot.night_end_hour:02d}:00). "
                     f"Holding {len(self.raw_message_queue)} messages in queue to save AI tokens until morning..."
@@ -226,7 +226,7 @@ class MessageAggregatorApp:
             logger.info(f"Flushing {queue_size} queued messages before shutdown...")
             try:
                 # Add 3 second hard timeout to prevent systemd restart hangs
-                await asyncio.wait_for(self._flush_raw_queue(), timeout=3.0)
+                await asyncio.wait_for(self._flush_raw_queue(force=True), timeout=3.0)
                 logger.info("Queue flushed successfully!")
             except asyncio.TimeoutError:
                 logger.warning("Queue flush timed out during shutdown! Skipping.")

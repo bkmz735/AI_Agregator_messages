@@ -42,6 +42,22 @@ def set_digest_interval(minutes: int) -> str:
     """Sets the interval in minutes for sending automatic news digests (e.g., 60 for 1 hour)."""
     return ''
 
+def set_delivery_mode(mode: str) -> str:
+    """Sets the message delivery mode. Parameter 'mode' must be either 'instant' (deliver immediately) or 'digest' (collect into periodic summary)."""
+    return ''
+
+def toggle_night_mode(enabled: bool) -> str:
+    """Enables or disables Night Mode (Quiet Hours). Set enabled=True to activate night mode, or enabled=False to deactivate it."""
+    return ''
+
+def set_night_hours(start_hour: int, end_hour: int) -> str:
+    """Sets quiet hours interval for Night Mode (e.g. start_hour=23, end_hour=7)."""
+    return ''
+
+def toggle_category_filter(category: str, enabled: bool) -> str:
+    """Enables or disables message filtering for a specific AI category. Available categories: spam, urgent, important, gov_debt, gov_service, news, media, general, politics, interesting, bullshit."""
+    return ''
+
 def clear_chat() -> str:
     """Clears the entire chat history and removes all stored messages from the bot's database. Requires confirmation."""
     return ''
@@ -52,18 +68,8 @@ class ConversationalAgent:
         self.storage = storage
         self.model_name = "gemini-3.5-flash-lite"
         
-        self.system_instruction = (
-            "Ты — личный ИИ-ассистент в Telegram боте агрегаторе сообщений.\n"
-            "Бот собирает сообщения, фильтрует спам, выдает сводки, а также автоматически распознает штрафы, налоги и уведомления от Госуслуг.\n"
-            "Умеешь общаться, отвечать на вопросы, добавлять и удалять банворды, каналы в Telegram и настраивать темы новостей.\n"
-            "Если пользователь спрашивает, что ты умеешь, обязательно перечисли свои возможности, включая умную фильтрацию задолженностей и Госуслуг.\n"
-            "Если пользователь просит добавить/удалить банворд (слово для фильтрации спама), тему новостей или Телеграм канал, "
-            "Используй доступные инструменты (tools). Тебе не нужно самому подтверждать выполнение инструмента. "
-            "Просто вызови инструмент, а бот запросит разрешение у пользователя.\n"
-            "Если пользователь просит добавить Телеграм канал (например 'добавь канал Nexta'), извлеки его юзернейм (@username) и вызови инструмент add_tg_channel.\n"
-            "Также ты можешь управлять настройками бота (часовой пояс, интервал сводок) и очищать чат, вызывая соответствующие инструменты.\n"
-            "Отвечай вежливо, четко и по делу."
-        )
+        from config.prompts import CONVERSATIONAL_SYSTEM_INSTRUCTION
+        self.system_instruction = CONVERSATIONAL_SYSTEM_INSTRUCTION
 
     def _get_tools(self):
         return [
@@ -76,6 +82,10 @@ class ConversationalAgent:
             get_bot_stats,
             set_timezone,
             set_digest_interval,
+            set_delivery_mode,
+            toggle_night_mode,
+            set_night_hours,
+            toggle_category_filter,
             clear_chat
         ]
 
@@ -139,7 +149,8 @@ class ConversationalAgent:
             if response.function_calls:
                 fc = response.function_calls[0]
                 action_name = fc.name
-                args = fc.args
+                args = fc.args or {}
+                logger.info(f"🤖 AI Conversational Agent invoked tool: {action_name} with args: {args}")
 
                 # Format a user-friendly response
                 if action_name == "add_banword":
@@ -180,6 +191,20 @@ class ConversationalAgent:
                 elif action_name == "set_digest_interval":
                     mins = args.get("minutes", 60)
                     reply_text = f"⚙️ Меняю интервал сводок на {mins} мин..."
+                elif action_name == "set_delivery_mode":
+                    mode = args.get("mode", "digest")
+                    reply_text = f"⚙️ Меняю режим доставки на «{'мгновенный (instant)' if mode == 'instant' else 'сводка (digest)'}»..."
+                elif action_name == "toggle_night_mode":
+                    enabled = bool(args.get("enabled", True))
+                    reply_text = f"⚙️ {'Включаю' if enabled else 'Выключаю'} Ночной режим (часы тишины)..."
+                elif action_name == "set_night_hours":
+                    start_h = args.get("start_hour", 23)
+                    end_h = args.get("end_hour", 7)
+                    reply_text = f"⚙️ Устанавливаю часы тишины на {start_h}:00 - {end_h}:00..."
+                elif action_name == "toggle_category_filter":
+                    cat = args.get("category", "")
+                    enabled = bool(args.get("enabled", True))
+                    reply_text = f"⚙️ {'Включаю' if enabled else 'Отключаю'} фильтрацию категории «{cat}»..."
                 elif action_name == "clear_chat":
                     reply_text = "Вы уверены, что хотите полностью очистить историю сообщений?"
                 else:

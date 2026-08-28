@@ -66,7 +66,8 @@ class SettingsManager:
 
     # --- Night Mode Settings ---
     async def get_night_mode_enabled(self) -> bool:
-        val = await self.storage.get_setting("night_mode_enabled", "false")
+        default_str = "true" if config.NIGHT_MODE_ENABLED else "false"
+        val = await self.storage.get_setting("night_mode_enabled", default_str)
         return val.lower() in ("true", "1", "yes")
 
     async def update_night_mode_enabled(self, enabled: bool):

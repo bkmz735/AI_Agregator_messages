@@ -92,13 +92,15 @@ class Storage:
             """)
             
             # Indexes for performance optimization
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_uid ON messages(msg_uid)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_ai_history_timestamp ON ai_chat_history(timestamp)")
             
-            # New optimized indexes
+            # Optimized compound indexes
             await db.execute("CREATE INDEX IF NOT EXISTS idx_msg_delivered_cat ON messages(is_delivered, category)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_delivered_id ON messages(is_delivered, id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_sent_notif_delete_at ON sent_notifications(delete_at)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_banwords_scope ON banwords(scope)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_news_topics_pref ON news_topics(preference)")
 
             await db.commit()
 
@@ -161,13 +163,19 @@ class Storage:
             await db.commit()
             return cursor.lastrowid
 
-    async def get_buffered_messages(self, mark_as_delivered: bool = True) -> List[Dict[str, Any]]:
-        """Fetches all non-spam undelivered messages from buffer."""
+    async def get_buffered_messages(self, mark_as_delivered: bool = True, disabled_categories: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Fetches all non-spam undelivered messages from buffer, excluding muted categories."""
         async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM messages WHERE is_delivered = 0 AND category != 'spam' ORDER BY id ASC"
-            ) as cursor:
+            query = "SELECT * FROM messages WHERE is_delivered = 0 AND category != 'spam'"
+            params = []
+            if disabled_categories:
+                placeholders = ','.join('?' * len(disabled_categories))
+                query += f" AND category NOT IN ({placeholders})"
+                params.extend(disabled_categories)
+            query += " ORDER BY id ASC"
+
+            async with db.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
                 messages = [dict(row) for row in rows]
 
@@ -179,10 +187,16 @@ class Storage:
                 
             return messages
 
-    async def get_buffer_count(self) -> int:
-        """Returns the number of non-spam pending messages in buffer."""
+    async def get_buffer_count(self, disabled_categories: Optional[List[str]] = None) -> int:
+        """Returns the number of non-spam pending messages in buffer, excluding muted categories."""
         async with self.get_db() as db:
-            async with db.execute("SELECT COUNT(*) FROM messages WHERE is_delivered = 0 AND category != 'spam'") as cursor:
+            query = "SELECT COUNT(*) FROM messages WHERE is_delivered = 0 AND category != 'spam'"
+            params = []
+            if disabled_categories:
+                placeholders = ','.join('?' * len(disabled_categories))
+                query += f" AND category NOT IN ({placeholders})"
+                params.extend(disabled_categories)
+            async with db.execute(query, params) as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
 
@@ -246,9 +260,9 @@ class Storage:
             return deleted_count
 
     async def save_sent_notification(self, chat_id: int, message_id: int, delay_seconds: int):
-        """Saves sent message ID and calculates deletion time."""
+        """Saves sent message ID and calculates deletion time (UTC)."""
         import datetime
-        delete_at = (datetime.datetime.now() + datetime.timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        delete_at = (datetime.datetime.utcnow() + datetime.timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
         async with self.get_db() as db:
             await db.execute(
                 "INSERT INTO sent_notifications (chat_id, message_id, delete_at) VALUES (?, ?, ?)",
@@ -257,9 +271,9 @@ class Storage:
             await db.commit()
 
     async def get_expired_notifications(self) -> List[Dict[str, Any]]:
-        """Gets all notifications that should be deleted."""
+        """Gets all notifications that should be deleted (UTC)."""
         import datetime
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

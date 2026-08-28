@@ -105,7 +105,7 @@ class MasterBot:
         self.settings = SettingsManager(self.storage)
         self.ai_engine = ai_engine
         self.simulate_callback = simulate_callback
-        self.on_flush_raw_queue: Optional[Callable[[], Awaitable[None]]] = None
+        self.on_flush_raw_queue: Optional[Callable[..., Awaitable[None]]] = None
         self.delivery_mode = config.DELIVERY_MODE  # "instant" or "digest"
         self.digest_interval = config.DIGEST_INTERVAL_MINUTES
         self.auto_delete_delay_hours = config.AUTO_DELETE_DELAY_HOURS
@@ -113,6 +113,7 @@ class MasterBot:
         self.timezone_offset = 3  # Default UTC+3
         self.night_start_hour = config.NIGHT_START_HOUR
         self.night_end_hour = config.NIGHT_END_HOUR
+        self._was_night_mode: bool = False
         self.current_menu_state = 'main'
         self._last_ui_msg_id = None
         self._last_clear_prompt_msg_id = None
@@ -139,7 +140,7 @@ class MasterBot:
             from user_agent import ConversationalAgent
             self.user_agent = ConversationalAgent(self.ai_engine, self.storage)
 
-    def set_flush_raw_queue_callback(self, callback: Callable[[], Awaitable[None]]):
+    def set_flush_raw_queue_callback(self, callback: Callable[..., Awaitable[None]]):
         self.on_flush_raw_queue = callback
 
     def clear_input_states(self):
@@ -150,15 +151,36 @@ class MasterBot:
         self._waiting_for_disliked_topic = False
 
     def is_night_time(self) -> bool:
-        """Returns True if Night Mode is enabled and current time falls in quiet hours."""
+        """Returns True if Night Mode is enabled and current local time (user timezone) falls in quiet hours."""
         if not self.night_mode_enabled:
             return False
-        from datetime import datetime
-        now_hour = datetime.now().hour
+        from datetime import datetime, timedelta
+        now_utc = datetime.utcnow()
+        now_local = now_utc + timedelta(hours=self.timezone_offset)
+        now_hour = now_local.hour
         if self.night_start_hour > self.night_end_hour:
             return now_hour >= self.night_start_hour or now_hour < self.night_end_hour
-        else:
+        elif self.night_start_hour < self.night_end_hour:
             return self.night_start_hour <= now_hour < self.night_end_hour
+        else:
+            return False
+
+    async def check_night_mode_transition(self):
+        """Checks for transition from Night Mode to Day Mode and triggers morning digest."""
+        is_night = self.is_night_time()
+        if self._was_night_mode and not is_night:
+            logger.info("🌅 Morning wake-up! Night mode ended. Flushing AI queue and sending Morning Digest...")
+            if self.on_flush_raw_queue:
+                try:
+                    await self.on_flush_raw_queue(force=True)
+                except Exception as e:
+                    logger.error(f"Error flushing raw queue on morning wake-up: {e}")
+            try:
+                await self.flush_buffer_now()
+            except Exception as e:
+                logger.error(f"Error sending Morning Digest: {e}")
+
+        self._was_night_mode = is_night
 
     def _init_bot_instance(self, use_proxy: bool = True):
         from aiogram import Bot, Dispatcher
@@ -223,7 +245,9 @@ class MasterBot:
                     line = line[:300] + "..."
                 log_lines.append(f"• <code>{html.escape(line)}</code>")
         
-        proxy_info = config.TELEGRAM_PROXY if config.TELEGRAM_PROXY else "Прямое (Direct 🟢)"
+        import re
+        raw_proxy = config.TELEGRAM_PROXY if config.TELEGRAM_PROXY else "Прямое (Direct 🟢)"
+        proxy_info = re.sub(r'://([^:]+):([^@]+)@', r'://\1:****@', raw_proxy)
         
         text = (
             "🛠️ <b>Диагностика системы и Живой Лог</b>\n\n"
@@ -469,7 +493,9 @@ class MasterBot:
         if not target_chat or str(target_chat) in ("0", "None", ""):
             return
 
-        buf_count = await self.storage.get_buffer_count()
+        filters = await self.settings.get_ai_category_filters()
+        disabled_cats = [cat for cat, enabled in filters.items() if not enabled]
+        buf_count = await self.storage.get_buffer_count(disabled_categories=disabled_cats)
         text = "<b>Message Aggregator</b> — <i>Активен 🟢</i>"
         reply_kb = kb_ui.get_main_reply_keyboard(buf_count)
         await self.show_or_edit_ui_panel(text=text, keyboard=reply_kb, force_new=force_new)
@@ -484,11 +510,11 @@ class MasterBot:
     ) -> bool:
         """
         Decides whether to send immediately or store in buffer based on category and delivery mode.
-        Returns True if delivered immediately, False if buffered.
+        Returns True if delivered immediately, False if buffered or muted/blocked.
         """
         filters = await self.settings.get_ai_category_filters()
-        if not filters.get(category, True):
-            logger.info(f"Muting {category} message from [{channel}] {sender} due to AI filter settings.")
+        if not filters.get(category, True) or category == "spam":
+            logger.info(f"Muting/blocking {category} message from [{channel}] {sender}.")
             return False
 
         # Urgent messages ALWAYS bypass buffer and notify immediately!
@@ -518,13 +544,18 @@ class MasterBot:
         if self.bot and self.master_chat_id:
             try:
                 inline_kb = kb_ui.get_read_notification_keyboard()
-                await self.bot.send_message(
+                sent_msg = await self.bot.send_message(
                     chat_id=self.master_chat_id,
                     text=message_text,
                     parse_mode="HTML",
                     reply_markup=inline_kb
                 )
-                # Notifications are NOT auto-deleted — they persist until user presses "🗑️ Прочитано"
+                if self.auto_delete_delay_hours > 0 and sent_msg:
+                    await self.storage.save_sent_notification(
+                        chat_id=self.master_chat_id,
+                        message_id=sent_msg.message_id,
+                        delay_seconds=self.auto_delete_delay_hours * 3600
+                    )
             except Exception as e:
                 logger.error(f"Error sending Telegram notification: {e}")
 
@@ -533,11 +564,13 @@ class MasterBot:
         # 1. Flush any pending raw messages in queue to AI/DB first
         if self.on_flush_raw_queue:
             try:
-                await self.on_flush_raw_queue()
+                await self.on_flush_raw_queue(force=True)
             except Exception as fe:
                 logger.error(f"Error flushing raw queue prior to digest: {fe}")
 
-        messages = await self.storage.get_buffered_messages(mark_as_delivered=True)
+        filters = await self.settings.get_ai_category_filters()
+        disabled_cats = [cat for cat, enabled in filters.items() if not enabled]
+        messages = await self.storage.get_buffered_messages(mark_as_delivered=True, disabled_categories=disabled_cats)
         if not messages:
             return 0
 
@@ -616,12 +649,18 @@ class MasterBot:
                 for part in digest_parts:
                     if len(current_chunk) + len(part) + 5 > 4000:
                         if current_chunk:
-                            await self.bot.send_message(
+                            sent_msg = await self.bot.send_message(
                                 chat_id=self.master_chat_id, 
                                 text=current_chunk, 
                                 parse_mode="HTML",
                                 reply_markup=inline_kb
                             )
+                            if self.auto_delete_delay_hours > 0 and sent_msg:
+                                await self.storage.save_sent_notification(
+                                    chat_id=self.master_chat_id,
+                                    message_id=sent_msg.message_id,
+                                    delay_seconds=self.auto_delete_delay_hours * 3600
+                                )
                         current_chunk = part
                     else:
                         if current_chunk:
@@ -631,12 +670,18 @@ class MasterBot:
                 
                 # Отправляем последний кусочек
                 if current_chunk:
-                    await self.bot.send_message(
+                    sent_msg = await self.bot.send_message(
                         chat_id=self.master_chat_id,
                         text=current_chunk,
                         parse_mode="HTML",
                         reply_markup=inline_kb
                     )
+                    if self.auto_delete_delay_hours > 0 and sent_msg:
+                        await self.storage.save_sent_notification(
+                            chat_id=self.master_chat_id,
+                            message_id=sent_msg.message_id,
+                            delay_seconds=self.auto_delete_delay_hours * 3600
+                        )
             except Exception as e:
                 logger.error(f"Error sending digest: {e}")
 
@@ -649,6 +694,17 @@ class MasterBot:
             self._last_buffer_status_msg_id: int | None = None
 
         return len(messages)
+
+    async def start_night_mode_scheduler(self):
+        """Background task checking every 30s for Night Mode -> Day Mode transition to send Morning Digest."""
+        logger.info("Night Mode transition scheduler running...")
+        self._was_night_mode = self.is_night_time()
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await self.check_night_mode_transition()
+            except Exception as e:
+                logger.error(f"Error in night mode scheduler: {e}")
 
     async def start_digest_scheduler(self):
         """Background task for sending scheduled digests aligned to wall-clock time."""
@@ -690,12 +746,18 @@ class MasterBot:
             try:
                 # 1. Telegram Message Auto-Deletion
                 expired = await self.storage.get_expired_notifications()
+                if expired:
+                    logger.info(f"🗑️ Found {len(expired)} expired notification(s) to auto-delete.")
                 for item in expired:
                     try:
                         await self.bot.delete_message(chat_id=item['chat_id'], message_id=item['message_id'])
-                        logger.info(f"Auto-deleted expired message {item['message_id']} in chat {item['chat_id']}.")
+                        logger.info(f"🗑️ Auto-deleted expired message {item['message_id']} in chat {item['chat_id']}.")
                     except Exception as de:
-                        logger.debug(f"Failed to auto-delete message {item['message_id']} in chat {item['chat_id']}: {de}")
+                        err_str = str(de).lower()
+                        if "not found" in err_str or "deleted" in err_str:
+                            logger.debug(f"Expired message {item['message_id']} in chat {item['chat_id']} was already deleted by user.")
+                        else:
+                            logger.warning(f"Failed to auto-delete message {item['message_id']} in chat {item['chat_id']}: {de}")
                     # Always delete from DB so we don't retry endlessly
                     await self.storage.delete_sent_notification(item['id'])
 
@@ -731,6 +793,7 @@ class MasterBot:
                 self.night_mode_enabled = await self.settings.get_night_mode_enabled()
                 self.night_start_hour = await self.settings.get_night_start_hour()
                 self.night_end_hour = await self.settings.get_night_end_hour()
+                self._was_night_mode = self.is_night_time()
                 
                 self._last_ui_msg_id = await self.settings.get_last_ui_msg_id()
             except Exception as se:
@@ -741,6 +804,7 @@ class MasterBot:
                 asyncio.create_task(self.update_status_banner(self.master_chat_id, force_new=True))
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
+            asyncio.create_task(self.start_night_mode_scheduler())
             
             use_proxy_mode = True if config.TELEGRAM_PROXY else False
             while True:
