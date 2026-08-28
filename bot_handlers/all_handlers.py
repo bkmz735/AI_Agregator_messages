@@ -1113,6 +1113,7 @@ def setup_all_handlers(master_bot):
 
         chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
         sugg_enabled = await master_bot.settings.get_ai_suggestions_enabled()
+        logger.info(f"User settings: ai_text_chat_enabled={chat_enabled}, ai_suggestions_enabled={sugg_enabled}, current_menu_state='{master_bot.current_menu_state}'")
 
         # If both AI features are disabled and not in interactive input state
         if not chat_enabled and not sugg_enabled and not is_waiting_input:
@@ -1128,7 +1129,7 @@ def setup_all_handlers(master_bot):
                 last_warning_time[chat_id] = now
                 sent_msg = await message.answer(
                     "⚠️ <b>Чат с ИИ недоступен</b>\n"
-                    "Функция отключена в настройках или вы находитесь не в Главном меню (нажмите <b>🏠 Главное меню</b>).",
+                    "Функции ИИ отключены в настройках.",
                     parse_mode="HTML"
                 )
                 master_bot.schedule_delayed_deletion(chat_id, [sent_msg.message_id])
@@ -1208,14 +1209,16 @@ def setup_all_handlers(master_bot):
 
         # If not waiting for anything and not a menu button, it's a direct AI question/dialogue!
         chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
-        if master_bot.current_menu_state != 'main' or not chat_enabled:
+        if not chat_enabled:
             sent_msg = await message.answer(
                 "⚠️ <b>Чат с ИИ недоступен</b>\n"
-                "Функция отключена в настройках или вы находитесь не в Главном меню (нажмите <b>🏠 Главное меню</b>).",
+                "Умный чат отключен в настройках.",
                 parse_mode="HTML"
             )
             master_bot.schedule_delayed_deletion(message.chat.id, [sent_msg.message_id])
             return
+
+        master_bot.current_menu_state = 'main'
 
         user_input_text = message.text or ""
         if len(user_input_text) > 3000:
