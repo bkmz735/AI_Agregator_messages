@@ -32,6 +32,20 @@ def setup_all_handlers(master_bot):
         sent_msg = await message.answer("🔄 <b>Состояние и ввод сброшены.</b>", parse_mode="HTML")
         master_bot.schedule_delayed_deletion(message.chat.id, [sent_msg.message_id])
 
+    @dp.message(Command("reset"))
+    async def cmd_reset(message: types.Message, state: FSMContext = None):
+        logger.info(f"Received /reset command from user {message.from_user.id if message.from_user else 'Unknown'} in chat {message.chat.id}")
+        master_bot.clear_input_states()
+        if state:
+            await state.clear()
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        sent_msg = await message.answer("🔄 <b>Настройки ввода и состояния сброшены.</b>", parse_mode="HTML")
+        master_bot.schedule_delayed_deletion(message.chat.id, [sent_msg.message_id])
+        await master_bot.update_status_banner(message.chat.id, force_new=True)
+
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
         master_bot.current_menu_state = 'main'

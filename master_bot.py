@@ -26,6 +26,21 @@ CATEGORY_EMOJIS = {
     "media": "🎬"
 }
 
+class RawUpdateLoggerMiddleware(BaseMiddleware):
+    async def __call__(self, handler: Callable[[TelegramObject, dict], Awaitable[Any]], event: TelegramObject, data: dict) -> Any:
+        from aiogram.types import Update
+        if isinstance(event, Update):
+            msg_text = ""
+            user_id = None
+            if event.message:
+                msg_text = event.message.text or event.message.caption or ""
+                user_id = event.message.from_user.id if event.message.from_user else None
+            elif event.callback_query:
+                msg_text = event.callback_query.data or ""
+                user_id = event.callback_query.from_user.id if event.callback_query.from_user else None
+            logger.info(f"🌐 [RAW TELEGRAM UPDATE] update_id={event.update_id}, user_id={user_id}, content='{msg_text}'")
+        return await handler(event, data)
+
 class AccessControlMiddleware(BaseMiddleware):
     def __init__(self, master_bot_ref: Any):
         self.master_bot = master_bot_ref
@@ -208,7 +223,8 @@ class MasterBot:
         self.bot = Bot(token=self.bot_token, session=session)
         self.dp = Dispatcher()
         
-        # Register security & rate-limiting middlewares
+        # Register raw update logger, security & rate-limiting middlewares
+        self.dp.update.outer_middleware(RawUpdateLoggerMiddleware())
         self.dp.message.outer_middleware(AccessControlMiddleware(self))
         self.dp.message.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.2))
         self.dp.callback_query.outer_middleware(AccessControlMiddleware(self))
@@ -837,8 +853,14 @@ class MasterBot:
                 logger.error(f"Error loading settings from DB: {se}", exc_info=True)
 
             await self._register_bot_commands()
-            if self.master_chat_id:
+            
+            router_names = [getattr(r, 'name', str(r)) for r in self.dp.sub_routers]
+            logger.info(f"📋 Registered routers in Dispatcher ({len(router_names)}): {router_names}")
+            
+            if self.master_chat_id and str(self.master_chat_id) not in ("0", "None", "", "123456789"):
                 asyncio.create_task(self.update_status_banner(self.master_chat_id, force_new=True))
+            else:
+                logger.info("ℹ️ Master chat ID is not set yet. Send /start or any message to claim master access.")
             asyncio.create_task(self.start_digest_scheduler())
             asyncio.create_task(self.start_cleanup_scheduler())
             asyncio.create_task(self.start_night_mode_scheduler())
