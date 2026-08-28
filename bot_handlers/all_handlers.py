@@ -1131,7 +1131,7 @@ def setup_all_handlers(master_bot):
                     "Функция отключена в настройках или вы находитесь не в Главном меню (нажмите <b>🏠 Главное меню</b>).",
                     parse_mode="HTML"
                 )
-                await master_bot.storage.save_sent_notification(chat_id=chat_id, message_id=sent_msg.message_id, delay_seconds=5)
+                master_bot.schedule_delayed_deletion(chat_id, [sent_msg.message_id])
             return
 
         # Handle interactive input states
@@ -1214,7 +1214,7 @@ def setup_all_handlers(master_bot):
                 "Функция отключена в настройках или вы находитесь не в Главном меню (нажмите <b>🏠 Главное меню</b>).",
                 parse_mode="HTML"
             )
-            await master_bot.storage.save_sent_notification(chat_id=message.chat.id, message_id=sent_msg.message_id, delay_seconds=5)
+            master_bot.schedule_delayed_deletion(message.chat.id, [sent_msg.message_id])
             return
 
         user_input_text = message.text or ""
