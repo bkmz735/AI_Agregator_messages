@@ -45,6 +45,22 @@ async def perform_web_search(query: str, max_results: int = 5) -> str:
         logger.error(f"Async web search error: {e}", exc_info=True)
         return f"⚠️ Ошибка при выполнении веб-поиска: {e}"
 
+def list_tg_channels() -> str:
+    """Returns the list of all Telegram channels currently in the bot's watchlist."""
+    return ''
+
+def list_banwords() -> str:
+    """Returns the list of all currently configured banwords categorized by scope (global, email, vk)."""
+    return ''
+
+def list_news_topics() -> str:
+    """Returns the list of configured news topics separated by preference (liked or disliked)."""
+    return ''
+
+def get_settings_summary() -> str:
+    """Returns a complete summary of all user settings (delivery mode, interval, timezone, night mode, AI features)."""
+    return ''
+
 def add_banword(word: str, scope: str = "global") -> str:
     """Adds a new banword to filter out unwanted messages. Scope can be 'global', 'email' or 'vk'."""
     return ''
@@ -113,6 +129,10 @@ class ConversationalAgent:
     def _get_tools(self):
         return [
             web_search,
+            list_tg_channels,
+            list_banwords,
+            list_news_topics,
+            get_settings_summary,
             add_banword,
             remove_banword,
             add_news_topic, 
@@ -128,6 +148,71 @@ class ConversationalAgent:
             toggle_category_filter,
             clear_chat
         ]
+
+    async def _list_tg_channels(self) -> str:
+        chans = await self.storage.get_tg_channels()
+        if not chans:
+            return "📢 У вас пока нет добавленных Telegram-каналов в отслеживании."
+        lines = ["📢 **Ваши Telegram-каналы в отслеживании:**\n"]
+        for ch in chans:
+            uname = ch.get("username", "") if isinstance(ch, dict) else getattr(ch, "username", str(ch))
+            lines.append(f"• @{uname.lstrip('@')}")
+        return "\n".join(lines)
+
+    async def _list_banwords(self) -> str:
+        bws = await self.storage.get_banwords()
+        if not bws:
+            return "🚫 У вас пока нет добавленных банвордов."
+        lines = ["🚫 **Ваши текущие банворды:**\n"]
+        scopes = {"global": "Общие", "email": "Mail.ru", "vk": "ВКонтакте"}
+        grouped = {}
+        for b in bws:
+            scope = b.get("scope", "global") if isinstance(b, dict) else getattr(b, "scope", "global")
+            word = b.get("word", "") if isinstance(b, dict) else getattr(b, "word", str(b))
+            grouped.setdefault(scope, []).append(word)
+        for s_key, s_name in scopes.items():
+            words = grouped.get(s_key, [])
+            if words:
+                words_formatted = ", ".join([f"`{w}`" for w in words])
+                lines.append(f"• **{s_name}**: {words_formatted}")
+        return "\n".join(lines)
+
+    async def _list_news_topics(self) -> str:
+        liked = await self.storage.get_news_topics(preference="liked")
+        disliked = await self.storage.get_news_topics(preference="disliked")
+        if not liked and not disliked:
+            return "📰 У вас пока нет настроенных тем новостей."
+        lines = ["📰 **Ваши темы новостей:**\n"]
+        if liked:
+            liked_names = [t.get("topic", "") if isinstance(t, dict) else getattr(t, "topic", str(t)) for t in liked]
+            lines.append("💚 **Желаемые темы:**\n" + "\n".join([f"• {t}" for t in liked_names]) + "\n")
+        if disliked:
+            disliked_names = [t.get("topic", "") if isinstance(t, dict) else getattr(t, "topic", str(t)) for t in disliked]
+            lines.append("🛑 **Запретные темы:**\n" + "\n".join([f"• {t}" for t in disliked_names]))
+        return "\n".join(lines).strip()
+
+    async def _get_settings_summary(self) -> str:
+        settings = SettingsManager(self.storage)
+        delivery_mode = await settings.get_delivery_mode()
+        digest_interval = await settings.get_digest_interval_minutes()
+        tz_offset = await settings.get_timezone_offset()
+        night_enabled = await settings.get_night_mode_enabled()
+        night_start = await settings.get_night_start_hour()
+        night_end = await settings.get_night_end_hour()
+        ai_chat = await settings.get_ai_text_chat_enabled()
+        ai_sugg = await settings.get_ai_suggestions_enabled()
+        filters = await settings.get_ai_category_filters()
+        active_filters = [k for k, v in filters.items() if not v]
+        return (
+            f"⚙️ **Ваши текущие настройки бота:**\n\n"
+            f"• **Режим доставки**: {'Мгновенно' if delivery_mode == 'instant' else 'Периодическая сводка'}\n"
+            f"• **Интервал сводки**: {digest_interval} мин.\n"
+            f"• **Часовой пояс**: UTC{'+' if tz_offset >= 0 else ''}{tz_offset}\n"
+            f"• **Ночной режим**: {'Включен' if night_enabled else 'Выключен'} ({night_start:02d}:00 - {night_end:02d}:00)\n"
+            f"• **Умный чат с ИИ**: {'Включен' if ai_chat else 'Выключен'}\n"
+            f"• **Умные подсказки**: {'Включены' if ai_sugg else 'Выключены'}\n"
+            f"• **Скрываемые категории ИИ**: {', '.join(active_filters) if active_filters else 'Нет'}"
+        )
 
     async def process_message(self, text: str) -> Dict[str, Any]:
         """
@@ -223,6 +308,45 @@ class ConversationalAgent:
                     except Exception as e:
                         logger.error(f"Error generating search summary response: {e}")
                         reply_text = search_results
+
+                    await self.storage.add_ai_chat_message("user", text)
+                    await self.storage.add_ai_chat_message("model", reply_text)
+                    return {"text": reply_text, "pending_action": None}
+                elif action_name in ("list_tg_channels", "list_banwords", "list_news_topics", "get_settings_summary"):
+                    logger.info(f"📊 Executing list tool: '{action_name}'")
+                    if action_name == "list_tg_channels":
+                        tool_res = await self._list_tg_channels()
+                    elif action_name == "list_banwords":
+                        tool_res = await self._list_banwords()
+                    elif action_name == "list_news_topics":
+                        tool_res = await self._list_news_topics()
+                    else:
+                        tool_res = await self._get_settings_summary()
+
+                    contents.append(
+                        types.Content(
+                            role="model",
+                            parts=[types.Part.from_function_call(name=action_name, args={})]
+                        )
+                    )
+                    contents.append(
+                        types.Content(
+                            role="user",
+                            parts=[types.Part.from_text(text=f"[Результат выполнения запроса '{action_name}']:\n{tool_res}\n\nСформируй понятный и красивый ответ пользователю на основе этих данных.")]
+                        )
+                    )
+                    try:
+                        second_response = await self.ai_engine.generate_content_with_retry(
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=self.system_instruction,
+                                temperature=0.7
+                            )
+                        )
+                        reply_text = second_response.text if second_response and second_response.text else tool_res
+                    except Exception as e:
+                        logger.error(f"Error generating list summary response: {e}")
+                        reply_text = tool_res
 
                     await self.storage.add_ai_chat_message("user", text)
                     await self.storage.add_ai_chat_message("model", reply_text)
