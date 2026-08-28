@@ -74,7 +74,7 @@ class TestAIDisabledBehavior(unittest.IsolatedAsyncioTestCase):
         msg.delete.assert_called_once()
         msg.answer.assert_called_once()
 
-    async def test_one_flag_enabled_deletes_without_reply(self):
+    async def test_one_flag_enabled_deletes_non_list_messages(self):
         # Enable suggestions flag, keep chat disabled
         await self.storage.set_setting("ai_text_chat_enabled", "false")
         await self.storage.set_setting("ai_suggestions_enabled", "true")
@@ -88,9 +88,29 @@ class TestAIDisabledBehavior(unittest.IsolatedAsyncioTestCase):
         msg.answer = AsyncMock(return_value=sent_msg)
 
         await self.handler(msg)
-        # Message SHOULD be deleted, and NO warning/reply should be sent
+        # Non-list message SHOULD be deleted, and NO warning/reply should be sent
         msg.delete.assert_called_once()
         msg.answer.assert_not_called()
+
+    async def test_one_flag_enabled_allows_list_queries(self):
+        await self.storage.set_setting("ai_text_chat_enabled", "false")
+        await self.storage.set_setting("ai_suggestions_enabled", "true")
+
+        msg = AsyncMock()
+        msg.text = "Покажи мои каналы"
+        msg.chat.id = 12345
+        msg.delete = AsyncMock()
+        sent_msg = AsyncMock()
+        sent_msg.message_id = 997
+        msg.answer = AsyncMock(return_value=sent_msg)
+
+        self.master_bot.user_agent = AsyncMock()
+        self.master_bot.user_agent.process_message = AsyncMock(return_value={"text": "📢 Ваши каналы: @channel", "pending_action": None})
+
+        await self.handler(msg)
+        # List query message should NOT be deleted, and user_agent SHOULD be invoked
+        msg.delete.assert_not_called()
+        self.master_bot.user_agent.process_message.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

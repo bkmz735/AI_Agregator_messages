@@ -1212,12 +1212,17 @@ def setup_all_handlers(master_bot):
         sugg_enabled = await master_bot.settings.get_ai_suggestions_enabled()
         if not chat_enabled:
             if sugg_enabled:
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-                logger.info(f"Deleted message (only suggestions enabled, no reply) from user {message.from_user.id if message.from_user else 'Unknown'}")
-                return
+                text_lower = (message.text or "").lower()
+                is_list_query = any(kw in text_lower for kw in ['канал', 'банворд', 'тема', 'настройк'])
+                if is_list_query:
+                    logger.info(f"Processing list request via AI (only suggestions enabled) from user {message.from_user.id if message.from_user else 'Unknown'}")
+                else:
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    logger.info(f"Deleted non-list message (only suggestions enabled, no reply) from user {message.from_user.id if message.from_user else 'Unknown'}")
+                    return
             else:
                 sent_msg = await message.answer(
                     "⚠️ <b>Чат с ИИ недоступен</b>\n"
