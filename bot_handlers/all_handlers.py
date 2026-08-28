@@ -1209,14 +1209,19 @@ def setup_all_handlers(master_bot):
 
         # If not waiting for anything and not a menu button, it's a direct AI question/dialogue!
         chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
+        sugg_enabled = await master_bot.settings.get_ai_suggestions_enabled()
         if not chat_enabled:
-            sent_msg = await message.answer(
-                "⚠️ <b>Чат с ИИ недоступен</b>\n"
-                "Умный чат отключен в настройках.",
-                parse_mode="HTML"
-            )
-            master_bot.schedule_delayed_deletion(message.chat.id, [sent_msg.message_id])
-            return
+            if sugg_enabled:
+                logger.info(f"Ignoring message (only suggestions enabled) from user {message.from_user.id if message.from_user else 'Unknown'}")
+                return
+            else:
+                sent_msg = await message.answer(
+                    "⚠️ <b>Чат с ИИ недоступен</b>\n"
+                    "Умный чат отключен в настройках.",
+                    parse_mode="HTML"
+                )
+                master_bot.schedule_delayed_deletion(message.chat.id, [sent_msg.message_id])
+                return
 
         master_bot.current_menu_state = 'main'
 

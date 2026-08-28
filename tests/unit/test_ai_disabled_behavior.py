@@ -88,8 +88,9 @@ class TestAIDisabledBehavior(unittest.IsolatedAsyncioTestCase):
         msg.answer = AsyncMock(return_value=sent_msg)
 
         await self.handler(msg)
-        # Message should NOT be auto-deleted by the dual-off handler
+        # Message should NOT be auto-deleted by the dual-off handler, and NO warning should be sent
         msg.delete.assert_not_called()
+        msg.answer.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
