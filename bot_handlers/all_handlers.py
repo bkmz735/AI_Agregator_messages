@@ -5,17 +5,33 @@ import asyncio
 import time
 from typing import Any, Dict
 from aiogram.filters import Command
-from aiogram import types, F
+from aiogram import types, F, Router
 from aiogram.fsm.context import FSMContext
 import ui_keyboards as kb_ui
 
 logger = logging.getLogger(__name__)
 
 last_warning_time: Dict[int, float] = {}
+router = Router(name="all_handlers")
 
 def setup_all_handlers(master_bot):
     dp = master_bot.dp
+    if router not in dp.sub_routers:
+        dp.include_router(router)
     
+    @dp.message(Command("cancel"))
+    async def cmd_cancel(message: types.Message, state: FSMContext = None):
+        logger.info(f"Received /cancel command from user {message.from_user.id if message.from_user else 'Unknown'} in chat {message.chat.id}")
+        master_bot.clear_input_states()
+        if state:
+            await state.clear()
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        sent_msg = await message.answer("🔄 <b>Состояние и ввод сброшены.</b>", parse_mode="HTML")
+        master_bot.schedule_delayed_deletion(message.chat.id, [sent_msg.message_id])
+
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
         master_bot.current_menu_state = 'main'
@@ -1057,6 +1073,7 @@ def setup_all_handlers(master_bot):
 
     @dp.message(F.text)
     async def handle_text_message(message: types.Message, state: FSMContext = None):
+        logger.info(f"Received message: '{message.text}' from user {message.from_user.id if message.from_user else 'Unknown'} in chat {message.chat.id}")
         # 0. Check if user is in an active FSM state
         if state:
             current_state = await state.get_state()

@@ -46,16 +46,24 @@ class AccessControlMiddleware(BaseMiddleware):
         master_id = self.master_bot.master_chat_id
         logger.info(f"📩 Telegram Event [{event_name}] from user_id={user_id} (data='{text_preview}', expected master_id={master_id})")
 
-        # Auto-capture master_chat_id if currently missing or 0
-        if not master_id or str(master_id) in ("0", "None", ""):
+        # Auto-capture master_chat_id if currently missing, 0, or default placeholder 123456789
+        if not master_id or str(master_id) in ("0", "None", "", "123456789"):
             if user_id:
                 logger.info(f"🔑 Auto-capturing master_chat_id={user_id} from Telegram Event [{event_name}]")
                 self.master_bot.master_chat_id = user_id
                 asyncio.create_task(self.master_bot.settings.update_master_chat_id(user_id))
                 master_id = user_id
 
+        # Always allow /start or /cancel commands to claim/update master_chat_id
+        if text_preview and (text_preview.startswith("/start") or text_preview.startswith("/cancel")):
+            if user_id:
+                logger.info(f"🔑 Command '{text_preview}' received: updating master_chat_id={user_id}")
+                self.master_bot.master_chat_id = user_id
+                asyncio.create_task(self.master_bot.settings.update_master_chat_id(user_id))
+                master_id = user_id
+
         # Security check: If master_chat_id is active, enforce strict lockdown
-        if master_id and str(master_id) not in ("0", "None", ""):
+        if master_id and str(master_id) not in ("0", "None", "", "123456789"):
             if user_id and str(user_id) != str(master_id):
                 logger.warning(f"⛔ Blocking unauthorized Telegram interaction from user_id: {user_id} (Expected master_chat_id: {master_id})")
                 return None  # Ignore unauthorized event completely
