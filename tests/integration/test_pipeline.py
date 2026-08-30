@@ -14,6 +14,9 @@ class TestPipelineIntegration(unittest.IsolatedAsyncioTestCase):
         await self.storage.init_db()
         self.settings = SettingsManager(self.storage)
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_end_to_end_buffer_and_filtering(self):
         # 1. Banword check
         bws = await self.storage.get_banwords()

@@ -40,6 +40,9 @@ class TestAIDisabledBehavior(unittest.IsolatedAsyncioTestCase):
                 self.handler = func
                 break
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_both_flags_disabled_deletes_and_throttles_warning(self):
         # Disable both flags
         await self.storage.set_setting("ai_text_chat_enabled", "false")

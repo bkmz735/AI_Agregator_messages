@@ -265,6 +265,14 @@ class Storage:
             await db.commit()
             logger.info("Message statistics reset successfully.")
 
+    async def clear_all_messages(self):
+        """Deletes all messages from the messages table."""
+        async with self.get_db() as db:
+            cursor = await db.execute("DELETE FROM messages")
+            await db.commit()
+            logger.info(f"All {cursor.rowcount} messages cleared from database.")
+            return cursor.rowcount
+
     async def purge_old_messages(self, days: int = 7) -> int:
         """Purges delivered messages and spam/filtered older than N days to prevent database bloat."""
         async with self.get_db() as db:
@@ -274,16 +282,15 @@ class Storage:
                 AND created_at <= datetime('now', '-' || ? || ' days')
             """, (days,))
             await db.commit()
-            return cursor.rowcount
             deleted_count = cursor.rowcount
             if deleted_count > 0:
-                logger.info(f"Auto-purged {deleted_count} delivered/spam messages older than {days} days from database.")
+                logger.info(f"Auto-purged {deleted_count} delivered/spam/filtered messages older than {days} days from database.")
             return deleted_count
 
     async def save_sent_notification(self, chat_id: int, message_id: int, delay_seconds: int):
         """Saves sent message ID and calculates deletion time (UTC)."""
-        import datetime
-        delete_at = (datetime.datetime.utcnow() + datetime.timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        from datetime import datetime, timezone, timedelta
+        delete_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=delay_seconds)).strftime("%Y-%m-%d %H:%M:%S")
         async with self.get_db() as db:
             await db.execute(
                 "INSERT INTO sent_notifications (chat_id, message_id, delete_at) VALUES (?, ?, ?)",
@@ -293,8 +300,8 @@ class Storage:
 
     async def get_expired_notifications(self) -> List[Dict[str, Any]]:
         """Gets all notifications that should be deleted (UTC)."""
-        import datetime
-        now_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        from datetime import datetime, timezone
+        now_str = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
         async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

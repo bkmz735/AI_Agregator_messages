@@ -16,6 +16,9 @@ class TestNightModeAndBuffer(unittest.IsolatedAsyncioTestCase):
         self.settings = SettingsManager(self.storage)
         self.bot = MasterBot(storage=self.storage)
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_night_mode_digest_suppression(self):
         self.bot.night_mode_enabled = True
         self.bot.night_start_hour = 23

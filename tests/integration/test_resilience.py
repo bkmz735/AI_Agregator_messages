@@ -14,6 +14,9 @@ class TestResilienceIntegration(unittest.IsolatedAsyncioTestCase):
         self.storage = Storage()
         await self.storage.init_db()
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_gemini_api_timeout_requeue(self):
         app = MessageAggregatorApp()
         app.storage = self.storage

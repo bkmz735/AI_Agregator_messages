@@ -4,16 +4,19 @@ from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from typing import List
 
+from collections import deque
+import threading
+
 class RecentLogHandler(logging.Handler):
     """In-memory ring buffer storing the last 50 log messages for Telegram live debug UI."""
-    recent_logs: List[str] = []
+    recent_logs: deque = deque(maxlen=50)
+    _lock = threading.Lock()
 
     def emit(self, record):
         try:
             msg = self.format(record)
-            RecentLogHandler.recent_logs.append(msg)
-            if len(RecentLogHandler.recent_logs) > 50:
-                RecentLogHandler.recent_logs.pop(0)
+            with RecentLogHandler._lock:
+                RecentLogHandler.recent_logs.append(msg)
         except Exception:
             pass
 

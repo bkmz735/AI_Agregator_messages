@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -12,9 +12,12 @@ class TestAutoDeleteIntegration(unittest.IsolatedAsyncioTestCase):
         self.storage = Storage()
         await self.storage.init_db()
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_expired_notifications_retrieval(self):
         # Save notification that expired 5 minutes ago
-        past_time = (datetime.utcnow() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+        past_time = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
         
         async with self.storage.get_db() as db:
             await db.execute(

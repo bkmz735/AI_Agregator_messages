@@ -13,6 +13,9 @@ class TestSubsystemsIntegration(unittest.IsolatedAsyncioTestCase):
         self.storage = Storage()
         await self.storage.init_db()
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_audio_transcription_fallback(self):
         ai = AIEngine(api_key=None, storage=self.storage)
         dummy_audio = b"OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00"

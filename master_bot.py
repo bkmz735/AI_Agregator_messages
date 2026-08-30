@@ -178,8 +178,8 @@ class MasterBot:
         """Returns True if Night Mode is enabled and current local time (user timezone) falls in quiet hours."""
         if not self.night_mode_enabled:
             return False
-        from datetime import datetime, timedelta
-        now_utc = datetime.utcnow()
+        from datetime import datetime, timezone, timedelta
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         now_local = now_utc + timedelta(hours=self.timezone_offset)
         now_hour = now_local.hour
         if self.night_start_hour > self.night_end_hour:
@@ -260,7 +260,7 @@ class MasterBot:
         from logger_config import RecentLogHandler
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
-        recent = RecentLogHandler.recent_logs[-10:]
+        recent = list(RecentLogHandler.recent_logs)[-10:]
         if not recent:
             log_lines = ["<i>Логи пока пусты.</i>"]
         else:
@@ -420,8 +420,8 @@ class MasterBot:
         return text, kb_ui.get_time_settings_keyboard()
 
     async def _get_timezone_settings_text_and_keyboard(self):
-        from datetime import datetime, timedelta
-        now_utc = datetime.utcnow()
+        from datetime import datetime, timezone, timedelta
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         now_local = now_utc + timedelta(hours=self.timezone_offset)
         local_time_str = now_local.strftime("%H:%M")
 
@@ -769,10 +769,10 @@ class MasterBot:
 
     async def start_digest_scheduler(self):
         """Background task for sending scheduled digests aligned to wall-clock time."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         logger.info(f"Digest scheduler running (interval: {self.digest_interval} min, TZ: UTC{'+' if self.timezone_offset >= 0 else ''}{self.timezone_offset})...")
         while True:
-            now_utc = datetime.utcnow()
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
             now_local = now_utc + timedelta(hours=self.timezone_offset)
             minutes_since_midnight = now_local.hour * 60 + now_local.minute
             interval = max(1, self.digest_interval)

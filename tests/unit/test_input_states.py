@@ -14,6 +14,9 @@ class TestInputStates(unittest.IsolatedAsyncioTestCase):
         await self.storage.init_db()
         self.master_bot = MasterBot(storage=self.storage)
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_input_state_clearing(self):
         self.master_bot._waiting_for_banword_scope = "email"
         self.assertEqual(self.master_bot._waiting_for_banword_scope, "email")

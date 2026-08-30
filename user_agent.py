@@ -241,8 +241,8 @@ class ConversationalAgent:
         try:
             settings = SettingsManager(self.storage)
             tz_offset = await settings.get_timezone_offset()
-            from datetime import datetime, timedelta
-            current_time = datetime.utcnow() + timedelta(hours=tz_offset)
+            from datetime import datetime, timezone, timedelta
+            current_time = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=tz_offset)
             time_context = f"[Системное время (с учетом часового пояса пользователя): {current_time.strftime('%Y-%m-%d %H:%M:%S')}]\n"
             text_with_context = time_context + text
         except Exception as e:

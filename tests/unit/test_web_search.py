@@ -17,6 +17,9 @@ class TestWebSearchTool(unittest.IsolatedAsyncioTestCase):
         self.ai_engine.client = MagicMock()
         self.agent = ConversationalAgent(ai_engine=self.ai_engine, storage=self.storage)
 
+    async def asyncTearDown(self):
+        await self.storage.close()
+
     async def test_perform_web_search_success(self):
         mock_ddgs_results = [
             {"title": "Python 3.12 Release Notes", "href": "https://python.org/3.12", "body": "Python 3.12 features and updates."},
