@@ -259,11 +259,11 @@ class Storage:
             }
 
     async def reset_stats(self):
-        """Clears all historical delivered and spam/filtered message records to reset statistics."""
+        """Clears all message records to completely reset all category and channel statistics to zero."""
         async with self.get_db() as db:
-            await db.execute("DELETE FROM messages WHERE is_delivered IN (1, 2) OR category = 'spam'")
+            await db.execute("DELETE FROM messages")
             await db.commit()
-            logger.info("Message statistics reset successfully.")
+            logger.info("Message statistics and history reset successfully.")
 
     async def clear_all_messages(self):
         """Deletes all messages from the messages table."""
