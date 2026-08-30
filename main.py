@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from banwords import is_text_spam
 from config import config
 from storage import Storage
+from models.message import DeliveryStatus
 from ai_engine import AIEngine
 from master_bot import MasterBot
 from settings_manager import SettingsManager
@@ -65,7 +66,7 @@ class MessageAggregatorApp:
                 category="spam",
                 summary="Отфильтровано по Банворду (Banword)",
                 action_required=False,
-                is_delivered=True
+                is_delivered=DeliveryStatus.FILTERED
             )
             return
 
@@ -134,7 +135,7 @@ class MessageAggregatorApp:
                     analysis = await self.ai_engine.analyze_message(channel, sender, text, msg_uid=uid)
 
                 # Process via MasterBot
-                is_delivered = await self.bot.handle_incoming_analyzed_message(
+                delivery_status = await self.bot.handle_incoming_analyzed_message(
                     channel=channel,
                     sender=sender,
                     text=text,
@@ -154,7 +155,7 @@ class MessageAggregatorApp:
                     summary=analysis.summary,
                     action_required=analysis.action_required,
                     suggested_reply=analysis.suggested_reply,
-                    is_delivered=is_delivered
+                    is_delivered=delivery_status
                 )
         except Exception as e:
             logger.error(f"Error processing message batch: {e}. Re-queueing {len(batch)} messages.", exc_info=True)

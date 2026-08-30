@@ -149,7 +149,9 @@ def setup_all_handlers(master_bot):
         except Exception:
             pass
             
-        buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False)
+        filters = await master_bot.settings.get_ai_category_filters()
+        disabled_cats = [cat for cat, enabled in filters.items() if not enabled]
+        buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False, disabled_categories=disabled_cats)
         buf_count = len(buffered_msgs)
         if buf_count > 0:
             senders = [msg['sender'] for msg in buffered_msgs]
@@ -856,7 +858,9 @@ def setup_all_handlers(master_bot):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await callback_query.answer()
         master_bot.current_menu_state = 'buffer'
-        buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False)
+        filters = await master_bot.settings.get_ai_category_filters()
+        disabled_cats = [cat for cat, enabled in filters.items() if not enabled]
+        buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False, disabled_categories=disabled_cats)
         buf_count = len(buffered_msgs)
         if buf_count > 0:
             senders = [msg['sender'] for msg in buffered_msgs]

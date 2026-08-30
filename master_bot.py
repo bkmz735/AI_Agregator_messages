@@ -7,6 +7,7 @@ from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.types import TelegramObject
 from config import config
 from storage import Storage
+from models.message import DeliveryStatus
 import ui_keyboards as kb_ui
 
 logger = logging.getLogger(__name__)
@@ -293,7 +294,9 @@ class MasterBot:
         stats_data = await self.storage.get_stats()
         cats = stats_data.get("categories", {})
         channels = stats_data.get("channels", {})
-        buf_count = await self.storage.get_buffer_count()
+        filters = await self.settings.get_ai_category_filters()
+        disabled_cats = [cat for cat, enabled in filters.items() if not enabled]
+        buf_count = await self.storage.get_buffer_count(disabled_categories=disabled_cats)
 
         lines = [
             f"📊 <b>Статистика{title_suffix}:</b>\n",
@@ -334,7 +337,10 @@ class MasterBot:
             lines.append("<i>Источники пока не зарегистрированы</i>")
 
         lines.extend([
-            f"\n📥 <b>Ожидают:</b> {buf_count}"
+            f"\n📊 <b>Статус обработки:</b>",
+            f"✅ <b>Доставлено:</b> {stats_data.get('delivered_count', 0)}",
+            f"📥 <b>Ожидают в буфере:</b> {buf_count}",
+            f"🛡 <b>Отфильтровано ИИ:</b> {stats_data.get('filtered_count', 0)}"
         ])
 
         return "\n".join(lines)
@@ -560,23 +566,25 @@ class MasterBot:
 
     async def handle_incoming_analyzed_message(
         self, channel: str, sender: str, text: str, category: str, summary: str, action_required: bool, suggested_reply: Optional[str] = None
-    ) -> bool:
+    ) -> int:
         """
-        Decides whether to send immediately or store in buffer based on category and delivery mode.
-        Returns True if delivered immediately, False if buffered or muted/blocked.
+        Decides whether to send immediately, buffer, or filter based on category and delivery mode.
+        Returns DeliveryStatus (0=PENDING, 1=DELIVERED, 2=FILTERED).
         """
         filters = await self.settings.get_ai_category_filters()
         if not filters.get(category, True) or category == "spam":
             logger.info(f"Muting/blocking {category} message from [{channel}] {sender}.")
-            return False
+            return DeliveryStatus.FILTERED
+
+        is_night = self.is_night_time()
 
         # Urgent messages ALWAYS bypass buffer and notify immediately!
-        if category == "urgent" or self.delivery_mode == "instant":
+        if category == "urgent" or (self.delivery_mode == "instant" and not is_night):
             await self.send_instant_notification(channel, sender, text, category, summary, action_required, suggested_reply)
-            return True
+            return DeliveryStatus.DELIVERED
         else:
-            logger.info(f"Message from [{channel}] {sender} buffered for next scheduled digest.")
-            return False
+            logger.info(f"Message from [{channel}] {sender} buffered for next scheduled digest (Night mode: {is_night}).")
+            return DeliveryStatus.PENDING
 
     async def send_instant_notification(
         self, channel: str, sender: str, text: str, category: str, summary: str, action_required: bool, suggested_reply: Optional[str] = None
@@ -784,11 +792,14 @@ class MasterBot:
             await asyncio.sleep(seconds_to_sleep)
             
             if self.delivery_mode == "digest":
-                logger.info("Executing scheduled buffer digest flush...")
-                try:
-                    await self.flush_buffer_now()
-                except Exception as e:
-                    logger.error(f"Critical error in digest scheduler: {e}", exc_info=True)
+                if self.is_night_time():
+                    logger.info("🌙 Night mode active. Skipping scheduled digest flush until morning.")
+                else:
+                    logger.info("Executing scheduled buffer digest flush...")
+                    try:
+                        await self.flush_buffer_now()
+                    except Exception as e:
+                        logger.error(f"Critical error in digest scheduler: {e}", exc_info=True)
 
     async def start_cleanup_scheduler(self):
         """Background task that periodically deletes expired notifications from Telegram and purges old DB records."""

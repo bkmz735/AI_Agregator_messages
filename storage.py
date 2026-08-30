@@ -148,7 +148,7 @@ class Storage:
         summary: str,
         action_required: bool,
         suggested_reply: Optional[str] = None,
-        is_delivered: bool = False
+        is_delivered: int = 0
     ) -> int:
         """Saves message and analysis result to SQLite."""
         async with self.get_db() as db:
@@ -158,7 +158,7 @@ class Storage:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 msg_uid, channel, sender, text, category, summary,
-                1 if action_required else 0, suggested_reply, 1 if is_delivered else 0
+                1 if action_required else 0, suggested_reply, int(is_delivered)
             ))
             await db.commit()
             return cursor.lastrowid
@@ -179,10 +179,14 @@ class Storage:
                 rows = await cursor.fetchall()
                 messages = [dict(row) for row in rows]
 
-            if mark_as_delivered and messages:
-                ids = [m['id'] for m in messages]
-                placeholders = ','.join('?' * len(ids))
-                await db.execute(f"UPDATE messages SET is_delivered = 1 WHERE id IN ({placeholders})", ids)
+            if mark_as_delivered:
+                if messages:
+                    ids = [m['id'] for m in messages]
+                    placeholders = ','.join('?' * len(ids))
+                    await db.execute(f"UPDATE messages SET is_delivered = 1 WHERE id IN ({placeholders})", ids)
+                if disabled_categories:
+                    dis_placeholders = ','.join('?' * len(disabled_categories))
+                    await db.execute(f"UPDATE messages SET is_delivered = 2 WHERE is_delivered = 0 AND category IN ({dis_placeholders})", disabled_categories)
                 await db.commit()
                 
             return messages
@@ -201,7 +205,7 @@ class Storage:
                 return row[0] if row else 0
 
     async def get_stats(self) -> Dict[str, Any]:
-        """Returns detailed category and channel statistics."""
+        """Returns detailed category, status, and channel statistics."""
         async with self.get_db() as db:
             # Categories
             async with db.execute("SELECT category, COUNT(*) FROM messages GROUP BY category") as cursor:
@@ -227,6 +231,19 @@ class Storage:
                 channel_rows = await cursor.fetchall()
                 channels = {c: count for c, count in channel_rows}
 
+            # Status counts (0=pending, 1=delivered, 2=filtered/spam)
+            async with db.execute("SELECT COUNT(*) FROM messages WHERE is_delivered = 0 AND category != 'spam'") as cursor:
+                row = await cursor.fetchone()
+                pending_count = row[0] if row else 0
+
+            async with db.execute("SELECT COUNT(*) FROM messages WHERE is_delivered = 1") as cursor:
+                row = await cursor.fetchone()
+                delivered_count = row[0] if row else 0
+
+            async with db.execute("SELECT COUNT(*) FROM messages WHERE is_delivered = 2 OR category = 'spam'") as cursor:
+                row = await cursor.fetchone()
+                filtered_count = row[0] if row else 0
+
             # Total all
             async with db.execute("SELECT COUNT(*) FROM messages") as cursor:
                 row = await cursor.fetchone()
@@ -235,25 +252,29 @@ class Storage:
             return {
                 "categories": stats,
                 "channels": channels,
+                "pending_count": pending_count,
+                "delivered_count": delivered_count,
+                "filtered_count": filtered_count,
                 "total_all": total_all
             }
 
     async def reset_stats(self):
-        """Clears all historical delivered and spam message records to reset statistics."""
+        """Clears all historical delivered and spam/filtered message records to reset statistics."""
         async with self.get_db() as db:
-            await db.execute("DELETE FROM messages WHERE is_delivered = 1 OR category = 'spam'")
+            await db.execute("DELETE FROM messages WHERE is_delivered IN (1, 2) OR category = 'spam'")
             await db.commit()
             logger.info("Message statistics reset successfully.")
 
     async def purge_old_messages(self, days: int = 7) -> int:
-        """Purges delivered messages and spam older than N days to prevent database bloat."""
+        """Purges delivered messages and spam/filtered older than N days to prevent database bloat."""
         async with self.get_db() as db:
             cursor = await db.execute("""
                 DELETE FROM messages 
-                WHERE (is_delivered = 1 OR category = 'spam')
+                WHERE (is_delivered IN (1, 2) OR category = 'spam')
                 AND created_at <= datetime('now', '-' || ? || ' days')
             """, (days,))
             await db.commit()
+            return cursor.rowcount
             deleted_count = cursor.rowcount
             if deleted_count > 0:
                 logger.info(f"Auto-purged {deleted_count} delivered/spam messages older than {days} days from database.")
