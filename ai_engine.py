@@ -10,33 +10,36 @@ from config import config as app_config
 
 logger = logging.getLogger(__name__)
 
-# Xbox DNS Servers configuration
-XBOX_DNS_SERVERS = ["111.88.96.50", "111.88.96.51"]
+# SmartDNS / AI DNS Servers configuration (Comss.one + Xbox SmartDNS for bypassing AI geo-blocks)
+AI_DNS_SERVERS: List[str] = []
+if app_config.AI_DNS_SERVERS and app_config.AI_DNS_SERVERS.lower() not in ("none", "off", "false", "0"):
+    AI_DNS_SERVERS = [ip.strip() for ip in app_config.AI_DNS_SERVERS.split(",") if ip.strip()]
 
-# Enable Custom Xbox DNS Resolver for Google / AI domains
-try:
-    import dns.resolver
-    _original_getaddrinfo = socket.getaddrinfo
+# Enable Custom SmartDNS Resolver for Google / AI domains
+if AI_DNS_SERVERS:
+    try:
+        import dns.resolver
+        _original_getaddrinfo = socket.getaddrinfo
 
-    def _xbox_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-        if isinstance(host, str) and ("googleapis.com" in host or "google" in host):
-            try:
-                resolver = dns.resolver.Resolver(configure=False)
-                resolver.nameservers = XBOX_DNS_SERVERS
-                resolver.timeout = 2.5
-                resolver.lifetime = 2.5
-                answers = resolver.resolve(host, "A")
-                for rdata in answers:
-                    ip = rdata.address
-                    return _original_getaddrinfo(ip, port, family, type, proto, flags)
-            except Exception as e:
-                logger.debug(f"Xbox DNS fallback for {host}: {e}")
-        return _original_getaddrinfo(host, port, family, type, proto, flags)
+        def _smart_dns_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+            if isinstance(host, str) and ("googleapis.com" in host or "google" in host):
+                try:
+                    resolver = dns.resolver.Resolver(configure=False)
+                    resolver.nameservers = AI_DNS_SERVERS
+                    resolver.timeout = 2.5
+                    resolver.lifetime = 2.5
+                    answers = resolver.resolve(host, "A")
+                    for rdata in answers:
+                        ip = rdata.address
+                        return _original_getaddrinfo(ip, port, family, type, proto, flags)
+                except Exception as e:
+                    logger.debug(f"SmartDNS fallback for {host}: {e}")
+            return _original_getaddrinfo(host, port, family, type, proto, flags)
 
-    socket.getaddrinfo = _xbox_getaddrinfo
-    logger.info(f"Xbox DNS Resolver enabled for AI domains ({', '.join(XBOX_DNS_SERVERS)}).")
-except Exception as e:
-    logger.warning(f"Could not initialize Xbox DNS Resolver: {e}")
+        socket.getaddrinfo = _smart_dns_getaddrinfo
+        logger.info(f"SmartDNS Resolver enabled for AI domains: {', '.join(AI_DNS_SERVERS)}")
+    except Exception as e:
+        logger.warning(f"Could not initialize SmartDNS Resolver: {e}")
 
 from models import AnalysisResult, AnalysisBatchResponse, AudioAnalysisResult
 
