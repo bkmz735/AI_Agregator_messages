@@ -119,8 +119,15 @@ class VKAdapter(BaseAdapter):
                     async with session.get(method, params=params) as resp:
                         data = await resp.json()
                         if "error" in data:
-                            logger.error(f"VK LongPoll Server Error: {data['error']}")
-                            await asyncio.sleep(10)
+                            err = data["error"]
+                            err_code = err.get("error_code")
+                            err_msg = err.get("error_msg", "Unknown error")
+                            if err_code in (4, 5, 27, 28):
+                                logger.error(f"VK Auth Error (code {err_code}): {err_msg}. Invalid/expired VK_TOKEN. Pausing VK checks for 5 minutes to prevent log spam.")
+                                await asyncio.sleep(300)
+                            else:
+                                logger.warning(f"VK LongPoll Server Error (code {err_code}): {err_msg}. Retrying in 60s...")
+                                await asyncio.sleep(60)
                             continue
                         
                         res = data["response"]
@@ -207,14 +214,14 @@ class VKAdapter(BaseAdapter):
                             raise
                         except Exception as inner_e:
                             logger.error(f"Network or parsing error in VK LongPoll inner loop: {inner_e}")
-                            await asyncio.sleep(5)
+                            await asyncio.sleep(30)
                             # Do not break to outer loop unless necessary, to preserve 'ts'
 
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
                     logger.error(f"Error in VK listener: {e}")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(30)
 
     async def _transcribe_vk_audio(self, audio_url: str) -> str:
         """Downloads audio and sends it to Gemini for transcription."""
