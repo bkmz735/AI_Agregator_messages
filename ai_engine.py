@@ -70,6 +70,14 @@ class AIEngine:
 
         if self.api_key:
             try:
+                import os
+                if app_config.AI_PROXY:
+                    os.environ["HTTPS_PROXY"] = app_config.AI_PROXY
+                    os.environ["HTTP_PROXY"] = app_config.AI_PROXY
+                    os.environ["https_proxy"] = app_config.AI_PROXY
+                    os.environ["http_proxy"] = app_config.AI_PROXY
+                    logger.info("Configured AI_PROXY for Google Gemini client.")
+
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key)
                 logger.info("AI API client initialized successfully.")
