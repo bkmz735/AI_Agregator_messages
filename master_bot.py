@@ -503,38 +503,26 @@ class MasterBot:
         if servers:
             for idx, s in enumerate(servers, start=1):
                 comment = f" ({known_labels[s]})" if s in known_labels else ""
-                if idx == 1:
-                    prio_badge = "⭐️ <b>[ОСНОВНОЙ]</b>"
-                else:
-                    prio_badge = f"🔄 <b>[РЕЗЕРВ {idx-1}]</b>"
+                badge = "⭐️ №1 (Основной)" if idx == 1 else f"🔄 №{idx} (Резерв)"
 
                 health_info = ""
                 if getattr(self, "_last_dns_health", None) and s in self._last_dns_health:
                     h = self._last_dns_health[s]
                     if h.get("status"):
-                        health_info = f" — 🟢 <b>{h.get('latency_ms', 0)} ms</b>"
+                        health_info = f" [🟢 {h.get('latency_ms', 0)} ms]"
                     else:
-                        health_info = f" — 🔴 <i>{h.get('error', 'Ошибка')}</i>"
+                        health_info = f" [🔴 {h.get('error', 'Ошибка')}]"
 
-                server_lines.append(f"{idx}. {prio_badge} <code>{html.escape(s)}</code>{comment}{health_info}")
+                server_lines.append(f"{badge}: <code>{html.escape(s)}</code>{comment}{health_info}")
         else:
-            server_lines.append("<i>Список серверов пуст (SmartDNS неактивен).</i>")
+            server_lines.append("<i>Список пуст (используется системный DNS).</i>")
 
         servers_block = "\n".join(server_lines)
 
         text = (
-            "🌐 <b>Настройка SmartDNS (Обход блокировок ИИ)</b>\n\n"
-            "SmartDNS подменяет DNS-запросы к доменам Google и Gemini (<code>googleapis.com</code>), "
-            "позволяя боту обходить региональные ограничения напрямую без VPN и прокси.\n\n"
-            f"▪️ Статус: <b>{status_label}</b>\n"
-            f"▪️ Активных серверов: <b>{len(servers)}</b>\n\n"
-            f"📋 <b>Приоритет DNS-серверов:</b>\n{servers_block}\n\n"
-            "ℹ️ <b>Принцип работы failover:</b>\n"
-            "• Запросы всегда направляются на <b>Основной (⭐️ №1)</b> сервер.\n"
-            "• Если он не отвечает в течение 1.0 сек — автоматически опрашиваются <b>Резервные (🔄 №2, №3...)</b>.\n"
-            "• Если все серверы списка недоступны — используется системный DNS провайдера.\n\n"
-            "<i>Нажмите <b>«⚡ Проверить серверы»</b> для измерения задержки и доступности, "
-            "или <b>«🔝 №X»</b>, чтобы сделать сервер основным.</i>"
+            f"🌐 <b>SmartDNS</b>: {status_label}\n\n"
+            f"📋 <b>Серверы:</b>\n{servers_block}\n\n"
+            "<i>Запросы идут на №1. При сбое бот автоматически переходит на следующие.</i>"
         )
         return text, kb_ui.get_dns_menu_keyboard(servers, enabled)
 

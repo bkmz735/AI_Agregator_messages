@@ -458,12 +458,13 @@ def setup_all_handlers(master_bot):
     async def process_dns_reset_defaults(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
         await master_bot.settings.reset_dns_servers()
+        master_bot._last_dns_health = None
         text, kb = await master_bot._get_dns_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
         except Exception:
             pass
-        await callback_query.answer("Серверы DNS сброшены на стандартные (Comss/Xbox)!")
+        await callback_query.answer("Серверы сброшены к стандартным (1.1.1.1, 8.8.8.8)!")
 
     @dp.callback_query(F.data.startswith("dns_del_"))
     async def process_dns_delete(callback_query: types.CallbackQuery):
@@ -471,6 +472,8 @@ def setup_all_handlers(master_bot):
         try:
             idx = int(callback_query.data.split("dns_del_")[-1])
             ok, removed = await master_bot.settings.remove_dns_server_by_index(idx)
+            if ok and getattr(master_bot, '_last_dns_health', None) and removed in master_bot._last_dns_health:
+                master_bot._last_dns_health.pop(removed, None)
             ans = f"Сервер {removed} удален!" if ok else "Ошибка удаления."
         except Exception as e:
             ans = f"Ошибка: {e}"
@@ -487,14 +490,13 @@ def setup_all_handlers(master_bot):
         master_bot.clear_input_states()
         master_bot._waiting_for_dns_ip = True
         prompt_text = (
-            "🌐 <b>Добавление DNS-сервера</b>\n\n"
-            "Отправьте сообщением IP-адрес сервера или DoH URL (DNS over HTTPS).\n\n"
+            "🌐 <b>Добавление DNS</b>\n\n"
+            "Отправьте IP-адрес или DoH URL.\n\n"
             "<b>Примеры:</b>\n"
-            "• <code>95.214.27.105</code> (IPv4)\n"
-            "• <code>111.88.96.54</code> (SmartDNS)\n"
-            "• <code>2a02:6b8::feed:0ff</code> (IPv6)\n"
-            "• <code>https://dns.google/dns-query</code> (DoH)\n\n"
-            "<i>Для отмены нажмите кнопку ниже:</i>"
+            "• <code>1.1.1.1</code> (Cloudflare)\n"
+            "• <code>8.8.8.8</code> (Google)\n"
+            "• <code>77.88.8.8</code> (Яндекс)\n"
+            "• <code>https://dns.google/dns-query</code>"
         )
         try:
             await callback_query.message.edit_text(text=prompt_text, reply_markup=kb_ui.get_dns_add_prompt_keyboard(), parse_mode="HTML")

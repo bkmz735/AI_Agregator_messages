@@ -29,14 +29,15 @@ class TestDNSSettings(unittest.IsolatedAsyncioTestCase):
         servers = await self.settings.get_dns_servers()
         self.assertIsInstance(servers, list)
         self.assertTrue(len(servers) >= 2)
-        self.assertIn("95.214.27.105", servers)
+        self.assertIn("1.1.1.1", servers)
+        self.assertIn("8.8.8.8", servers)
 
     async def test_add_valid_ipv4(self):
-        ok, res = await self.settings.add_dns_server("77.88.8.8")
+        ok, res = await self.settings.add_dns_server("9.9.9.9")
         self.assertTrue(ok)
-        self.assertEqual(res, "77.88.8.8")
+        self.assertEqual(res, "9.9.9.9")
         servers = await self.settings.get_dns_servers()
-        self.assertIn("77.88.8.8", servers)
+        self.assertIn("9.9.9.9", servers)
 
     async def test_add_valid_ipv6(self):
         ok, res = await self.settings.add_dns_server("2a02:6b8::feed:0ff")
@@ -85,8 +86,19 @@ class TestDNSSettings(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(servers, ["8.8.8.8"])
 
         defaults = await self.settings.reset_dns_servers()
-        self.assertIn("95.214.27.105", defaults)
-        self.assertIn("111.88.96.54", defaults)
+        self.assertIn("1.1.1.1", defaults)
+        self.assertIn("8.8.8.8", defaults)
+
+    async def test_empty_dns_servers_do_not_revert(self):
+        await self.settings.update_dns_servers([])
+        servers = await self.settings.get_dns_servers()
+        self.assertEqual(servers, [])
+        # Also remove by index until empty
+        await self.settings.update_dns_servers(["1.1.1.1"])
+        ok, _ = await self.settings.remove_dns_server_by_index(0)
+        self.assertTrue(ok)
+        servers_empty = await self.settings.get_dns_servers()
+        self.assertEqual(servers_empty, [])
 
     async def test_toggle_dns_enabled(self):
         self.assertTrue(await self.settings.get_dns_enabled())

@@ -21,7 +21,7 @@ class Config:
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     TELEGRAM_PROXY: str = os.getenv("TELEGRAM_PROXY", "").strip()
     AI_PROXY: str = os.getenv("AI_PROXY", os.getenv("HTTPS_PROXY", "")).strip()
-    AI_DNS_SERVERS: str = os.getenv("AI_DNS_SERVERS", "95.214.27.105, 95.214.27.106, 111.88.96.54, 111.88.96.55").strip()
+    AI_DNS_SERVERS: str = os.getenv("AI_DNS_SERVERS", "1.1.1.1, 8.8.8.8, 77.88.8.8").strip()
     MASTER_CHAT_ID: int = _get_int_env("MASTER_CHAT_ID", 0)
     
     VK_TOKEN: str = os.getenv("VK_TOKEN", "").strip()

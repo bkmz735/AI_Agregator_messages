@@ -439,7 +439,7 @@ def get_dns_menu_keyboard(servers: List[str], enabled: bool) -> InlineKeyboardMa
     # 1. Health check & Toggle status
     toggle_text = "🟢 SmartDNS: Вкл" if enabled else "🔴 SmartDNS: Выкл"
     rows.append([
-        InlineKeyboardButton(text="⚡ Проверить серверы", callback_data="dns_check_health"),
+        InlineKeyboardButton(text="⚡ Проверить", callback_data="dns_check_health"),
         InlineKeyboardButton(text=toggle_text, callback_data="dns_toggle_enabled")
     ])
     
@@ -447,17 +447,17 @@ def get_dns_menu_keyboard(servers: List[str], enabled: bool) -> InlineKeyboardMa
     if len(servers) > 1:
         prio_buttons = []
         for idx in range(1, len(servers)):
-            prio_buttons.append(InlineKeyboardButton(text=f"🔝 Сделать #{idx+1} основным", callback_data=f"dns_make_primary_{idx}"))
+            prio_buttons.append(InlineKeyboardButton(text=f"🔝 #{idx+1} в Основной", callback_data=f"dns_make_primary_{idx}"))
             if len(prio_buttons) == 2:
                 rows.append(prio_buttons)
                 prio_buttons = []
         if prio_buttons:
             rows.append(prio_buttons)
 
-    # 3. Add / Reset
+    # 3. Add & Reset to standard
     rows.append([
-        InlineKeyboardButton(text="➕ Добавить DNS", callback_data="dns_prompt_add"),
-        InlineKeyboardButton(text="🔄 Сброс (Comss/Xbox)", callback_data="dns_reset_defaults")
+        InlineKeyboardButton(text="➕ Добавить", callback_data="dns_prompt_add"),
+        InlineKeyboardButton(text="🔄 К стандартным DNS", callback_data="dns_reset_defaults")
     ])
     
     # 4. Servers delete list
@@ -471,7 +471,7 @@ def get_dns_menu_keyboard(servers: List[str], enabled: bool) -> InlineKeyboardMa
     if del_row:
         rows.append(del_row)
         
-    rows.append([InlineKeyboardButton(text="🔙 Назад к Настройкам", callback_data="settings_main_menu")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="settings_main_menu")])
     rows.append([get_home_button()])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

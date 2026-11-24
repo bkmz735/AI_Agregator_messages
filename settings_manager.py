@@ -180,15 +180,19 @@ class SettingsManager:
     # --- DNS & SmartDNS Settings ---
     async def get_dns_servers(self):
         raw = await self.storage.get_setting("ai_dns_servers")
-        if raw is None or not raw.strip():
+        if raw is None:
             if config.AI_DNS_SERVERS and config.AI_DNS_SERVERS.lower() not in ("none", "off", "false", "0"):
                 return [ip.strip() for ip in config.AI_DNS_SERVERS.split(",") if ip.strip()]
-            return ["95.214.27.105", "95.214.27.106", "111.88.96.54", "111.88.96.55"]
-        return [ip.strip() for ip in raw.split(",") if ip.strip()]
+            return ["1.1.1.1", "8.8.8.8", "77.88.8.8"]
+        raw_clean = raw.strip()
+        if not raw_clean or raw_clean.lower() in ("none", "off", "false", "0", "[]"):
+            return []
+        return [ip.strip() for ip in raw_clean.split(",") if ip.strip()]
 
     async def update_dns_servers(self, servers):
         clean = [s.strip() for s in servers if s.strip()]
-        await self.storage.set_setting("ai_dns_servers", ", ".join(clean))
+        val_to_save = ", ".join(clean) if clean else "none"
+        await self.storage.set_setting("ai_dns_servers", val_to_save)
         enabled = await self.get_dns_enabled()
         try:
             from ai_engine import update_active_dns_servers
@@ -284,7 +288,7 @@ class SettingsManager:
         return output
 
     async def reset_dns_servers(self):
-        defaults = ["95.214.27.105", "95.214.27.106", "111.88.96.54", "111.88.96.55"]
+        defaults = ["1.1.1.1", "8.8.8.8", "77.88.8.8"]
         await self.update_dns_servers(defaults)
         await self.update_dns_enabled(True)
         return defaults
