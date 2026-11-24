@@ -15,7 +15,7 @@
 * **Обработка (AI & Logic):**
   * Слой 1 (L1): Мгновенная фильтрация по банвордам (`banwords.py`) без затрат токенов.
   * Слой 2 (L2): Батчинг сообщений и классификация по 11 категориям через **Google Gemini API** (`google-genai`).
-  * Слой 3 (L3): Диалоговый ИИ-ассистент с **19 Function Calling инструментами** и веб-поиском через **DuckDuckGo**.
+  * Слой 3 (L3): Диалоговый ИИ-ассистент с **21 Function Calling инструментом** и веб-поиском через **DuckDuckGo**.
 * **Хранилище:** SQLite3 через `aiosqlite` в высокопроизводительном режиме **WAL** (Write-Ahead Logging).
 * **Telegram UI:** Построен на **aiogram 3.x** с поддержкой FSM, инлайн-кнопок, автоудаления сообщений и ночного режима.
 
@@ -33,7 +33,7 @@
 | **Email IMAP** | `aioimaplib` | Асинхронное чтение почтовых ящиков |
 | **Веб-поиск** | `duckduckgo-search` | Бесплатный поиск без ключей API в фоновом потоке |
 | **DNS / Proxy** | `dnspython`, `aiohttp-socks` | SmartDNS резолвер для обхода гео-блокировок AI |
-| **Тестирование** | `unittest`, `pytest`, `pytest-asyncio` | 38 модульных и интеграционных тестов |
+| **Тестирование** | `unittest`, `pytest`, `pytest-asyncio` | 44 модульных и интеграционных теста |
 
 ---
 
@@ -103,8 +103,9 @@ AI_Agregator_messages/
 │
 ├── main.py                    # Главная точка входа, инициализация и цикл батчинга
 ├── master_bot.py              # Ядро Telegram-бота, планировщики дайджестов, UI
+├── updater.py                 # Модуль бесшовного самообновления из GitHub (git pull, pip, systemd restart)
 ├── ai_engine.py               # Движок Google Gemini (батчи, транскрипция, fallback, SmartDNS)
-├── user_agent.py              # Диалоговый ИИ-ассистент, 19 инструментов Function Calling, DuckDuckGo
+├── user_agent.py              # Диалоговый ИИ-ассистент, 21 инструмент Function Calling, DuckDuckGo
 ├── storage.py                 # SQLite хранилище, WAL-режим, миграции схемы
 ├── settings_manager.py        # Управление настройками пользователя (в БД)
 ├── banwords.py                # Быстрый L1-фильтр спама по регуляркам (scope: global/email/vk)
@@ -140,10 +141,11 @@ AI_Agregator_messages/
 
 ## 🛠️ 6. Система Function Calling (`user_agent.py`)
 
-Ассистент поддерживает **19 инструментов**:
+Ассистент поддерживает **21 инструмент**:
 * **Просмотр списков:** `list_tg_channels`, `list_banwords`, `list_news_topics`, `get_settings_summary`, `get_bot_stats`.
 * **Управление списками:** `add_banword`, `remove_banword`, `add_news_topic`, `remove_news_topic`, `add_tg_channel`, `remove_tg_channel`.
 * **Настройки доставки:** `set_timezone`, `set_digest_interval`, `set_delivery_mode`, `toggle_night_mode`, `set_night_hours`, `toggle_category_filter`.
+* **Обновление и обслуживание:** `check_for_updates`, `update_bot`.
 * **Веб-поиск:** `web_search` (через DuckDuckGo).
 * **Служебные:** `clear_chat`.
 
@@ -169,7 +171,7 @@ AI_Agregator_messages/
   ```powershell
   python -m unittest discover -s tests
   ```
-  Все 38 тестов должны проходить со статусом `OK`.
+  Все 44 теста должны проходить со статусом `OK`.
 * При изменении схемы БД в `storage.py` не забывать добавлять миграции с `IF NOT EXISTS` или `ALTER TABLE` блоками.
 * При добавлении новых настроек обновлять Pydantic-схему `models/settings.py` и дефолты в `config/settings.py`.
 

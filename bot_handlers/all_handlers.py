@@ -85,6 +85,7 @@ def setup_all_handlers(master_bot):
             "🔹 `/settings` (или ⚙️ Настройки) — Изменить интервал сводки, режим работы и автоудаление\n"
             "🔹 `/flush` (или 🚀 Отправить сводку) — Прислать сообщения из буфера прямо сейчас\n"
             "🔹 `/stats` (или 📊 Статистика) — Посмотреть статистику сообщений\n"
+            "🔹 `/update` — Проверить и установить обновления из GitHub\n"
             "🔹 `/clear` (или 🧹 Очистить чат) — Стереть сообщения в чате\n\n"
             "🏛️ <b>Умный помощник:</b> Бот автоматически находит и выделяет штрафы, налоги и уведомления от Госуслуг!\n\n"
             "🎙️ <b>Расшифровка голосовых:</b> перешлите или отправьте голосовое сообщение, и оно автоматически переведется в текст!\n\n"
@@ -266,6 +267,132 @@ def setup_all_handlers(master_bot):
         except Exception:
             pass
         await callback_query.answer("Режим отправки изменен!")
+
+    async def _get_update_screen_data(force_check: bool = False):
+        import updater
+        info = await updater.get_current_version_info()
+        commit = info.get("commit", "unknown")
+        date_str = info.get("date", "")
+        subject = html.escape(info.get("subject", ""))
+        branch = info.get("branch", "main")
+
+        if force_check:
+            check = await updater.check_for_updates()
+            if check.get("error"):
+                text = (
+                    "🔄 <b>Обновление бота из GitHub</b>\n\n"
+                    f"📌 <b>Текущий коммит:</b> <code>{commit}</code> ({date_str})\n"
+                    f"📝 <i>{subject}</i>\n"
+                    f"🌿 <b>Ветка:</b> <code>{branch}</code>\n\n"
+                    f"⚠️ <b>Ошибка проверки:</b>\n{html.escape(check['error'])}\n\n"
+                    "<i>Проверьте подключение к интернету или настройки Git на сервере.</i>"
+                )
+                return text, kb_ui.get_update_keyboard(has_updates=False)
+
+            has_updates = check.get("has_updates", False)
+            if has_updates:
+                commits = check.get("commits", [])
+                commits_text = "\n".join([f"• <code>{html.escape(c)}</code>" for c in commits])
+                text = (
+                    "🔄 <b>Обновление бота из GitHub</b>\n\n"
+                    f"📌 <b>Текущая версия:</b> <code>{commit}</code>\n"
+                    f"🚀 <b>Доступно новое обновление!</b> (новых коммитов: {check.get('commit_count', 1)})\n\n"
+                    f"<b>Свежие изменения:</b>\n{commits_text}\n\n"
+                    "<i>Нажмите кнопку «Обновить и перезапустить» ниже: бот подтянет код из GitHub, проверит зависимости и перезапустится за пару секунд.</i>"
+                )
+                return text, kb_ui.get_update_keyboard(has_updates=True)
+            else:
+                text = (
+                    "🔄 <b>Обновление бота из GitHub</b>\n\n"
+                    f"📌 <b>Текущий коммит:</b> <code>{commit}</code> ({date_str})\n"
+                    f"📝 <i>{subject}</i>\n"
+                    f"🌿 <b>Ветка:</b> <code>{branch}</code>\n\n"
+                    "✅ <b>У вас установлена самая актуальная версия!</b>\n"
+                    "Все файлы синхронизированы с репозиторием GitHub."
+                )
+                return text, kb_ui.get_update_keyboard(has_updates=False)
+        else:
+            text = (
+                "🔄 <b>Обновление бота из GitHub</b>\n\n"
+                f"📌 <b>Текущий коммит:</b> <code>{commit}</code> ({date_str})\n"
+                f"📝 <i>{subject}</i>\n"
+                f"🌿 <b>Ветка:</b> <code>{branch}</code>\n\n"
+                "Нажмите <b>«🔄 Проверить обновления»</b>, чтобы узнать, вышли ли новые коммиты на GitHub."
+            )
+            return text, kb_ui.get_update_keyboard(has_updates=False)
+
+    @dp.callback_query(F.data == "settings_menu_update")
+    async def process_settings_menu_update(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        text, kb = await _get_update_screen_data(force_check=False)
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer()
+
+    @dp.callback_query(F.data == "check_git_updates")
+    async def process_check_git_updates(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        await callback_query.answer("Проверяю обновления на GitHub...")
+        text, kb = await _get_update_screen_data(force_check=True)
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+
+    @dp.callback_query(F.data == "do_git_update")
+    async def process_do_git_update(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        import updater
+        try:
+            await callback_query.message.edit_text(
+                "⏳ <b>Загрузка обновления из GitHub...</b>\n\n"
+                "1️⃣ Подтягивание свежего кода (`git pull origin main`)...\n"
+                "2️⃣ Проверка и установка зависимостей...\n\n"
+                "<i>Пожалуйста, подождите пару секунд...</i>",
+                reply_markup=kb_ui.get_update_keyboard(in_progress=True),
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+        success, res_msg = await updater.apply_update()
+        if success:
+            try:
+                await callback_query.message.edit_text(
+                    "✅ <b>Обновление успешно загружено!</b>\n\n"
+                    f"📌 <b>Новый коммит:</b> <code>{res_msg}</code>\n\n"
+                    "🔄 <b>Перезапуск службы бота...</b>\n"
+                    "<i>Бот перезапустится и будет готов к работе через 3-5 секунд.</i>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+            await callback_query.answer("Обновление установлено! Перезапуск...")
+            asyncio.create_task(updater.restart_service())
+        else:
+            try:
+                await callback_query.message.edit_text(
+                    "❌ <b>Ошибка при обновлении бота</b>\n\n"
+                    f"<code>{html.escape(res_msg)}</code>\n\n"
+                    "<i>Попробуйте повторить попытку или проверьте логи.</i>",
+                    reply_markup=kb_ui.get_update_keyboard(has_updates=True),
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+            await callback_query.answer("Ошибка при обновлении!", show_alert=True)
+
+    @dp.message(Command("update"))
+    async def cmd_update(message: types.Message):
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        text, kb = await _get_update_screen_data(force_check=True)
+        await master_bot.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
+
 
     @dp.callback_query(F.data == "settings_menu_content_filter")
     async def process_settings_menu_content_filter(callback_query: types.CallbackQuery):
@@ -1060,6 +1187,14 @@ def setup_all_handlers(master_bot):
             elif action == "clear_chat":
                 await master_bot.storage.clear_all_messages()
                 result_msg = "✅ История сообщений полностью очищена."
+            elif action == "update_bot":
+                import updater
+                success, res_commit = await updater.apply_update()
+                if success:
+                    result_msg = f"🚀 Обновление до коммита «{res_commit}» установлено! Перезапуск службы бота..."
+                    asyncio.create_task(updater.restart_service())
+                else:
+                    result_msg = f"❌ Ошибка при обновлении бота: {res_commit}"
             else:
                 result_msg = "❌ Неизвестное действие."
                 

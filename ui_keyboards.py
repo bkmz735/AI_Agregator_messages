@@ -42,6 +42,7 @@ def get_settings_keyboard(delivery_mode: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=mode_btn_text, callback_data="settings_toggle_mode"),
             InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
         ],
+        [InlineKeyboardButton(text="🔄 Обновление бота", callback_data="settings_menu_update")],
         [get_home_button()]
     ])
 
@@ -410,4 +411,21 @@ def get_confirm_reset_stats_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="do_reset_stats")],
         [get_home_button()]
     ])
+
+
+def get_update_keyboard(has_updates: bool = False, in_progress: bool = False) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура экрана обновления бота из GitHub."""
+    if in_progress:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⏳ Обновление выполняется...", callback_data="noop")]
+        ])
+
+    rows = []
+    if has_updates:
+        rows.append([InlineKeyboardButton(text="🚀 Обновить и перезапустить", callback_data="do_git_update")])
+    rows.append([InlineKeyboardButton(text="🔄 Проверить обновления", callback_data="check_git_updates")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад к Настройкам", callback_data="settings_main_menu")])
+    rows.append([get_home_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
 

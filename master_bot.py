@@ -292,6 +292,7 @@ class MasterBot:
             BotCommand(command="flush", description="Выгрузить накопившийся буфер прямо сейчас"),
             BotCommand(command="stats", description="Посмотреть статистику сообщений"),
             BotCommand(command="blacklist", description="Управление Чёрным списком спама"),
+            BotCommand(command="update", description="Проверить и установить обновления из GitHub"),
             BotCommand(command="clear", description="Очистить сообщения в чате"),
             BotCommand(command="logs", description="Живой лог событий и диагностика системы")
         ]
@@ -932,6 +933,21 @@ class MasterBot:
             logger.info(f"📋 Registered routers in Dispatcher ({len(router_names)}): {router_names}")
             
             if self.master_chat_id and str(self.master_chat_id) not in ("0", "None", "", "123456789"):
+                import updater
+                upd_commit = updater.check_and_clear_update_flag()
+                if upd_commit:
+                    try:
+                        await self.bot.send_message(
+                            chat_id=self.master_chat_id,
+                            text=(
+                                "🚀 <b>Бот успешно обновлен и перезапущен!</b>\n\n"
+                                f"📌 <b>Текущая версия:</b> <code>{upd_commit}</code>\n"
+                                "Система работает в штатном режиме."
+                            ),
+                            parse_mode="HTML"
+                        )
+                    except Exception as ue:
+                        logger.warning(f"Failed to send post-update notification: {ue}")
                 asyncio.create_task(self.update_status_banner(self.master_chat_id, force_new=True))
             else:
                 logger.info("ℹ️ Master chat ID is not set yet. Send /start or any message to claim master access.")

@@ -117,6 +117,14 @@ def clear_chat() -> str:
     """Clears the entire chat history and removes all stored messages from the bot's database. Requires confirmation."""
     return ''
 
+def check_for_updates() -> str:
+    """Checks GitHub repository for new bot releases/updates and returns commit details."""
+    return ''
+
+def update_bot() -> str:
+    """Downloads latest updates from GitHub and restarts the bot service. Requires confirmation."""
+    return ''
+
 class ConversationalAgent:
     def __init__(self, ai_engine: Any, storage):
         self.ai_engine = ai_engine
@@ -146,7 +154,9 @@ class ConversationalAgent:
             toggle_night_mode,
             set_night_hours,
             toggle_category_filter,
-            clear_chat
+            clear_chat,
+            check_for_updates,
+            update_bot
         ]
 
     async def _list_tg_channels(self) -> str:
@@ -312,6 +322,45 @@ class ConversationalAgent:
                     await self.storage.add_ai_chat_message("user", text)
                     await self.storage.add_ai_chat_message("model", reply_text)
                     return {"text": reply_text, "pending_action": None}
+                elif action_name == "check_for_updates":
+                    import updater
+                    upd_res = await updater.check_for_updates()
+                    if upd_res.get("error"):
+                        tool_res = f"Ошибка при проверке обновлений: {upd_res['error']}"
+                    elif upd_res.get("has_updates"):
+                        commits_str = "\n".join([f"- {c}" for c in upd_res.get("commits", [])])
+                        tool_res = f"Доступно обновление! Новых коммитов: {upd_res.get('commit_count', 1)}.\nСвежие изменения:\n{commits_str}\nТекущая версия: {upd_res['current_commit']}, на GitHub: {upd_res['remote_commit']}. Для установки скажите 'обнови бота' или используйте команду /update."
+                    else:
+                        tool_res = f"Бот обновлен до самой актуальной версии ({upd_res['current_commit']}). Новых изменений на GitHub нет."
+
+                    contents.append(
+                        types.Content(
+                            role="model",
+                            parts=[types.Part.from_function_call(name=action_name, args={})]
+                        )
+                    )
+                    contents.append(
+                        types.Content(
+                            role="user",
+                            parts=[types.Part.from_text(text=f"[Результат проверки обновлений]:\n{tool_res}\n\nСформируй понятный и красивый ответ пользователю.")]
+                        )
+                    )
+                    try:
+                        second_response = await self.ai_engine.generate_content_with_retry(
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=self.system_instruction,
+                                temperature=0.7
+                            )
+                        )
+                        reply_text = second_response.text if second_response and second_response.text else tool_res
+                    except Exception as e:
+                        logger.error(f"Error generating update check response: {e}")
+                        reply_text = tool_res
+
+                    await self.storage.add_ai_chat_message("user", text)
+                    await self.storage.add_ai_chat_message("model", reply_text)
+                    return {"text": reply_text, "pending_action": None}
                 elif action_name in ("list_tg_channels", "list_banwords", "list_news_topics", "get_settings_summary"):
                     logger.info(f"📊 Executing list tool: '{action_name}'")
                     if action_name == "list_tg_channels":
@@ -413,6 +462,8 @@ class ConversationalAgent:
                     reply_text = f"⚙️ {'Включаю' if enabled else 'Отключаю'} фильтрацию категории «{cat}»..."
                 elif action_name == "clear_chat":
                     reply_text = "Вы уверены, что хотите полностью очистить историю сообщений?"
+                elif action_name == "update_bot":
+                    reply_text = "Вы уверены, что хотите обновить бота из GitHub и перезапустить службу?"
                 else:
                     reply_text = "Я хочу выполнить действие, но не понимаю какое."
 
