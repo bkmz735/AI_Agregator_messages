@@ -258,7 +258,8 @@ class ConversationalAgent:
         lines = [f"🌐 **SmartDNS статус:** {status_label}", f"📊 **Активных серверов:** {len(servers)}\n"]
         if servers:
             for idx, s in enumerate(servers, start=1):
-                lines.append(f"{idx}. `{s}`")
+                prio = "⭐️ [Основной]" if idx == 1 else f"🔄 [Резерв {idx-1}]"
+                lines.append(f"{idx}. {prio} `{s}`")
         else:
             lines.append("Список DNS-серверов пуст.")
         return "\n".join(lines)

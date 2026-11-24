@@ -51,13 +51,16 @@ try:
                         except Exception:
                             pass
                 
-                resolver.timeout = 1.5
-                resolver.lifetime = 1.5
+                # Each nameserver gets 1.0s to respond before dnspython tries the next one in the list
+                resolver.timeout = 1.0
+                # Total budget allows sequential failover through all configured servers
+                resolver.lifetime = max(3.5, 1.2 * len(resolver.nameservers))
                 record_type = "AAAA" if family == socket.AF_INET6 else "A"
                 answers = resolver.resolve(host, record_type)
                 for rdata in answers:
                     ip = rdata.address
-                    return _original_getaddrinfo(ip, port, family, type, proto, flags)
+                    if ip and ip not in ("0.0.0.0", "127.0.0.1", "::1"):
+                        return _original_getaddrinfo(ip, port, family, type, proto, flags)
             except Exception as e:
                 logger.debug(f"SmartDNS fallback for {host}: {e}")
         return _original_getaddrinfo(host, port, family, type, proto, flags)
@@ -67,6 +70,60 @@ try:
         logger.info(f"SmartDNS Resolver enabled for AI domains: {', '.join(AI_DNS_SERVERS)}")
 except Exception as e:
     logger.warning(f"Could not initialize SmartDNS Resolver: {e}")
+
+
+def check_dns_server_health(server: str, domain: str = "generativelanguage.googleapis.com", timeout: float = 2.0) -> Dict[str, Any]:
+    """Tests a single DNS server against an AI domain and returns latency (ms), resolved IP, and status."""
+    import time
+    t0 = time.perf_counter()
+    server_clean = server.strip()
+    try:
+        import dns.resolver
+        resolver = dns.resolver.Resolver(configure=False)
+        if server_clean.startswith("http://") or server_clean.startswith("https://"):
+            import dns.nameserver
+            resolver.nameservers = [dns.nameserver.DoHNameserver(server_clean)]
+        else:
+            resolver.nameservers = [server_clean]
+        resolver.timeout = timeout
+        resolver.lifetime = timeout
+        answers = resolver.resolve(domain, "A")
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        valid_ips = [rdata.address for rdata in answers if rdata.address not in ("0.0.0.0", "127.0.0.1", "::1")]
+        if not valid_ips:
+            return {
+                "server": server_clean,
+                "status": False,
+                "latency_ms": latency_ms,
+                "ip": None,
+                "error": "Возвращает 0.0.0.0 (заблокирован сервером)"
+            }
+        return {
+            "server": server_clean,
+            "status": True,
+            "latency_ms": latency_ms,
+            "ip": valid_ips[0],
+            "error": None
+        }
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        err_name = type(e).__name__
+        err_str = str(e)
+        if "LifetimeTimeout" in err_name or "timeout" in err_str.lower():
+            err_msg = "Таймаут (не отвечает)"
+        elif "NXDOMAIN" in err_name:
+            err_msg = "Домен не найден (NXDOMAIN)"
+        elif "NoAnswer" in err_name:
+            err_msg = "Нет A-записи"
+        else:
+            err_msg = f"Ошибка: {err_str[:30]}"
+        return {
+            "server": server_clean,
+            "status": False,
+            "latency_ms": latency_ms,
+            "ip": None,
+            "error": err_msg
+        }
 
 from models import AnalysisResult, AudioAnalysisResult
 

@@ -98,7 +98,9 @@ class TestDNSSettings(unittest.IsolatedAsyncioTestCase):
     def test_dns_keyboards(self):
         kb = kb_ui.get_dns_menu_keyboard(["95.214.27.105", "111.88.96.54"], enabled=True)
         callbacks = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("dns_check_health", callbacks)
         self.assertIn("dns_toggle_enabled", callbacks)
+        self.assertIn("dns_make_primary_1", callbacks)
         self.assertIn("dns_prompt_add", callbacks)
         self.assertIn("dns_reset_defaults", callbacks)
         self.assertIn("dns_del_0", callbacks)
@@ -107,6 +109,51 @@ class TestDNSSettings(unittest.IsolatedAsyncioTestCase):
         kb_prompt = kb_ui.get_dns_add_prompt_keyboard()
         prompt_cbs = [b.callback_data for row in kb_prompt.inline_keyboard for b in row]
         self.assertIn("settings_menu_dns", prompt_cbs)
+
+    async def test_make_dns_primary(self):
+        await self.settings.update_dns_servers(["1.1.1.1", "8.8.8.8", "77.88.8.8"])
+        servers = await self.settings.get_dns_servers()
+        self.assertEqual(servers[0], "1.1.1.1")
+
+        # Make 77.88.8.8 (index 2) primary
+        ok, srv = await self.settings.make_dns_primary(2)
+        self.assertTrue(ok)
+        self.assertEqual(srv, "77.88.8.8")
+
+        servers_after = await self.settings.get_dns_servers()
+        self.assertEqual(servers_after[0], "77.88.8.8")
+        self.assertEqual(servers_after[1], "1.1.1.1")
+        self.assertEqual(servers_after[2], "8.8.8.8")
+
+        # Invalid index
+        bad_ok, _ = await self.settings.make_dns_primary(99)
+        self.assertFalse(bad_ok)
+
+    async def test_check_all_dns_health(self):
+        from unittest.mock import patch
+        with patch("ai_engine.check_dns_server_health") as mock_health:
+            mock_health.side_effect = lambda s, d: {
+                "server": s,
+                "status": True,
+                "latency_ms": 25,
+                "ip": "142.250.180.10",
+                "error": None
+            }
+            await self.settings.update_dns_servers(["8.8.8.8", "1.1.1.1"])
+            results = await self.settings.check_all_dns_health()
+            self.assertEqual(len(results), 2)
+            self.assertTrue(results[0]["status"])
+            self.assertEqual(results[0]["server"], "8.8.8.8")
+            self.assertEqual(results[1]["server"], "1.1.1.1")
+
+    def test_check_dns_server_health_function(self):
+        from ai_engine import check_dns_server_health
+        # Test against Google public DNS
+        res = check_dns_server_health("8.8.8.8", domain="google.com", timeout=3.0)
+        self.assertIn("status", res)
+        self.assertIn("latency_ms", res)
+        self.assertIn("server", res)
+        self.assertEqual(res["server"], "8.8.8.8")
 
 
 if __name__ == "__main__":

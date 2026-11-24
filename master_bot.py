@@ -188,6 +188,7 @@ class MasterBot:
         self._waiting_for_liked_topic: bool = False
         self._waiting_for_disliked_topic: bool = False
         self._waiting_for_dns_ip: bool = False
+        self._last_dns_health: Optional[Dict[str, Dict[str, Any]]] = None
         self.dp: Optional[Dispatcher] = None
         self.bot: Optional[Bot] = None
         
@@ -502,7 +503,20 @@ class MasterBot:
         if servers:
             for idx, s in enumerate(servers, start=1):
                 comment = f" ({known_labels[s]})" if s in known_labels else ""
-                server_lines.append(f"{idx}. <code>{html.escape(s)}</code>{comment}")
+                if idx == 1:
+                    prio_badge = "⭐️ <b>[ОСНОВНОЙ]</b>"
+                else:
+                    prio_badge = f"🔄 <b>[РЕЗЕРВ {idx-1}]</b>"
+
+                health_info = ""
+                if getattr(self, "_last_dns_health", None) and s in self._last_dns_health:
+                    h = self._last_dns_health[s]
+                    if h.get("status"):
+                        health_info = f" — 🟢 <b>{h.get('latency_ms', 0)} ms</b>"
+                    else:
+                        health_info = f" — 🔴 <i>{h.get('error', 'Ошибка')}</i>"
+
+                server_lines.append(f"{idx}. {prio_badge} <code>{html.escape(s)}</code>{comment}{health_info}")
         else:
             server_lines.append("<i>Список серверов пуст (SmartDNS неактивен).</i>")
 
@@ -514,9 +528,13 @@ class MasterBot:
             "позволяя боту обходить региональные ограничения напрямую без VPN и прокси.\n\n"
             f"▪️ Статус: <b>{status_label}</b>\n"
             f"▪️ Активных серверов: <b>{len(servers)}</b>\n\n"
-            f"📋 <b>Текущие DNS-серверы:</b>\n{servers_block}\n\n"
-            "<i>Нажмите <b>«➕ Добавить DNS»</b> для ввода IP-адреса или DoH URL, "
-            "или нажмите на <b>❌</b> для удаления сервера из списка.</i>"
+            f"📋 <b>Приоритет DNS-серверов:</b>\n{servers_block}\n\n"
+            "ℹ️ <b>Принцип работы failover:</b>\n"
+            "• Запросы всегда направляются на <b>Основной (⭐️ №1)</b> сервер.\n"
+            "• Если он не отвечает в течение 1.0 сек — автоматически опрашиваются <b>Резервные (🔄 №2, №3...)</b>.\n"
+            "• Если все серверы списка недоступны — используется системный DNS провайдера.\n\n"
+            "<i>Нажмите <b>«⚡ Проверить серверы»</b> для измерения задержки и доступности, "
+            "или <b>«🔝 №X»</b>, чтобы сделать сервер основным.</i>"
         )
         return text, kb_ui.get_dns_menu_keyboard(servers, enabled)
 

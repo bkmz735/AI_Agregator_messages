@@ -436,17 +436,31 @@ def get_dns_menu_keyboard(servers: List[str], enabled: bool) -> InlineKeyboardMa
     """Инлайн-клавиатура меню настройки SmartDNS."""
     rows = []
     
-    # Toggle status
-    toggle_text = "🟢 SmartDNS: Включен" if enabled else "🔴 SmartDNS: Выключен"
-    rows.append([InlineKeyboardButton(text=toggle_text, callback_data="dns_toggle_enabled")])
+    # 1. Health check & Toggle status
+    toggle_text = "🟢 SmartDNS: Вкл" if enabled else "🔴 SmartDNS: Выкл"
+    rows.append([
+        InlineKeyboardButton(text="⚡ Проверить серверы", callback_data="dns_check_health"),
+        InlineKeyboardButton(text=toggle_text, callback_data="dns_toggle_enabled")
+    ])
     
-    # Add / Reset
+    # 2. Priority buttons: Make #N primary (for servers at index 1 and above)
+    if len(servers) > 1:
+        prio_buttons = []
+        for idx in range(1, len(servers)):
+            prio_buttons.append(InlineKeyboardButton(text=f"🔝 Сделать #{idx+1} основным", callback_data=f"dns_make_primary_{idx}"))
+            if len(prio_buttons) == 2:
+                rows.append(prio_buttons)
+                prio_buttons = []
+        if prio_buttons:
+            rows.append(prio_buttons)
+
+    # 3. Add / Reset
     rows.append([
         InlineKeyboardButton(text="➕ Добавить DNS", callback_data="dns_prompt_add"),
         InlineKeyboardButton(text="🔄 Сброс (Comss/Xbox)", callback_data="dns_reset_defaults")
     ])
     
-    # Servers delete list
+    # 4. Servers delete list
     del_row = []
     for idx, s in enumerate(servers):
         label = s if len(s) <= 16 else (s[:13] + "...")

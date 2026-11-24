@@ -405,6 +405,40 @@ def setup_all_handlers(master_bot):
             pass
         await callback_query.answer()
 
+    @dp.callback_query(F.data == "dns_check_health")
+    async def process_dns_check_health(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        await callback_query.answer("⏳ Проверяем отклик серверов...")
+        try:
+            results = await master_bot.settings.check_all_dns_health()
+            master_bot._last_dns_health = {r["server"]: r for r in results}
+        except Exception as e:
+            logger.warning(f"Error checking DNS health: {e}")
+        text, kb = await master_bot._get_dns_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+
+    @dp.callback_query(F.data.startswith("dns_make_primary_"))
+    async def process_dns_make_primary(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        ans = "Ошибка изменения приоритета."
+        try:
+            idx = int(callback_query.data.split("dns_make_primary_")[-1])
+            ok, srv = await master_bot.settings.make_dns_primary(idx)
+            if ok:
+                ans = f"⭐️ Сервер {srv} назначен основным (№1)!"
+        except Exception as e:
+            logger.warning(f"Error making DNS primary: {e}")
+            ans = f"Ошибка: {e}"
+        text, kb = await master_bot._get_dns_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer(ans)
+
     @dp.callback_query(F.data == "dns_toggle_enabled")
     async def process_dns_toggle_enabled(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return

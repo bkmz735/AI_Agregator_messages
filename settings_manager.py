@@ -1,4 +1,5 @@
 import logging
+from typing import Tuple, List, Dict, Any, Optional
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -246,6 +247,41 @@ class SettingsManager:
             await self.update_dns_servers(current)
             return True
         return False
+
+    async def make_dns_primary(self, index: int) -> Tuple[bool, str]:
+        """Moves the DNS server at the given index to position 0 (Primary)."""
+        current = await self.get_dns_servers()
+        if 0 <= index < len(current):
+            srv = current.pop(index)
+            current.insert(0, srv)
+            await self.update_dns_servers(current)
+            return True, srv
+        return False, "Неверный индекс сервера."
+
+    async def check_all_dns_health(self, domain: str = "generativelanguage.googleapis.com") -> List[Dict[str, Any]]:
+        """Concurrently checks health and latency of all configured DNS servers."""
+        import asyncio
+        from ai_engine import check_dns_server_health
+        servers = await self.get_dns_servers()
+        if not servers:
+            return []
+        
+        tasks = [asyncio.to_thread(check_dns_server_health, srv, domain) for srv in servers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        output = []
+        for srv, res in zip(servers, results):
+            if isinstance(res, Exception):
+                output.append({
+                    "server": srv,
+                    "status": False,
+                    "latency_ms": 0,
+                    "ip": None,
+                    "error": f"Ошибка: {str(res)[:30]}"
+                })
+            else:
+                output.append(res)
+        return output
 
     async def reset_dns_servers(self):
         defaults = ["95.214.27.105", "95.214.27.106", "111.88.96.54", "111.88.96.55"]
