@@ -23,10 +23,12 @@ class TestAll14ToolsRegistration(unittest.TestCase):
             "add_tg_channel", "remove_tg_channel", "get_bot_stats", "set_timezone",
             "set_digest_interval", "set_delivery_mode", "toggle_night_mode",
             "set_night_hours", "toggle_category_filter", "clear_chat",
-            "check_for_updates", "update_bot"
+            "check_for_updates", "update_bot",
+            "list_dns_servers", "add_dns_server", "remove_dns_server",
+            "toggle_smart_dns", "reset_dns_servers"
         ]
         
-        self.assertEqual(len(tool_names), 21)
+        self.assertEqual(len(tool_names), 26)
         for et in expected_tools:
             self.assertIn(et, tool_names)
 

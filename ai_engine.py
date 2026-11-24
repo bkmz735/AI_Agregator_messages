@@ -12,35 +12,62 @@ logger = logging.getLogger(__name__)
 
 # SmartDNS / AI DNS Servers configuration (Comss.one + Xbox SmartDNS for bypassing AI geo-blocks)
 AI_DNS_SERVERS: List[str] = []
+SMART_DNS_ENABLED: bool = True
+
 if app_config.AI_DNS_SERVERS and app_config.AI_DNS_SERVERS.lower() not in ("none", "off", "false", "0"):
     AI_DNS_SERVERS = [ip.strip() for ip in app_config.AI_DNS_SERVERS.split(",") if ip.strip()]
 
+
+def update_active_dns_servers(servers: List[str], enabled: bool = True):
+    """Dynamically updates active SmartDNS servers and enabled state."""
+    global AI_DNS_SERVERS, SMART_DNS_ENABLED
+    SMART_DNS_ENABLED = bool(enabled)
+    AI_DNS_SERVERS.clear()
+    for s in servers:
+        s_clean = s.strip()
+        if s_clean and s_clean not in AI_DNS_SERVERS:
+            AI_DNS_SERVERS.append(s_clean)
+    logger.info(f"SmartDNS Resolver updated: enabled={SMART_DNS_ENABLED}, servers={AI_DNS_SERVERS}")
+
+
 # Enable Custom SmartDNS Resolver for Google / AI domains
-if AI_DNS_SERVERS:
-    try:
-        import dns.resolver
-        _original_getaddrinfo = socket.getaddrinfo
+try:
+    import dns.resolver
+    _original_getaddrinfo = socket.getaddrinfo
 
-        def _smart_dns_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-            if isinstance(host, str) and ("googleapis.com" in host or "google" in host):
-                try:
-                    resolver = dns.resolver.Resolver(configure=False)
-                    resolver.nameservers = AI_DNS_SERVERS
-                    resolver.timeout = 1.5
-                    resolver.lifetime = 1.5
-                    record_type = "AAAA" if family == socket.AF_INET6 else "A"
-                    answers = resolver.resolve(host, record_type)
-                    for rdata in answers:
-                        ip = rdata.address
-                        return _original_getaddrinfo(ip, port, family, type, proto, flags)
-                except Exception as e:
-                    logger.debug(f"SmartDNS fallback for {host}: {e}")
-            return _original_getaddrinfo(host, port, family, type, proto, flags)
+    def _smart_dns_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if SMART_DNS_ENABLED and AI_DNS_SERVERS and isinstance(host, str) and ("googleapis.com" in host or "google" in host):
+            try:
+                resolver = dns.resolver.Resolver(configure=False)
+                ip_servers = [s for s in AI_DNS_SERVERS if not s.startswith("http")]
+                doh_servers = [s for s in AI_DNS_SERVERS if s.startswith("http")]
+                
+                if ip_servers:
+                    resolver.nameservers = ip_servers
+                if doh_servers:
+                    import dns.nameserver
+                    for doh in doh_servers:
+                        try:
+                            resolver.nameservers.append(dns.nameserver.DoHNameserver(doh))
+                        except Exception:
+                            pass
+                
+                resolver.timeout = 1.5
+                resolver.lifetime = 1.5
+                record_type = "AAAA" if family == socket.AF_INET6 else "A"
+                answers = resolver.resolve(host, record_type)
+                for rdata in answers:
+                    ip = rdata.address
+                    return _original_getaddrinfo(ip, port, family, type, proto, flags)
+            except Exception as e:
+                logger.debug(f"SmartDNS fallback for {host}: {e}")
+        return _original_getaddrinfo(host, port, family, type, proto, flags)
 
-        socket.getaddrinfo = _smart_dns_getaddrinfo
+    socket.getaddrinfo = _smart_dns_getaddrinfo
+    if AI_DNS_SERVERS:
         logger.info(f"SmartDNS Resolver enabled for AI domains: {', '.join(AI_DNS_SERVERS)}")
-    except Exception as e:
-        logger.warning(f"Could not initialize SmartDNS Resolver: {e}")
+except Exception as e:
+    logger.warning(f"Could not initialize SmartDNS Resolver: {e}")
 
 from models import AnalysisResult, AnalysisBatchResponse, AudioAnalysisResult
 

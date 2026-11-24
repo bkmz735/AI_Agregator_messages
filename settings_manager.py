@@ -183,3 +183,90 @@ class SettingsManager:
 
     async def update_ai_batch_chunk_size(self, size: int):
         await self.storage.set_setting("ai_batch_chunk_size", str(size))
+
+    # --- DNS & SmartDNS Settings ---
+    async def get_dns_servers(self):
+        raw = await self.storage.get_setting("ai_dns_servers")
+        if raw is None or not raw.strip():
+            if config.AI_DNS_SERVERS and config.AI_DNS_SERVERS.lower() not in ("none", "off", "false", "0"):
+                return [ip.strip() for ip in config.AI_DNS_SERVERS.split(",") if ip.strip()]
+            return ["95.214.27.105", "95.214.27.106", "111.88.96.54", "111.88.96.55"]
+        return [ip.strip() for ip in raw.split(",") if ip.strip()]
+
+    async def update_dns_servers(self, servers):
+        clean = [s.strip() for s in servers if s.strip()]
+        await self.storage.set_setting("ai_dns_servers", ", ".join(clean))
+        enabled = await self.get_dns_enabled()
+        try:
+            from ai_engine import update_active_dns_servers
+            update_active_dns_servers(clean, enabled=enabled)
+        except Exception as e:
+            logger.warning(f"Failed to update active DNS servers in ai_engine: {e}")
+
+    async def get_dns_enabled(self) -> bool:
+        val = await self.storage.get_setting("ai_dns_enabled", "true")
+        return val.lower() in ("true", "1", "yes")
+
+    async def update_dns_enabled(self, enabled: bool):
+        await self.storage.set_setting("ai_dns_enabled", "true" if enabled else "false")
+        servers = await self.get_dns_servers()
+        try:
+            from ai_engine import update_active_dns_servers
+            update_active_dns_servers(servers, enabled=enabled)
+        except Exception as e:
+            logger.warning(f"Failed to update active DNS servers in ai_engine: {e}")
+
+    async def add_dns_server(self, server_str: str):
+        """Validates and adds a DNS server (IPv4, IPv6 or DoH URL)."""
+        import ipaddress
+        s = server_str.strip()
+        if not s:
+            return False, "Адрес DNS-сервера не может быть пустым."
+
+        is_doh = s.startswith("http://") or s.startswith("https://")
+        if not is_doh:
+            try:
+                ipaddress.ip_address(s)
+            except ValueError:
+                return False, f"«{s}» не является корректным IP-адресом или DoH URL (пример: 95.214.27.105 или https://dns.google/dns-query)."
+
+        current = await self.get_dns_servers()
+        if s in current:
+            return False, f"Сервер «{s}» уже есть в списке DNS."
+
+        current.append(s)
+        await self.update_dns_servers(current)
+        return True, s
+
+    async def remove_dns_server_by_index(self, index: int):
+        current = await self.get_dns_servers()
+        if 0 <= index < len(current):
+            removed = current.pop(index)
+            await self.update_dns_servers(current)
+            return True, removed
+        return False, "Неверный индекс сервера."
+
+    async def remove_dns_server(self, server_str: str) -> bool:
+        s = server_str.strip()
+        current = await self.get_dns_servers()
+        if s in current:
+            current.remove(s)
+            await self.update_dns_servers(current)
+            return True
+        return False
+
+    async def reset_dns_servers(self):
+        defaults = ["95.214.27.105", "95.214.27.106", "111.88.96.54", "111.88.96.55"]
+        await self.update_dns_servers(defaults)
+        await self.update_dns_enabled(True)
+        return defaults
+
+    async def sync_dns_to_ai_engine(self):
+        servers = await self.get_dns_servers()
+        enabled = await self.get_dns_enabled()
+        try:
+            from ai_engine import update_active_dns_servers
+            update_active_dns_servers(servers, enabled=enabled)
+        except Exception as e:
+            logger.warning(f"Failed to sync DNS to ai_engine: {e}")
+

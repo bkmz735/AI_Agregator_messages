@@ -188,6 +188,7 @@ class MasterBot:
         self._waiting_for_tg_channel: bool = False
         self._waiting_for_liked_topic: bool = False
         self._waiting_for_disliked_topic: bool = False
+        self._waiting_for_dns_ip: bool = False
         self.dp: Optional[Dispatcher] = None
         self.bot: Optional[Bot] = None
         
@@ -215,6 +216,7 @@ class MasterBot:
         self._waiting_for_tg_channel = False
         self._waiting_for_liked_topic = False
         self._waiting_for_disliked_topic = False
+        self._waiting_for_dns_ip = False
 
     def is_night_time(self) -> bool:
         """Returns True if Night Mode is enabled and current local time (user timezone) falls in quiet hours."""
@@ -478,6 +480,47 @@ class MasterBot:
             "<i>Это нужно для правильной работы расписания сводки и ночного режима.</i>"
         )
         return text, kb_ui.get_timezone_keyboard(self.timezone_offset)
+
+    async def _get_dns_settings_text_and_keyboard(self):
+        servers = await self.settings.get_dns_servers()
+        enabled = await self.settings.get_dns_enabled()
+        status_label = "🟢 Включен" if enabled else "🔴 Выключен"
+
+        known_labels = {
+            "95.214.27.105": "Comss.one",
+            "95.214.27.106": "Comss.one",
+            "111.88.96.54": "Xbox SmartDNS",
+            "111.88.96.55": "Xbox SmartDNS",
+            "77.88.8.8": "Yandex DNS",
+            "77.88.8.1": "Yandex DNS",
+            "8.8.8.8": "Google DNS",
+            "8.8.4.4": "Google DNS",
+            "1.1.1.1": "Cloudflare DNS",
+            "1.0.0.1": "Cloudflare DNS",
+            "9.9.9.9": "Quad9"
+        }
+
+        server_lines = []
+        if servers:
+            for idx, s in enumerate(servers, start=1):
+                comment = f" ({known_labels[s]})" if s in known_labels else ""
+                server_lines.append(f"{idx}. <code>{html.escape(s)}</code>{comment}")
+        else:
+            server_lines.append("<i>Список серверов пуст (SmartDNS неактивен).</i>")
+
+        servers_block = "\n".join(server_lines)
+
+        text = (
+            "🌐 <b>Настройка SmartDNS (Обход блокировок ИИ)</b>\n\n"
+            "SmartDNS подменяет DNS-запросы к доменам Google и Gemini (<code>googleapis.com</code>), "
+            "позволяя боту обходить региональные ограничения напрямую без VPN и прокси.\n\n"
+            f"▪️ Статус: <b>{status_label}</b>\n"
+            f"▪️ Активных серверов: <b>{len(servers)}</b>\n\n"
+            f"📋 <b>Текущие DNS-серверы:</b>\n{servers_block}\n\n"
+            "<i>Нажмите <b>«➕ Добавить DNS»</b> для ввода IP-адреса или DoH URL, "
+            "или нажмите на <b>❌</b> для удаления сервера из списка.</i>"
+        )
+        return text, kb_ui.get_dns_menu_keyboard(servers, enabled)
 
     async def _get_night_settings_text_and_keyboard(self):
         night_status = "🟢 Включен" if self.night_mode_enabled else "❌ Выключен"
@@ -924,6 +967,7 @@ class MasterBot:
                 self._was_night_mode = self.is_night_time()
                 
                 self._last_ui_msg_id = await self.settings.get_last_ui_msg_id()
+                await self.settings.sync_dns_to_ai_engine()
             except Exception as se:
                 logger.error(f"Error loading settings from DB: {se}", exc_info=True)
 

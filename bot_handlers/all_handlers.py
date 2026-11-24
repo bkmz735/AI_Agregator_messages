@@ -393,6 +393,77 @@ def setup_all_handlers(master_bot):
         text, kb = await _get_update_screen_data(force_check=True)
         await master_bot.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
 
+    @dp.callback_query(F.data == "settings_menu_dns")
+    async def process_settings_menu_dns(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        text, kb = await master_bot._get_dns_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer()
+
+    @dp.callback_query(F.data == "dns_toggle_enabled")
+    async def process_dns_toggle_enabled(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        curr = await master_bot.settings.get_dns_enabled()
+        await master_bot.settings.update_dns_enabled(not curr)
+        text, kb = await master_bot._get_dns_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        status_word = "включен" if not curr else "выключен"
+        await callback_query.answer(f"SmartDNS {status_word}!")
+
+    @dp.callback_query(F.data == "dns_reset_defaults")
+    async def process_dns_reset_defaults(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        await master_bot.settings.reset_dns_servers()
+        text, kb = await master_bot._get_dns_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer("Серверы DNS сброшены на стандартные (Comss/Xbox)!")
+
+    @dp.callback_query(F.data.startswith("dns_del_"))
+    async def process_dns_delete(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        try:
+            idx = int(callback_query.data.split("dns_del_")[-1])
+            ok, removed = await master_bot.settings.remove_dns_server_by_index(idx)
+            ans = f"Сервер {removed} удален!" if ok else "Ошибка удаления."
+        except Exception as e:
+            ans = f"Ошибка: {e}"
+        text, kb = await master_bot._get_dns_settings_text_and_keyboard()
+        try:
+            await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer(ans)
+
+    @dp.callback_query(F.data == "dns_prompt_add")
+    async def process_dns_prompt_add(callback_query: types.CallbackQuery):
+        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
+        master_bot._waiting_for_dns_ip = True
+        prompt_text = (
+            "🌐 <b>Добавление DNS-сервера</b>\n\n"
+            "Отправьте сообщением IP-адрес сервера или DoH URL (DNS over HTTPS).\n\n"
+            "<b>Примеры:</b>\n"
+            "• <code>95.214.27.105</code> (IPv4)\n"
+            "• <code>111.88.96.54</code> (SmartDNS)\n"
+            "• <code>2a02:6b8::feed:0ff</code> (IPv6)\n"
+            "• <code>https://dns.google/dns-query</code> (DoH)\n\n"
+            "<i>Для отмены нажмите кнопку ниже:</i>"
+        )
+        try:
+            await callback_query.message.edit_text(text=prompt_text, reply_markup=kb_ui.get_dns_add_prompt_keyboard(), parse_mode="HTML")
+        except Exception:
+            pass
+        await callback_query.answer()
+
 
     @dp.callback_query(F.data == "settings_menu_content_filter")
     async def process_settings_menu_content_filter(callback_query: types.CallbackQuery):
@@ -1253,7 +1324,8 @@ def setup_all_handlers(master_bot):
             master_bot._waiting_for_tg_channel or
             master_bot._waiting_for_liked_topic or
             master_bot._waiting_for_disliked_topic or
-            master_bot._waiting_for_banword_scope
+            master_bot._waiting_for_banword_scope or
+            getattr(master_bot, '_waiting_for_dns_ip', False)
         )
 
         chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
@@ -1352,13 +1424,28 @@ def setup_all_handlers(master_bot):
             await master_bot.show_or_edit_ui_panel(text="\n".join(lines), keyboard=kb, force_new=False)
             return
 
+        if getattr(master_bot, '_waiting_for_dns_ip', False):
+            master_bot._waiting_for_dns_ip = False
+            raw_input = message.text.strip() if message.text else ""
+            ok, res = await master_bot.settings.add_dns_server(raw_input)
+            if ok:
+                text_out = f"✅ DNS-сервер <code>{html.escape(res)}</code> успешно добавлен в SmartDNS!"
+            else:
+                text_out = f"❌ Ошибка добавления DNS: {html.escape(res)}"
+
+            sent_msg = await master_bot.bot.send_message(chat_id=master_bot.master_chat_id, text=text_out, parse_mode="HTML")
+            master_bot.schedule_delayed_deletion(master_bot.master_chat_id, [message.message_id, sent_msg.message_id])
+            text, kb = await master_bot._get_dns_settings_text_and_keyboard()
+            await master_bot.show_or_edit_ui_panel(text=text, keyboard=kb, force_new=False)
+            return
+
         # If not waiting for anything and not a menu button, it's a direct AI question/dialogue!
         chat_enabled = await master_bot.settings.get_ai_text_chat_enabled()
         sugg_enabled = await master_bot.settings.get_ai_suggestions_enabled()
         if not chat_enabled:
             if sugg_enabled:
                 text_lower = (message.text or "").lower()
-                is_list_query = any(kw in text_lower for kw in ['канал', 'банворд', 'тема', 'настройк'])
+                is_list_query = any(kw in text_lower for kw in ['канал', 'банворд', 'тема', 'настройк', 'днс', 'dns'])
                 if is_list_query:
                     logger.info(f"Processing list request (only suggestions enabled) from user {message.from_user.id if message.from_user else 'Unknown'}")
                     if master_bot.user_agent:
@@ -1368,6 +1455,8 @@ def setup_all_handlers(master_bot):
                             response_text = await master_bot.user_agent._list_banwords()
                         elif 'тема' in text_lower:
                             response_text = await master_bot.user_agent._list_news_topics()
+                        elif 'днс' in text_lower or 'dns' in text_lower:
+                            response_text = await master_bot.user_agent._list_dns_servers()
                         else:
                             response_text = await master_bot.user_agent._get_settings_summary()
                     else:
@@ -1413,7 +1502,8 @@ def setup_all_handlers(master_bot):
                     
                     DIRECT_ACTIONS = [
                         "set_timezone", "set_digest_interval", "set_delivery_mode", 
-                        "toggle_night_mode", "set_night_hours", "toggle_category_filter"
+                        "toggle_night_mode", "set_night_hours", "toggle_category_filter",
+                        "toggle_smart_dns", "add_dns_server", "remove_dns_server", "reset_dns_servers"
                     ]
                     if action_name in DIRECT_ACTIONS:
                         if action_name == "set_timezone":
@@ -1457,6 +1547,23 @@ def setup_all_handlers(master_bot):
                                 enabled = args.get("enabled").lower() in ("true", "1", "yes")
                             await master_bot.settings.update_ai_category_filter(cat, enabled)
                             result_msg = f"✅ Категория <b>{cat}</b>: <b>{'Пропускать 🟢' if enabled else 'Фильтровать 🔴'}</b>."
+                        elif action_name == "toggle_smart_dns":
+                            enabled = bool(args.get("enabled", True))
+                            if isinstance(args.get("enabled"), str):
+                                enabled = args.get("enabled").lower() in ("true", "1", "yes")
+                            await master_bot.settings.update_dns_enabled(enabled)
+                            result_msg = f"✅ SmartDNS <b>{'ВКЛЮЧЕН 🟢' if enabled else 'ВЫКЛЮЧЕН ❌'}</b>."
+                        elif action_name == "add_dns_server":
+                            srv = str(args.get("server", "")).strip()
+                            ok, res = await master_bot.settings.add_dns_server(srv)
+                            result_msg = f"✅ DNS-сервер <code>{html.escape(res)}</code> успешно добавлен в SmartDNS!" if ok else f"❌ Ошибка добавления DNS: {html.escape(res)}"
+                        elif action_name == "remove_dns_server":
+                            srv = str(args.get("server", "")).strip()
+                            ok = await master_bot.settings.remove_dns_server(srv)
+                            result_msg = f"✅ DNS-сервер <code>{html.escape(srv)}</code> удален из SmartDNS." if ok else f"ℹ️ Сервер <code>{html.escape(srv)}</code> не найден в списке DNS."
+                        elif action_name == "reset_dns_servers":
+                            await master_bot.settings.reset_dns_servers()
+                            result_msg = "✅ DNS-серверы успешно сброшены к стандартным (Comss + Xbox)."
 
                         # Refresh active UI banner in-place
                         if master_bot.master_chat_id:

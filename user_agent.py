@@ -125,6 +125,26 @@ def update_bot() -> str:
     """Downloads latest updates from GitHub and restarts the bot service. Requires confirmation."""
     return ''
 
+def list_dns_servers() -> str:
+    """Returns list of active SmartDNS servers and enabled status for AI domains."""
+    return ''
+
+def add_dns_server(server: str) -> str:
+    """Adds a new SmartDNS server (IP address or DoH URL) to bypass AI geo-blocks."""
+    return ''
+
+def remove_dns_server(server: str) -> str:
+    """Removes a SmartDNS server from the active list."""
+    return ''
+
+def toggle_smart_dns(enabled: bool) -> str:
+    """Enables or disables SmartDNS resolution for AI domains."""
+    return ''
+
+def reset_dns_servers() -> str:
+    """Resets SmartDNS servers to default Comss.one and Xbox SmartDNS addresses."""
+    return ''
+
 class ConversationalAgent:
     def __init__(self, ai_engine: Any, storage):
         self.ai_engine = ai_engine
@@ -156,7 +176,12 @@ class ConversationalAgent:
             toggle_category_filter,
             clear_chat,
             check_for_updates,
-            update_bot
+            update_bot,
+            list_dns_servers,
+            add_dns_server,
+            remove_dns_server,
+            toggle_smart_dns,
+            reset_dns_servers
         ]
 
     async def _list_tg_channels(self) -> str:
@@ -223,6 +248,20 @@ class ConversationalAgent:
             f"• **Умные подсказки**: {'Включены' if ai_sugg else 'Выключены'}\n"
             f"• **Скрываемые категории ИИ**: {', '.join(active_filters) if active_filters else 'Нет'}"
         )
+
+    async def _list_dns_servers(self) -> str:
+        from settings_manager import SettingsManager
+        sm = SettingsManager(self.storage)
+        servers = await sm.get_dns_servers()
+        enabled = await sm.get_dns_enabled()
+        status_label = "🟢 Включен" if enabled else "🔴 Выключен"
+        lines = [f"🌐 **SmartDNS статус:** {status_label}", f"📊 **Активных серверов:** {len(servers)}\n"]
+        if servers:
+            for idx, s in enumerate(servers, start=1):
+                lines.append(f"{idx}. `{s}`")
+        else:
+            lines.append("Список DNS-серверов пуст.")
+        return "\n".join(lines)
 
     async def process_message(self, text: str) -> Dict[str, Any]:
         """
@@ -361,7 +400,7 @@ class ConversationalAgent:
                     await self.storage.add_ai_chat_message("user", text)
                     await self.storage.add_ai_chat_message("model", reply_text)
                     return {"text": reply_text, "pending_action": None}
-                elif action_name in ("list_tg_channels", "list_banwords", "list_news_topics", "get_settings_summary"):
+                elif action_name in ("list_tg_channels", "list_banwords", "list_news_topics", "get_settings_summary", "list_dns_servers"):
                     logger.info(f"📊 Executing list tool: '{action_name}'")
                     if action_name == "list_tg_channels":
                         tool_res = await self._list_tg_channels()
@@ -369,6 +408,8 @@ class ConversationalAgent:
                         tool_res = await self._list_banwords()
                     elif action_name == "list_news_topics":
                         tool_res = await self._list_news_topics()
+                    elif action_name == "list_dns_servers":
+                        tool_res = await self._list_dns_servers()
                     else:
                         tool_res = await self._get_settings_summary()
 
@@ -464,6 +505,17 @@ class ConversationalAgent:
                     reply_text = "Вы уверены, что хотите полностью очистить историю сообщений?"
                 elif action_name == "update_bot":
                     reply_text = "Вы уверены, что хотите обновить бота из GitHub и перезапустить службу?"
+                elif action_name == "toggle_smart_dns":
+                    enabled = bool(args.get("enabled", True))
+                    reply_text = f"⚙️ {'Включаю' if enabled else 'Выключаю'} SmartDNS для обхода блокировок..."
+                elif action_name == "add_dns_server":
+                    srv = args.get("server", "")
+                    reply_text = f"⚙️ Добавляю DNS-сервер «{srv}» в SmartDNS..."
+                elif action_name == "remove_dns_server":
+                    srv = args.get("server", "")
+                    reply_text = f"⚙️ Удаляю DNS-сервер «{srv}» из SmartDNS..."
+                elif action_name == "reset_dns_servers":
+                    reply_text = "⚙️ Сбрасываю серверы SmartDNS на стандартные (Comss/Xbox)..."
                 else:
                     reply_text = "Я хочу выполнить действие, но не понимаю какое."
 

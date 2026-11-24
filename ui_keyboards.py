@@ -42,7 +42,10 @@ def get_settings_keyboard(delivery_mode: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=mode_btn_text, callback_data="settings_toggle_mode"),
             InlineKeyboardButton(text="🧹 Очистить чат", callback_data="prompt_clear_chat")
         ],
-        [InlineKeyboardButton(text="🔄 Обновление бота", callback_data="settings_menu_update")],
+        [
+            InlineKeyboardButton(text="🌐 SmartDNS", callback_data="settings_menu_dns"),
+            InlineKeyboardButton(text="🔄 Обновление бота", callback_data="settings_menu_update")
+        ],
         [get_home_button()]
     ])
 
@@ -427,5 +430,44 @@ def get_update_keyboard(has_updates: bool = False, in_progress: bool = False) ->
     rows.append([InlineKeyboardButton(text="🔙 Назад к Настройкам", callback_data="settings_main_menu")])
     rows.append([get_home_button()])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_dns_menu_keyboard(servers: List[str], enabled: bool) -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура меню настройки SmartDNS."""
+    rows = []
+    
+    # Toggle status
+    toggle_text = "🟢 SmartDNS: Включен" if enabled else "🔴 SmartDNS: Выключен"
+    rows.append([InlineKeyboardButton(text=toggle_text, callback_data="dns_toggle_enabled")])
+    
+    # Add / Reset
+    rows.append([
+        InlineKeyboardButton(text="➕ Добавить DNS", callback_data="dns_prompt_add"),
+        InlineKeyboardButton(text="🔄 Сброс (Comss/Xbox)", callback_data="dns_reset_defaults")
+    ])
+    
+    # Servers delete list
+    del_row = []
+    for idx, s in enumerate(servers):
+        label = s if len(s) <= 16 else (s[:13] + "...")
+        del_row.append(InlineKeyboardButton(text=f"❌ #{idx+1} {label}", callback_data=f"dns_del_{idx}"))
+        if len(del_row) == 2:
+            rows.append(del_row)
+            del_row = []
+    if del_row:
+        rows.append(del_row)
+        
+    rows.append([InlineKeyboardButton(text="🔙 Назад к Настройкам", callback_data="settings_main_menu")])
+    rows.append([get_home_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_dns_add_prompt_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура на экране ввода нового DNS-сервера."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_menu_dns")],
+        [get_home_button()]
+    ])
+
 
 
