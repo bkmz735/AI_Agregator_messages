@@ -8,8 +8,8 @@ from storage import Storage
 from ai_engine import AIEngine
 from user_agent import ConversationalAgent
 
-class TestAll14ToolsRegistration(unittest.TestCase):
-    def test_all_14_tools_registered(self):
+class TestAllToolsRegistration(unittest.TestCase):
+    def test_all_26_tools_registered(self):
         storage = Storage()
         ai = AIEngine(api_key=None, storage=storage)
         agent = ConversationalAgent(ai_engine=ai, storage=storage)

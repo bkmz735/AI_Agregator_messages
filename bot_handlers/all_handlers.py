@@ -1143,6 +1143,7 @@ def setup_all_handlers(master_bot):
                     await master_bot.bot.delete_message(chat_id=target_chat, message_id=msg_id)
                 except Exception:
                     pass
+                await asyncio.sleep(0.04)
     
             await master_bot.update_status_banner(target_chat)
     
@@ -1316,7 +1317,7 @@ def setup_all_handlers(master_bot):
         ])
         if is_system_cmd:
             master_bot.clear_input_states()
-            if message.text in ["🏠 Главное меню", "📥 Буфер", "⚙️ Настройки", "📊 Статистика", "🗑 Очистить чат"]:
+            if message.text in ["🏠 Главное меню", "📥 Буфер", "⚙️ Настройки", "📊 Статистика", "🧹 Очистить чат"]:
                 return
 
         # Check interactive input states

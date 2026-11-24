@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import ssl
+from typing import Optional, Any
 import aiohttp
 from adapters.base_adapter import BaseAdapter
 from config import config
@@ -15,8 +16,9 @@ def _create_ssl_context():
     return ctx
 
 class VKAdapter(BaseAdapter):
-    def __init__(self):
+    def __init__(self, ai_engine: Optional[Any] = None):
         super().__init__(name="VK")
+        self.ai_engine = ai_engine
         self.token = config.VK_TOKEN
         self.group_id = config.VK_GROUP_ID
         self._running = False
@@ -226,8 +228,10 @@ class VKAdapter(BaseAdapter):
     async def _transcribe_vk_audio(self, audio_url: str) -> str:
         """Downloads audio and sends it to Gemini for transcription."""
         try:
-            from ai_engine import AIEngine
-            ai = AIEngine()
+            if not self.ai_engine:
+                from ai_engine import AIEngine
+                self.ai_engine = AIEngine()
+            ai = self.ai_engine
             async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}) as session:
                 async with session.get(audio_url) as resp:
                     if resp.status == 200:

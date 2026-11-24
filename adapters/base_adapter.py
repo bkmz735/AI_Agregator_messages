@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Awaitable, Dict, Any
+from typing import Callable, Awaitable
 
 # Callback type for emitting incoming messages to the orchestrator:
 # callback(channel, sender, text, msg_uid)

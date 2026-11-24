@@ -99,5 +99,20 @@ class TestBugFixes(unittest.IsolatedAsyncioTestCase):
         s3 = clean_summary_text("Авито: Покупатель оформил заказ", sender="Авито", channel="Авито")
         self.assertEqual(s3, "Покупатель оформил заказ")
 
+    def test_vk_adapter_reuses_ai_engine(self):
+        """Verifies that VKAdapter stores and reuses injected ai_engine."""
+        ai = AIEngine(api_key=None, storage=self.storage)
+        adapter = VKAdapter(ai_engine=ai)
+        self.assertIs(adapter.ai_engine, ai)
+
+    def test_user_settings_schema_includes_v26_fields(self):
+        """Verifies that UserSettings model contains all modern v2.6 fields."""
+        from models.settings import UserSettings
+        settings = UserSettings()
+        self.assertTrue(settings.smart_dns_enabled)
+        self.assertEqual(settings.ai_max_rpm, 15)
+        self.assertEqual(settings.ai_batch_chunk_size, 3)
+        self.assertIsInstance(settings.smart_dns_servers, list)
+
 if __name__ == "__main__":
     unittest.main()

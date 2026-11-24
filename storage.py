@@ -2,7 +2,6 @@ import aiosqlite
 import logging
 import contextlib
 from typing import List, Dict, Any, Optional
-from pathlib import Path
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -516,10 +515,6 @@ class Storage:
             await db.commit()
             return cursor.rowcount > 0
 
-    async def get_custom_spam_keywords(self) -> List[str]:
-        bws = await self.get_banwords()
-        return [bw["word"] for bw in bws]
-        
     # --- AI Chat History Methods ---
     async def add_ai_chat_message(self, role: str, content: str):
         """Adds a message to the AI chat history."""
@@ -543,11 +538,3 @@ class Storage:
             """) as cursor:
                 rows = await cursor.fetchall()
                 return [{"role": r["role"], "content": r["content"]} for r in rows]
-
-    async def add_spam_keyword(self, word: str) -> bool:
-        res = await self.add_banword(word, "global")
-        return res is not None
-
-    async def remove_spam_keyword(self, word: str) -> bool:
-        res = await self.remove_banword(word)
-        return res is not None

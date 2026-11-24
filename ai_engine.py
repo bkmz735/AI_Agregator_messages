@@ -3,9 +3,8 @@ import asyncio
 import logging
 import socket
 import time
-from datetime import datetime, date
+from datetime import date
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
 from config import config as app_config
 
 logger = logging.getLogger(__name__)
@@ -69,7 +68,7 @@ try:
 except Exception as e:
     logger.warning(f"Could not initialize SmartDNS Resolver: {e}")
 
-from models import AnalysisResult, AnalysisBatchResponse, AudioAnalysisResult
+from models import AnalysisResult, AudioAnalysisResult
 
 class AIEngine:
     def __init__(self, api_key: Optional[str] = None, storage=None):
@@ -372,28 +371,55 @@ class AIEngine:
             
             for idx, chunk in enumerate(chunks, 1):
                 logger.info(f"Processing chunk {idx}/{len(chunks)} ({len(chunk)} messages)...")
+                retries = 0
                 while True:
                     try:
                         chunk_results = await self._analyze_single_batch_chunk(chunk, custom_prompt_suffix)
                         all_ai_results.extend(chunk_results)
                         break
                     except RuntimeError as e:
-                        if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
-                            logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
+                        retries += 1
+                        if ("rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e)) and retries <= 2:
+                            logger.warning(f"Rate limit hit during chunking (retry {retries}/2): {e}. Sleeping 60s...")
                             await asyncio.sleep(60)
                         else:
-                            raise e
+                            logger.warning(f"Chunk analysis exceeded retry limit ({e}). Applying rule-based analysis fallback.")
+                            chunk_results = [
+                                AnalysisResult(
+                                    msg_uid=m.get("msg_uid", ""),
+                                    category="news" if ("telegram" in str(m.get("channel", "")).lower() or str(m.get("msg_uid", "")).startswith("tg_news_")) else self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).category,
+                                    summary=self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).summary,
+                                    action_required=False if ("telegram" in str(m.get("channel", "")).lower() or str(m.get("msg_uid", "")).startswith("tg_news_")) else self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).action_required,
+                                    suggested_reply=self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).suggested_reply
+                                )
+                                for m in chunk
+                            ]
+                            all_ai_results.extend(chunk_results)
+                            break
         else:
+            retries = 0
             while True:
                 try:
                     all_ai_results = await self._analyze_single_batch_chunk(ai_batch, custom_prompt_suffix)
                     break
                 except RuntimeError as e:
-                    if "rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e):
-                        logger.warning(f"Rate limit hit during chunking: {e}. Sleeping 60s...")
+                    retries += 1
+                    if ("rate limit" in str(e).lower() or "rpm limit" in str(e).lower() or "minute limit" in str(e).lower() or "429" in str(e)) and retries <= 2:
+                        logger.warning(f"Rate limit hit during batch (retry {retries}/2): {e}. Sleeping 60s...")
                         await asyncio.sleep(60)
                     else:
-                        raise e
+                        logger.warning(f"Batch analysis exceeded retry limit ({e}). Applying rule-based analysis fallback.")
+                        all_ai_results = [
+                            AnalysisResult(
+                                msg_uid=m.get("msg_uid", ""),
+                                category="news" if ("telegram" in str(m.get("channel", "")).lower() or str(m.get("msg_uid", "")).startswith("tg_news_")) else self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).category,
+                                summary=self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).summary,
+                                action_required=False if ("telegram" in str(m.get("channel", "")).lower() or str(m.get("msg_uid", "")).startswith("tg_news_")) else self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).action_required,
+                                suggested_reply=self._mock_analyze(m.get("channel", ""), m.get("sender", ""), m.get("text", "")).suggested_reply
+                            )
+                            for m in ai_batch
+                        ]
+                        break
 
         # Map results back to original positions
         for (i, _), res in zip(messages_to_ai, all_ai_results):

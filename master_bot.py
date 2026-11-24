@@ -1,8 +1,7 @@
 import asyncio
 import logging
 import html
-import io
-from typing import List, Optional, Callable, Awaitable, Any, Dict, Set, Union, Tuple
+from typing import List, Optional, Callable, Awaitable, Any, Dict
 from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.types import TelegramObject
 from config import config
@@ -306,7 +305,6 @@ class MasterBot:
 
     async def _get_diagnostic_logs_text_and_keyboard(self):
         from logger_config import RecentLogHandler
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
         recent = list(RecentLogHandler.recent_logs)[-10:]
         if not recent:
@@ -815,6 +813,8 @@ class MasterBot:
                 # Actually, digest_parts already has the blocks, we can just build chunks from digest_parts!
                 
                 for part in digest_parts:
+                    if len(part) > 3500:
+                        part = part[:3500] + "..."
                     if len(current_chunk) + len(part) + 5 > 4000:
                         if current_chunk:
                             sent_msg = await self.bot.send_message(

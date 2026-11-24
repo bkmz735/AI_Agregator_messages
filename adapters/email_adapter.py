@@ -210,6 +210,10 @@ class EmailAdapter(BaseAdapter):
                                 logger.info(f"Emitting email: [{channel_name}] From: {from_addr} Subject: {subject}")
                                 await self.emit_message(sender=from_addr, text=text_full, msg_uid=msg_uid, channel_override=channel_name)
                                 self._seen_nums.add(num_str)
+                                try:
+                                    await imap_client.store(num_str, '+FLAGS', '(\\Seen)')
+                                except Exception as se:
+                                    logger.debug(f"Failed to flag email #{num_str} as seen via IMAP: {se}")
                                 if len(self._seen_nums) > 1000:
                                     self._seen_nums = set(list(self._seen_nums)[-500:])
                             else:

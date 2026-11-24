@@ -104,15 +104,7 @@ class SettingsManager:
     async def update_last_ui_msg_id(self, msg_id: int):
         await self.storage.set_setting("last_ui_msg_id", str(msg_id))
 
-    # --- AI & Stats Settings ---
-    async def get_stats_total_processed(self) -> int:
-        stats = await self.storage.get_stats()
-        return stats.get("total_all", 0)
-
-    async def get_stats_spam_blocked(self) -> int:
-        stats = await self.storage.get_stats()
-        return stats.get("filtered_count", 0)
-
+    # --- AI Settings ---
     async def get_ai_text_chat_enabled(self) -> bool:
         val = await self.storage.get_setting("ai_text_chat_enabled", "true")
         return val.lower() in ("true", "1", "yes")
@@ -133,7 +125,7 @@ class SettingsManager:
         if val:
             try:
                 return json.loads(val)
-            except:
+            except (json.JSONDecodeError, Exception):
                 pass
         # Default: spam and bullshit are filtered (False = filtered, True = passed)
         return {

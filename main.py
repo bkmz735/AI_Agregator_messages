@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import sys
 import uuid
 from typing import List, Dict, Any
 from banwords import is_text_spam
@@ -14,7 +13,7 @@ from adapters.vk_adapter import VKAdapter
 from adapters.email_adapter import EmailAdapter
 from adapters.tg_news_adapter import TGNewsAdapter
 
-from logger_config import init_logging, RecentLogHandler
+from logger_config import init_logging
 from bot_handlers import all_handlers
 
 init_logging(log_file="aggregator.log", level="INFO")
@@ -34,7 +33,7 @@ class MessageAggregatorApp:
         self.bot.set_flush_raw_queue_callback(self._flush_raw_queue)
         
         self.adapters = [
-            VKAdapter(),
+            VKAdapter(ai_engine=self.ai_engine),
             EmailAdapter(storage=self.storage),
             TGNewsAdapter(storage=self.storage)
         ]
