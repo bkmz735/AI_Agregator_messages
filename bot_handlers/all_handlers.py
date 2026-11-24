@@ -248,6 +248,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "settings_main_menu")
     async def process_settings_main_menu(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         text, kb = await master_bot._get_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -396,6 +397,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "settings_menu_dns")
     async def process_settings_menu_dns(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         text, kb = await master_bot._get_dns_settings_text_and_keyboard()
         try:
             await callback_query.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
@@ -484,18 +486,21 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "settings_menu_tg_channels")
     async def process_settings_menu_tg_channels(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         await master_bot._show_tg_channels_page(1)
         await callback_query.answer()
     
     @dp.callback_query(F.data == "settings_menu_topics")
     async def process_settings_menu_topics(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         await master_bot._show_topics_main_page()
         await callback_query.answer()
     
     @dp.callback_query(F.data.startswith("topics_view_"))
     async def process_topics_view(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         parts = (callback_query.data or "").split("_")
         preference = parts[2]
         page = int(parts[3])
@@ -549,6 +554,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data.startswith("tg_chan_page_"))
     async def process_tg_chan_page(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         page_val = int((callback_query.data or "").split("_")[-1])
         await master_bot._show_tg_channels_page(page_val)
         await callback_query.answer()
@@ -801,6 +807,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "settings_menu_blacklist")
     async def process_settings_menu_blacklist(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         bws_email = await master_bot.storage.get_banwords(scope="email")
         bws_vk = await master_bot.storage.get_banwords(scope="vk")
         
@@ -818,6 +825,7 @@ def setup_all_handlers(master_bot):
         await callback_query.answer()
     
     async def _render_bw_page(callback_query: types.CallbackQuery, scope: str, page: int):
+        master_bot.clear_input_states()
         bws = await master_bot.storage.get_banwords(scope=scope)
         per_page = 9
         total_pages = max(1, (len(bws) + per_page - 1) // per_page)
@@ -1109,6 +1117,7 @@ def setup_all_handlers(master_bot):
     @dp.callback_query(F.data == "delete_msg")
     async def process_delete_msg(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        master_bot.clear_input_states()
         await master_bot.update_status_banner(callback_query.message.chat.id, force_new=True)
         await callback_query.answer()
     
@@ -1275,16 +1284,19 @@ def setup_all_handlers(master_bot):
                 await callback_query.message.edit_text(f"{original_text}\n\n{result_msg}", parse_mode="HTML")
             except Exception:
                 await callback_query.message.edit_text(f"{callback_query.message.text}\n\n{result_msg}", parse_mode=None)
+            await callback_query.answer("Действие выполнено!")
             if master_bot.master_chat_id:
                 asyncio.create_task(master_bot.update_status_banner(master_bot.master_chat_id))
             master_bot.schedule_delayed_deletion(callback_query.message.chat.id, [callback_query.message.message_id])
         except Exception as e:
             await callback_query.message.edit_text(f"❌ Ошибка выполнения: {e}")
+            await callback_query.answer("Ошибка выполнения!", show_alert=True)
             master_bot.schedule_delayed_deletion(callback_query.message.chat.id, [callback_query.message.message_id])
     
     @dp.callback_query(F.data.startswith("ai_reject_"))
     async def process_ai_action_reject(callback_query: types.CallbackQuery):
         if not callback_query.data or not isinstance(callback_query.message, types.Message): return
+        await callback_query.answer("Действие отменено.")
         action_id = callback_query.data.replace("ai_reject_", "")
         action_data = master_bot.pending_ai_actions.pop(action_id, None)
         
