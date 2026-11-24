@@ -13,6 +13,8 @@ from master_bot import clean_sender_name
 
 logger = logging.getLogger(__name__)
 
+router = Router(name="all_handlers")
+
 last_warning_time: Dict[int, float] = {}
 
 def setup_all_handlers(master_bot):
