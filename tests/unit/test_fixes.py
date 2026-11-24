@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock
+from aiogram import types
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -113,6 +114,30 @@ class TestBugFixes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings.ai_max_rpm, 15)
         self.assertEqual(settings.ai_batch_chunk_size, 3)
         self.assertIsInstance(settings.smart_dns_servers, list)
+
+    async def test_bw_view_email_renders_mailru_banwords(self):
+        """Verifies that bw_view_email_1 triggers edit_text with Mail.ru banwords."""
+        self.bot.bot_token = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+        self.bot._init_bot_instance(use_proxy=False)
+
+        mock_cb = AsyncMock()
+        mock_cb.data = "bw_view_email_1"
+        mock_msg = MagicMock(spec=types.Message)
+        mock_msg.edit_text = AsyncMock()
+        mock_cb.message = mock_msg
+
+        target_handler = None
+        for handler in self.bot.dp.callback_query.handlers:
+            if handler.callback.__name__ == "process_bw_view_email":
+                target_handler = handler.callback
+                break
+
+        self.assertIsNotNone(target_handler)
+        await target_handler(mock_cb)
+
+        mock_msg.edit_text.assert_called_once()
+        call_args = mock_msg.edit_text.call_args[1]
+        self.assertIn("Банворды Mail.ru", call_args["text"])
 
 if __name__ == "__main__":
     unittest.main()

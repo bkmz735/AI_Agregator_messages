@@ -14,12 +14,12 @@ from master_bot import clean_sender_name
 logger = logging.getLogger(__name__)
 
 last_warning_time: Dict[int, float] = {}
-router = Router(name="all_handlers")
 
 def setup_all_handlers(master_bot):
     dp = master_bot.dp
-    if router not in dp.sub_routers:
-        dp.include_router(router)
+    sub_router = Router(name=f"all_handlers_{id(dp)}")
+    if not any(r.name.startswith("all_handlers_") for r in dp.sub_routers):
+        dp.include_router(sub_router)
     
     @dp.message(Command("cancel"))
     async def cmd_cancel(message: types.Message, state: FSMContext = None):
@@ -817,9 +817,6 @@ def setup_all_handlers(master_bot):
             pass
         await callback_query.answer()
     
-    @dp.callback_query(F.data.startswith("bw_view_email_"))
-    async def process_bw_view_email(callback_query: types.CallbackQuery):
-        if not callback_query.data or not isinstance(callback_query.message, types.Message): return
     async def _render_bw_page(callback_query: types.CallbackQuery, scope: str, page: int):
         bws = await master_bot.storage.get_banwords(scope=scope)
         per_page = 9
