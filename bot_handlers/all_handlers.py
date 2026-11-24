@@ -9,6 +9,7 @@ from aiogram import types, F, Router
 from aiogram.fsm.context import FSMContext
 import ui_keyboards as kb_ui
 from config.settings import config
+from master_bot import clean_sender_name
 
 logger = logging.getLogger(__name__)
 
@@ -154,11 +155,11 @@ def setup_all_handlers(master_bot):
         buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False, disabled_categories=disabled_cats)
         buf_count = len(buffered_msgs)
         if buf_count > 0:
-            senders = [msg['sender'] for msg in buffered_msgs]
+            senders = [clean_sender_name(msg['sender']) for msg in buffered_msgs]
             # Group senders and count them
             from collections import Counter
             sender_counts = Counter(senders)
-            senders_str = ", ".join([f"<b>{s}</b>" + (f" ({c})" if c > 1 else "") for s, c in sender_counts.most_common(5)])
+            senders_str = ", ".join([f"<b>{html.escape(s)}</b>" + (f" ({c})" if c > 1 else "") for s, c in sender_counts.most_common(5)])
             if len(sender_counts) > 5:
                 senders_str += " и другие"
 
@@ -863,10 +864,10 @@ def setup_all_handlers(master_bot):
         buffered_msgs = await master_bot.storage.get_buffered_messages(mark_as_delivered=False, disabled_categories=disabled_cats)
         buf_count = len(buffered_msgs)
         if buf_count > 0:
-            senders = [msg['sender'] for msg in buffered_msgs]
+            senders = [clean_sender_name(msg['sender']) for msg in buffered_msgs]
             from collections import Counter
             sender_counts = Counter(senders)
-            senders_str = ", ".join([f"<b>{s}</b>" + (f" ({c})" if c > 1 else "") for s, c in sender_counts.most_common(5)])
+            senders_str = ", ".join([f"<b>{html.escape(s)}</b>" + (f" ({c})" if c > 1 else "") for s, c in sender_counts.most_common(5)])
             if len(sender_counts) > 5:
                 senders_str += " и другие"
 
@@ -1065,7 +1066,11 @@ def setup_all_handlers(master_bot):
             await master_bot.storage.add_ai_chat_message("user", user_text)
             await master_bot.storage.add_ai_chat_message("model", result_msg)
             
-            await callback_query.message.edit_text(f"{callback_query.message.text}\n\n{result_msg}", parse_mode="HTML")
+            original_text = html.escape(callback_query.message.text or "")
+            try:
+                await callback_query.message.edit_text(f"{original_text}\n\n{result_msg}", parse_mode="HTML")
+            except Exception:
+                await callback_query.message.edit_text(f"{callback_query.message.text}\n\n{result_msg}", parse_mode=None)
             if master_bot.master_chat_id:
                 asyncio.create_task(master_bot.update_status_banner(master_bot.master_chat_id))
             master_bot.schedule_delayed_deletion(callback_query.message.chat.id, [callback_query.message.message_id])

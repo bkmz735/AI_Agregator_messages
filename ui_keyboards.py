@@ -28,7 +28,7 @@ def get_main_reply_keyboard(buffer_count: int = 0) -> ReplyKeyboardMarkup:
 
 def get_settings_keyboard(delivery_mode: str) -> InlineKeyboardMarkup:
     """Инлайн-клавиатура основного экрана Настроек."""
-    mode_btn_text = f"⚡ Режим: {'Сводка' if delivery_mode == 'instant' else 'Сразу'}"
+    mode_btn_text = f"Переключить на: {'📥 Сводку' if delivery_mode == 'instant' else '⚡ Мгновенно'}"
     
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎛️ Фильтр контента", callback_data="settings_menu_content_filter")],

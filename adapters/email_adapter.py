@@ -119,6 +119,7 @@ class EmailAdapter(BaseAdapter):
                     continue
 
                 logger.info(f"Mail.ru IMAP found {len(msg_numbers)} UNSEEN emails to process.")
+                deleted_any = False
                 for num in msg_numbers:
                     try:
                         num_str = num.decode() if isinstance(num, bytes) else str(num)
@@ -138,17 +139,38 @@ class EmailAdapter(BaseAdapter):
                                 from_addr = self._decode_str(msg.get("From", "Неизвестный отправитель"))
 
                                 body = ""
+                                html_body = ""
                                 if msg.is_multipart():
                                     for part in msg.walk():
-                                        if part.get_content_type() == "text/plain":
-                                            payload = part.get_payload(decode=True)
-                                            if payload:
+                                        c_type = part.get_content_type()
+                                        charset = part.get_content_charset() or "utf-8"
+                                        payload = part.get_payload(decode=True)
+                                        if not payload:
+                                            continue
+                                        if c_type == "text/plain" and not body:
+                                            try:
+                                                body = payload.decode(charset, errors="replace")
+                                            except Exception:
                                                 body = payload.decode("utf-8", errors="ignore")
-                                            break
+                                        elif c_type == "text/html" and not html_body:
+                                            try:
+                                                html_body = payload.decode(charset, errors="replace")
+                                            except Exception:
+                                                html_body = payload.decode("utf-8", errors="ignore")
                                 else:
+                                    charset = msg.get_content_charset() or "utf-8"
                                     payload = msg.get_payload(decode=True)
                                     if payload:
-                                        body = payload.decode("utf-8", errors="ignore")
+                                        try:
+                                            body = payload.decode(charset, errors="replace")
+                                        except Exception:
+                                            body = payload.decode("utf-8", errors="ignore")
+
+                                # Fallback to cleaned HTML if plain text part was absent
+                                if not body and html_body:
+                                    import re, html as py_html
+                                    clean_text = re.sub(r'<[^>]+>', ' ', html_body)
+                                    body = py_html.unescape(clean_text).strip()
 
                                 # Check for Casino / VPN / Financial Scam & Banwords (email scope)
                                 combined_search_text = f"{subject} {from_addr} {body}"
@@ -156,14 +178,14 @@ class EmailAdapter(BaseAdapter):
                                 
                                 if is_text_spam(combined_search_text, channel="email", active_banwords=active_bws):
                                     logger.warning(
-                                        f"🚫 [SPAM AUTO-DELETE] Deleting Casino/VPN/Scam email #{num_str} from '{from_addr}' "
+                                        f"🚫 [SPAM AUTO-DELETE] Marking Casino/VPN/Scam email #{num_str} from '{from_addr}' "
                                         f"(Subject: '{subject}')"
                                     )
                                     try:
                                         await imap_client.store(num_str, '+FLAGS', '(\\Deleted)')
-                                        await imap_client.expunge()
+                                        deleted_any = True
                                     except Exception as de:
-                                        logger.error(f"Failed to delete spam email #{num_str} via IMAP: {de}")
+                                        logger.error(f"Failed to flag spam email #{num_str} via IMAP: {de}")
                                     self._seen_nums.add(num_str)
                                     continue
 
@@ -196,6 +218,13 @@ class EmailAdapter(BaseAdapter):
                             logger.warning(f"Email #{num_str}: FETCH returned {fetch_resp.result}")
                     except Exception as fe:
                         logger.warning(f"Error fetching email #{num}: {fe}")
+
+                if deleted_any:
+                    try:
+                        await imap_client.expunge()
+                        logger.info("Successfully expunged deleted spam emails from IMAP inbox.")
+                    except Exception as ee:
+                        logger.warning(f"Error during final IMAP expunge: {ee}")
 
                 await imap_client.logout()
                 settings = SettingsManager(self.storage) if self.storage else None

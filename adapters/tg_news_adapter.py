@@ -77,11 +77,14 @@ class TGNewsAdapter(BaseAdapter):
 
     async def _parse_channel_html(self, channel: str, html_content: str):
         """Extracts posts from Telegram public web preview HTML."""
-        posts = re.findall(
-            r'data-post="([^"]+)".*?<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
-            html_content,
-            re.DOTALL
-        )
+        # Find all message blocks by data-post attribute to prevent text bleed across posts
+        message_chunks = re.findall(r'(<div[^>]+data-post="([^"]+)"[^>]*>.*?)(?=<div[^>]+data-post=|\Z)', html_content, re.DOTALL)
+        
+        posts = []
+        for chunk, post_path in message_chunks:
+            text_match = re.search(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', chunk, re.DOTALL)
+            if text_match:
+                posts.append((post_path, text_match.group(1)))
 
         # Ограничиваем до 2 последних (самых свежих) новостей за один цикл проверки,
         # чтобы не заваливать нейросеть десятками старых постов при первом запуске

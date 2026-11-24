@@ -11,6 +11,8 @@
 Бот укомплектован мультимодальным нейросетевым движком на базе **Google Gemini API**, интерактивным диалоговым ИИ-ассистентом с поддержкой 19 инструментов **Function Calling**, бесплатным веб-поиском **DuckDuckGo**, «Умными подсказками» с автоматической очисткой чата, транскрипцией голосовых сообщений и планировщиком дайджестов.
 
 > ⚠️ **Версия системы:** v2.6 (Рефакторинг `models/`, `config/`, 19 ИИ-инструментов, «Умные подсказки», дифференцированное автоудаление, DuckDuckGo веб-поиск).
+>
+> 🤖 **Для ИИ-агентов и разработчиков:** См. руководство архитектуры и правил в [AGENTS.md](AGENTS.md) и дорожную карту проекта в [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -66,7 +68,7 @@
 * **База данных**: `SQLite3` + `aiosqlite` (Режим `WAL`, PRAGMA synchronous=NORMAL, индексы)
 * **Схемы данных**: `Pydantic v2` (UserSettings, MessageItem, AnalysisResult и др.)
 * **Сеть и HTTP**: `aiohttp`, `aioimaplib`, `BeautifulSoup4`, `dnspython`
-* **Тестирование**: `unittest`, `pytest`, `pytest-asyncio` (29 тестов)
+* **Тестирование**: `unittest`, `pytest`, `pytest-asyncio` (38 тестов)
 
 ---
 
@@ -117,6 +119,8 @@ AI_Agregator_messages/
 ├── Dockerfile                     # Docker-контейнеризация
 ├── docker-compose.yml             # Запуск через Docker Compose
 ├── deploy.sh / update.sh          # Скрипты авторазвертывания на Linux VPS
+├── AGENTS.md                      # Контекст и архитектурный гайд для ИИ-агентов
+├── ROADMAP.md                     # Дорожная карта развития проекта
 └── README.md                      # Документация проекта
 ```
 
@@ -209,7 +213,7 @@ chmod +x deploy.sh update.sh
 
 ## 🧪 Инструкция по тестированию
 
-Все 29 тестов структурированы в директории `tests/`. Для проверки всей системы выполните:
+Все 38 тестов структурированы в директории `tests/`. Для проверки всей системы выполните:
 
 ```bash
 # Запуск полного тестового пакета через unittest
@@ -219,13 +223,16 @@ python -m unittest discover -s tests -p "test_*.py"
 pytest tests/
 ```
 
-### Наборы тестов (29 тестов):
+### Наборы тестов (38 тестов):
 * `tests/unit/test_banwords.py` — юнит-тесты локальной фильтрации спама.
 * `tests/unit/test_input_states.py` — проверка FSM-состояний и сброса команд.
 * `tests/unit/test_ui_callbacks.py` — тестирование 67 Inline-обработчиков UI.
 * `tests/unit/test_all_14_tools.py` — проверка схем и регистрации 19 ИИ-инструментов.
 * `tests/unit/test_list_tools.py` — юнит-тесты 4 инструментов просмотра списков (`list_tg_channels`, `list_banwords`, `list_news_topics`, `get_settings_summary`).
 * `tests/unit/test_ai_disabled_behavior.py` — тестирование поведения при выключенном чате ИИ, «Умных подсказках» и дифференцированном автоудалении.
+* `tests/unit/test_web_search.py` — тестирование Function Calling веб-поиска DuckDuckGo.
+* `tests/unit/test_night_mode_and_buffer.py` — проверка буферизации очереди и ночного режима.
+* `tests/unit/test_fixes.py` — регрессионные тесты исправлений багов (категории, прокси, статистика, tg_news).
 * `tests/integration/test_pipeline.py` — интеграционный тест цикла обработки сообщений.
 * `tests/integration/test_resilience.py` — тестирование сетевых таймаутов и рестарта.
 * `tests/integration/test_autodelete.py` — интеграционный тест автоудаления сообщений.

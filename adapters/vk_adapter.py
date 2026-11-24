@@ -269,11 +269,26 @@ class VKAdapter(BaseAdapter):
                         elif att["type"] == "photo":
                             text = "[Фотография]"
                             break
+                        elif att["type"] == "doc":
+                            text = "[Документ]"
+                            break
+                        elif att["type"] == "video":
+                            text = "[Видеозапись]"
+                            break
+                        elif att["type"] == "sticker":
+                            text = "[Стикер]"
+                            break
+                        elif att["type"] == "wall":
+                            text = "[Запись на стене]"
+                            break
+                        elif att["type"] == "link":
+                            text = "[Ссылка]"
+                            break
         except Exception as e:
             logger.warning(f"Could not fetch full VK message {msg_id}: {e}")
             
         if not text:
-            text = "[Голосовое сообщение без текстовой расшифровки]"
+            text = "[Вложение]"
             
         if text:
             sender_name = await self._resolve_user_name(session, peer_id)

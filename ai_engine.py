@@ -26,9 +26,10 @@ if AI_DNS_SERVERS:
                 try:
                     resolver = dns.resolver.Resolver(configure=False)
                     resolver.nameservers = AI_DNS_SERVERS
-                    resolver.timeout = 2.5
-                    resolver.lifetime = 2.5
-                    answers = resolver.resolve(host, "A")
+                    resolver.timeout = 1.5
+                    resolver.lifetime = 1.5
+                    record_type = "AAAA" if family == socket.AF_INET6 else "A"
+                    answers = resolver.resolve(host, record_type)
                     for rdata in answers:
                         ip = rdata.address
                         return _original_getaddrinfo(ip, port, family, type, proto, flags)
@@ -62,7 +63,10 @@ class AIEngine:
             'gemini-3.1-flash-lite',
             'gemini-3.7-flash', 
             'gemini-3.6-flash', 
-            'gemini-3.5-flash'
+            'gemini-3.5-flash',
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+            'gemini-1.5-flash'
         ]
         self.exhausted_models: set[str] = set()       # Daily exhausted models (reset daily)
         self.unsupported_models: set[str] = set()     # Deprecated/invalid models (permanent during session)
@@ -388,8 +392,11 @@ class AIEngine:
                 self.rate_limit_until = time.time() + 60.0
                 raise RuntimeError(f"AI API RPM limit reached ({rpm_count}/{max_rpm}). Pausing API calls for 60s.")
             else:
-                # Map to anonymized payload: just id and text
-                anonymized_batch = [{"id": i, "text": m["text"]} for i, m in enumerate(messages_batch)]
+                # Map to anonymized payload with channel: id, channel, text
+                anonymized_batch = [
+                    {"id": i, "channel": m.get("channel", ""), "text": m["text"]}
+                    for i, m in enumerate(messages_batch)
+                ]
                 batch_json_input = json.dumps(anonymized_batch, ensure_ascii=False)
                 prompt = (
                     f"{app_config.AI_FILTER_PROMPT}\n"
@@ -448,8 +455,10 @@ class AIEngine:
                                     if "id" in item:
                                         del item["id"]
                                         
-                                    # ENFORCE: tg_news can NEVER be urgent/important
-                                    if orig_msg.get("channel") == "tg_news":
+                                    # ENFORCE: tg_news/Telegram can NEVER be urgent/important
+                                    orig_channel = str(orig_msg.get("channel", "")).lower()
+                                    orig_uid = str(orig_msg.get("msg_uid", "")).lower()
+                                    if "telegram" in orig_channel or "tg_news" in orig_channel or orig_uid.startswith("tg_news_"):
                                         cat = item.get("category", "")
                                         if cat in ["urgent", "important", "gov_debt", "gov_service"]:
                                             item["category"] = "news"
@@ -484,11 +493,19 @@ class AIEngine:
         results = []
         for msg in messages_batch:
             mock = self._mock_analyze(msg.get("channel", ""), msg.get("sender", ""), msg.get("text", ""))
+            cat = mock.category
+            act = mock.action_required
+            orig_channel = str(msg.get("channel", "")).lower()
+            orig_uid = str(msg.get("msg_uid", "")).lower()
+            if "telegram" in orig_channel or "tg_news" in orig_channel or orig_uid.startswith("tg_news_"):
+                if cat in ["urgent", "important", "gov", "gov_debt", "gov_service"]:
+                    cat = "news"
+                act = False
             results.append(AnalysisResult(
                 msg_uid=msg.get("msg_uid", ""),
-                category=mock.category,
+                category=cat,
                 summary=mock.summary,
-                action_required=mock.action_required,
+                action_required=act,
                 suggested_reply=mock.suggested_reply
             ))
         return results
@@ -523,8 +540,10 @@ class AIEngine:
         news_keywords = ["новость", "дайджест", "статья", "выпуск", "анонс", "событие"]
         media_keywords = ["youtube", "rutube", "vk.com/video", "видео", "посмотри роли", "подкаст", "запись эфира", "стрим"]
         
-        clean_text = text.strip()[:60].replace('\n', ' ')
-        snippet = f": {clean_text}..." if clean_text else ""
+        clean_text = text.strip()[:80].replace('\n', ' ')
+        if len(text.strip()) > 80:
+            clean_text += "..."
+        snippet = clean_text if clean_text else "Без текста"
         
         if any(kw in text_lower for kw in spam_keywords):
             category = "spam"
@@ -533,27 +552,27 @@ class AIEngine:
             suggested_reply = None
         elif any(kw in text_lower for kw in urgent_keywords):
             category = "urgent"
-            summary = f"Вопрос по сделке/заказу от {sender}{snippet}"
+            summary = snippet
             action_required = True
             suggested_reply = f"Здравствуйте, {sender}! Сообщение получено, отвечу в ближайшее время."
         elif any(kw in text_lower for kw in gov_keywords):
             category = "gov"
-            summary = f"Официальное уведомление от {sender}{snippet}"
+            summary = f"Гос. уведомление: {snippet}"
             action_required = True
             suggested_reply = None
         elif any(kw in text_lower for kw in news_keywords):
             category = "news"
-            summary = f"Новость от {sender}{snippet}"
+            summary = snippet
             action_required = False
             suggested_reply = None
         elif any(kw in text_lower for kw in media_keywords):
             category = "media"
-            summary = f"Медиа/видео от {sender}{snippet}"
+            summary = snippet
             action_required = False
             suggested_reply = None
         else:
             category = "important" if len(text) > 30 else "general"
-            summary = f"Сообщение от {sender}{snippet}"
+            summary = snippet
             action_required = False
             suggested_reply = None
             

@@ -23,3 +23,10 @@ scratch/
 cb_data.txt
 out.txt
 fix.py
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+

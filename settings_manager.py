@@ -106,12 +106,12 @@ class SettingsManager:
 
     # --- AI & Stats Settings ---
     async def get_stats_total_processed(self) -> int:
-        val = await self.storage.get_setting("stats_total_processed", "0")
-        return int(val)
+        stats = await self.storage.get_stats()
+        return stats.get("total_all", 0)
 
     async def get_stats_spam_blocked(self) -> int:
-        val = await self.storage.get_setting("stats_spam_blocked", "0")
-        return int(val)
+        stats = await self.storage.get_stats()
+        return stats.get("filtered_count", 0)
 
     async def get_ai_text_chat_enabled(self) -> bool:
         val = await self.storage.get_setting("ai_text_chat_enabled", "true")
@@ -153,6 +153,12 @@ class SettingsManager:
     async def update_ai_category_filters(self, filters: dict):
         import json
         await self.storage.set_setting("ai_category_filters", json.dumps(filters))
+
+    async def update_ai_category_filter(self, category: str, enabled: bool):
+        """Updates the filter status for a single AI category."""
+        filters = await self.get_ai_category_filters()
+        filters[category.strip().lower()] = bool(enabled)
+        await self.update_ai_category_filters(filters)
 
     async def toggle_ai_category_filter(self, category: str):
         filters = await self.get_ai_category_filters()

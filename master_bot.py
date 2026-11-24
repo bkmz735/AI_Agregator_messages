@@ -27,6 +27,48 @@ CATEGORY_EMOJIS = {
     "media": "🎬"
 }
 
+def clean_sender_name(raw_sender: str) -> str:
+    """Extracts human-readable name from sender, stripping emails and redundant brackets."""
+    if not raw_sender:
+        return "Неизвестный"
+    s = raw_sender.strip()
+    if "<" in s and ">" in s:
+        name_part = s.split("<")[0].strip().strip('"\'')
+        if name_part:
+            return name_part
+        return s.split("<")[1].split(">")[0].strip()
+    return s.lstrip('@') if s.startswith("@@") else s
+
+def clean_summary_text(summary: str, sender: str = "", channel: str = "") -> str:
+    """Removes redundant prefixes like 'Сообщение от X:', 'Новость от @Y:', duplicate sender names, etc."""
+    if not summary:
+        return ""
+    import re
+    s = summary.strip()
+
+    # 1. Remove generic boilerplate intro phrases
+    boilerplate_patterns = [
+        r'^(?:сообщение|новость|уведомление|письмо|пост|вопрос по сделке(?:/заказу)?|важное(?: рабочее/личное)? сообщение|официальное уведомление|медиа/видео|видеозапись|гос\.?\s*уведомление)\s+(?:от|из)\s*[^:\n]{1,60}:\s*',
+        r'^(?:сообщение|новость|уведомление|письмо|пост)\s*:\s*',
+    ]
+    for pat in boilerplate_patterns:
+        s = re.sub(pat, '', s, flags=re.IGNORECASE).strip()
+
+    # 2. Remove leading sender name if repeated: e.g. "Иван Иванов: ..." or "@mash: ..."
+    if sender:
+        clean_s = clean_sender_name(sender).lstrip('@')
+        if clean_s:
+            s = re.sub(rf'^(?:@{re.escape(clean_s)}|{re.escape(clean_s)})\s*:\s*', '', s, flags=re.IGNORECASE).strip()
+
+    # 3. Remove leading channel name if repeated: e.g. "Авито: ..." or "VK: ..."
+    if channel:
+        s = re.sub(rf'^(?:{re.escape(channel)})\s*:\s*', '', s, flags=re.IGNORECASE).strip()
+
+    # 4. Capitalize first letter
+    if s and s[0].islower():
+        s = s[0].upper() + s[1:]
+    return s
+
 class RawUpdateLoggerMiddleware(BaseMiddleware):
     async def __call__(self, handler: Callable[[TelegramObject, dict], Awaitable[Any]], event: TelegramObject, data: dict) -> Any:
         from aiogram.types import Update
@@ -222,16 +264,19 @@ class MasterBot:
                 session = None
         
         self.bot = Bot(token=self.bot_token, session=session)
-        self.dp = Dispatcher()
         
-        # Register raw update logger, security & rate-limiting middlewares
-        self.dp.update.outer_middleware(RawUpdateLoggerMiddleware())
-        self.dp.message.outer_middleware(AccessControlMiddleware(self))
-        self.dp.message.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.2))
-        self.dp.callback_query.outer_middleware(AccessControlMiddleware(self))
-        self.dp.callback_query.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.2))
+        if self.dp is None:
+            self.dp = Dispatcher()
             
-        self._setup_handlers()
+            # Register raw update logger, security & rate-limiting middlewares
+            self.dp.update.outer_middleware(RawUpdateLoggerMiddleware())
+            self.dp.message.outer_middleware(AccessControlMiddleware(self))
+            self.dp.message.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.2))
+            self.dp.callback_query.outer_middleware(AccessControlMiddleware(self))
+            self.dp.callback_query.outer_middleware(ThrottlingMiddleware(rate_limit_seconds=0.2))
+                
+            self._setup_handlers()
+            
         logger.info(f"Telegram MasterBot initialized (Proxy: {proxy_url if session else 'Direct'}).")
 
     def _get_menu_keyboard(self, buffer_count: int = 0, is_sub_menu: bool = False):
@@ -593,11 +638,20 @@ class MasterBot:
         reply_part = f"\n\n💡 <b>Черновик ответа:</b>\n<code>{html.escape(suggested_reply)}</code>" if suggested_reply else ""
         action_part = "\n⚡ <b>Требуется ответ!</b>" if action_required else ""
 
+        clean_sender = clean_sender_name(sender)
+        s_lower = clean_sender.lower()
+        c_lower = channel.lower()
+        if not channel or c_lower in s_lower or s_lower in c_lower or channel == "Telegram":
+            source_block = f"👤 <b>От:</b> {html.escape(sender)}"
+        else:
+            source_block = f"📍 <b>Канал:</b> {html.escape(channel)}\n👤 <b>От:</b> {html.escape(sender)}"
+
+        cleaned_summary = clean_summary_text(summary, sender=sender, channel=channel)
+
         message_text = (
             f"{header}\n"
-            f"📍 <b>Канал:</b> {html.escape(channel)}\n"
-            f"👤 <b>От:</b> {html.escape(sender)}\n\n"
-            f"📝 <b>Выжимка:</b>\n{html.escape(summary)}{action_part}{reply_part}"
+            f"{source_block}\n\n"
+            f"📝 <b>Выжимка:</b>\n{html.escape(cleaned_summary)}{action_part}{reply_part}"
         )
 
         logger.info(f"Sending Instant Notification [{category}] from {sender}")
@@ -668,21 +722,30 @@ class MasterBot:
                 groups['general'].append(m)
                 
         def format_msg(m):
-            sender = html.escape(m['sender'])
-            
-            # Create inline link for TG news to save space
-            if m['msg_uid'].startswith("tg_news_"):
-                rest = m['msg_uid'][len("tg_news_"):]
+            raw_sender = m.get('sender', '').strip()
+            channel = m.get('channel', '').strip()
+            msg_uid = m.get('msg_uid', '')
+            summary = clean_summary_text(m.get('summary', ''), sender=raw_sender, channel=channel)
+            sender_name = clean_sender_name(raw_sender)
+
+            # Create inline link for TG news to save space and avoid duplicate channel names
+            if msg_uid.startswith("tg_news_"):
+                rest = msg_uid[len("tg_news_"):]
                 if "_" in rest:
                     tg_channel, msg_id = rest.rsplit('_', 1)
-                    # For news, the "sender" is often already an @handle. Just link it.
-                    sender_display = f"<a href=\"https://t.me/{tg_channel}/{msg_id}\">{sender}</a>"
+                    sender_display = f"<a href=\"https://t.me/{tg_channel}/{msg_id}\">{html.escape(sender_name)}</a>"
                 else:
-                    sender_display = f"<b>{sender}</b>"
+                    sender_display = f"<b>{html.escape(sender_name)}</b>"
             else:
-                sender_display = f"<b>{sender}</b> [{html.escape(m['channel'])}]"
+                # Do not duplicate channel tag if sender already contains channel name (e.g. "Авито" [Авито])
+                s_lower = sender_name.lower()
+                c_lower = channel.lower()
+                if not channel or c_lower in s_lower or s_lower in c_lower or channel == "Telegram":
+                    sender_display = f"<b>{html.escape(sender_name)}</b>"
+                else:
+                    sender_display = f"<b>{html.escape(sender_name)}</b> [{html.escape(channel)}]"
                 
-            return f"▫️ {sender_display}: {html.escape(m['summary'])}"
+            return f"▫️ {sender_display}: {html.escape(summary)}"
             
         if groups['important']:
             digest_parts.append("\n🔴 <b>ВАЖНОЕ</b>")
@@ -889,6 +952,11 @@ class MasterBot:
                     if use_proxy_mode:
                         logger.warning("Proxy connection failed. Auto-switching to DIRECT connection for Telegram Bot...")
                         use_proxy_mode = False
+                        if self.bot and hasattr(self.bot, 'session') and self.bot.session:
+                            try:
+                                await self.bot.session.close()
+                            except Exception:
+                                pass
                         self._init_bot_instance(use_proxy=False)
                         await self._register_bot_commands()
                     await asyncio.sleep(3)

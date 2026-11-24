@@ -376,10 +376,18 @@ class ConversationalAgent:
                     channel = args.get("channel_username")
                     reply_text = f"Вы хотите удалить Telegram канал «{channel}»?"
                 elif action_name == "get_bot_stats":
-                    settings = SettingsManager(self.storage)
-                    total = await settings.get_stats_total_processed()
-                    spam = await settings.get_stats_spam_blocked()
-                    reply_text = f"📊 Обработано сообщений: {total}\n🛑 Заблокировано спама: {spam}"
+                    stats = await self.storage.get_stats()
+                    total = stats.get("total_all", 0)
+                    spam = stats.get("filtered_count", 0)
+                    delivered = stats.get("delivered_count", 0)
+                    pending = stats.get("pending_count", 0)
+                    reply_text = (
+                        f"📊 **Статистика сообщений:**\n\n"
+                        f"• Всего обработано: **{total}**\n"
+                        f"• Доставлено: **{delivered}**\n"
+                        f"• В буфере ожидания: **{pending}**\n"
+                        f"• Заблокировано спама: **{spam}**"
+                    )
                     await self.storage.add_ai_chat_message("user", text)
                     await self.storage.add_ai_chat_message("model", reply_text)
                     return {"text": reply_text, "pending_action": None}

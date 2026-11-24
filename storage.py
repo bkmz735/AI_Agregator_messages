@@ -528,14 +528,19 @@ class Storage:
             await db.commit()
 
     async def get_ai_chat_history(self) -> List[Dict[str, str]]:
-        """Retrieves history from the last 6 hours and deletes older messages."""
+        """Retrieves history from the last 6 hours (up to 20 most recent messages) and deletes older messages."""
         async with self.get_db() as db:
             db.row_factory = aiosqlite.Row
             # Delete messages older than 6 hours
             await db.execute("DELETE FROM ai_chat_history WHERE timestamp <= datetime('now', '-6 hours')")
             await db.commit()
             
-            async with db.execute("SELECT role, content FROM ai_chat_history ORDER BY id ASC") as cursor:
+            # Fetch latest 20 messages in chronological order to prevent token overflow
+            async with db.execute("""
+                SELECT role, content FROM (
+                    SELECT id, role, content FROM ai_chat_history ORDER BY id DESC LIMIT 20
+                ) ORDER BY id ASC
+            """) as cursor:
                 rows = await cursor.fetchall()
                 return [{"role": r["role"], "content": r["content"]} for r in rows]
 
