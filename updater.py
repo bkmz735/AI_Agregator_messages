@@ -145,19 +145,21 @@ async def restart_service():
         try:
             p = await asyncio.create_subprocess_exec("systemctl", "restart", "ai-aggregator")
             await p.communicate()
-            return
+            if p.returncode == 0:
+                return
+            logger.warning(f"systemctl restart failed with return code {p.returncode}, falling back to process restart")
         except Exception as e:
-            logger.info(f"systemctl restart not available ({e}), using signal/exit restart fallback")
+            logger.info(f"systemctl restart not available ({e}), using signal/re-exec restart fallback")
 
-    # 2. Fallback: trigger SIGTERM for graceful shutdown handler, or re-exec
+    # 2. Fallback: re-exec current python process
     try:
-        # On Linux/Unix, sending SIGTERM to self invokes MessageAggregatorApp graceful shutdown
-        # and systemd Restart=always will boot a fresh instance
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception as e:
+        logger.warning(f"os.execv failed ({e}), falling back to SIGTERM/exit")
         if sys.platform != "win32":
             os.kill(os.getpid(), signal.SIGTERM)
         else:
-            os.execv(sys.executable, [sys.executable] + sys.argv)
-    except Exception as e:
+            sys.exit(0)
         logger.warning(f"SIGTERM / execv failed: {e}. Exiting cleanly via sys.exit(0)...")
         os._exit(0)
 

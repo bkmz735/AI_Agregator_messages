@@ -195,6 +195,8 @@ class MessageAggregatorApp:
         bot_task = None
         if self.bot.bot and self.bot.dp:
             bot_task = asyncio.create_task(self.bot.start_polling())
+        else:
+            logger.error("❌ TELEGRAM_BOT_TOKEN не задан в .env! Telegram-бот не запущен.")
 
         # Handle SIGTERM from systemd gracefully
         import signal
